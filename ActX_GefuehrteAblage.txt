@@ -4,6 +4,3 @@ Option Explicit
 Private Sub Dlg_OnInit()
 Dlg.Sizeable = False
 End Sub
-
-'Teständerung'
-
