@@ -1,0 +1,285 @@
+'#Reference {FF6FA417-903D-4A9F-BDA5-83F2DD4E4DB1}#3.0#0#C:\Program Files\SER\Components\DX4BCC\DOXiS4BatchControl.ocx#DOXiS4 Batchcontent Control#dx4BatchContentControl
+Option Explicit
+' -------------------------------------------------------------------------------
+' Maskentyp:	Globales Script für DOXiS4-BCC
+' Maskenname:	dx4bcc
+' Erstellung:	16.12.2008 / SER, QS
+' Version:	V04.02
+' Bemerkung:    #Reference DOXiS4BatchControl.ocx  DOXiS4 Batchcontent Control
+' --------------------------------------------------------------------------------
+
+
+' ####################	Konfiguration --- Start ---		####################
+
+Private Const mDOXiS4BCControl		As String = "BCControl"
+Private mbScanPages					As Long
+
+Private 		   mBCCDlg			As ArchiveDlg
+Private WithEvents mBCCArchiveView	As ArchiveViewWindow
+
+Private WithEvents mBCCFiling		As FilingEnvironmentWindow
+Private WithEvents mBCCScanTool 	As ScanTool
+
+'Public mBCControl	 				As Object
+Public WithEvents mBCControl	 	As dx4BatchContentControl.BatchContent
+
+Private mBCCCount					As Long
+Private mBCCCurrentJob				As Long
+Private bBCCIgnorePages				As Boolean
+
+' ####################	Konfiguration  --- Ende ---		####################
+
+Public Sub DOXiS4BCC_Terminate
+On Error GoTo DOXiS4BCC_Terminate_Error
+	  	Set mBCControl.ItaSystem=Nothing
+  		Set mBCControl.ArchiveDlg=Nothing
+  		Set mBCControl.DocViewer=Nothing
+  		Set mBCControl.RecognitionEngine = Nothing
+  		Set mBCControl=Nothing
+
+Set mBCCDlg=Nothing
+Set mBCCArchiveView=Nothing
+Set mBCCFiling=Nothing
+Set mBCCScanTool=Nothing
+
+On Error GoTo 0
+     Exit Sub
+
+   DOXiS4BCC_Terminate_Error:
+     MsgBox "Fehler :" & Err.Number & " (" & Err.Description & ") in Sub " _
+     & Chr(34) & "DOXiS4BCC_Terminate" & Chr(34) & " von " & Chr(34) & "global bcc" _
+     & Chr(34), vbCritical Or vbOkOnly, "Fehler"
+   Err.Clear
+   On Error GoTo 0
+End Sub
+
+Public Sub DOXiS4BCC_InitFiling
+On Error GoTo DOXiS4BCC_InitFiling_Error
+	If Application.Globals.Exists("ScanTool") =True  Then
+		Set mBCCScanTool = Application.Globals("ScanTool")
+		If Application.Globals.Exists("FilingEnvWindow") =True  Then
+			Set mBCCFiling = Application.Globals("FilingEnvWindow")
+		End If
+	End If
+On Error GoTo 0
+     Exit Sub
+
+   DOXiS4BCC_InitFiling_Error:
+     MsgBox "Fehler :" & Err.Number & " (" & Err.Description & ") in Sub " _
+     & Chr(34) & "DOXiS4BCC_InitFiling" & Chr(34) & " von " & Chr(34) & "global bcc" _
+     & Chr(34), vbCritical Or vbOkOnly, "Fehler"
+   Err.Clear
+   On Error GoTo 0
+End Sub
+
+Public Sub DOXiS4BCC_InitArchive
+On Error GoTo DOXiS4BCC_InitArchive_Error
+	If Application.Globals.Exists("ActiveDlg") Then
+		Set mBCCDlg = Application.Globals("ActiveDlg")
+		If Application.Globals.Exists("ActiveArchiveView")=True Then
+			Set mBCCArchiveView= Application.Globals("ActiveArchiveView")
+			Call DOXiS4BCC_Init
+		End If
+	End If
+On Error GoTo 0
+     Exit Sub
+
+   DOXiS4BCC_InitArchive_Error:
+     MsgBox "Fehler :" & Err.Number & " (" & Err.Description & ") in Sub " _
+     & Chr(34) & "DOXiS4BCC_InitArchive" & Chr(34) & " von " & Chr(34) & "global bcc" _
+     & Chr(34), vbCritical Or vbOkOnly, "Fehler"
+   Err.Clear
+   On Error GoTo 0
+End Sub
+
+Private Sub DOXiS4BCC_Init
+
+On Error GoTo DOXiS4BCC_Init_Error
+
+	Dim sScannerSetting As String
+
+	sScannerSetting = GetSetting("DOXiS4BCC", "Scanner", "ASPI")
+	If sScannerSetting = "true" Then
+		mbScanPages = 0
+	Else
+		mbScanPages= 0				'Default = 5	kann auch auf 1 gesetzt werden
+	End If
+
+	'Set mBCControl = CreateObject("DOXiS4BatchContentControl.BatchContent")
+
+	Set mBCControl = mBCCDlg.ControlByName(mDOXiS4BCControl).Control
+  	Set mBCControl.ItaSystem= Application.System
+  	Set mBCControl.ArchiveDlg=mBCCDlg
+	Set mBCControl.DocViewer=mBCCArchiveView.ViewerWindow.DocViewer
+	Set mBCControl.RecognitionEngine = mBCCArchiveView.RecognitionEngine
+
+	Call SetConfiguration
+	mBCControl.ShowScanToolbar=False
+  	mBCControl.GrabITADocOnExecute=False
+	mBCControl.AutoSaveMetadata=True
+	bBCCIgnorePages=True
+
+On Error GoTo 0
+     Exit Sub
+
+   DOXiS4BCC_Init_Error:
+     MsgBox "Fehler :" & Err.Number & " (" & Err.Description & ") in Sub " _
+     & Chr(34) & "DOXiS4BCC_Init" & Chr(34) & " von " & Chr(34) & "global bcc" _
+     & Chr(34), vbCritical Or vbOkOnly, "Fehler"
+   Err.Clear
+   On Error GoTo 0
+
+End Sub
+Private Sub SetConfiguration
+
+Dim oMatrix 		As StringMatrix
+Dim i 		 		As Long
+Dim sGuid			As String
+Dim sKonfig 		As String
+Dim sKonfigSplit As Variant
+
+On Error GoTo SetConfiguration_Error
+	'Set oMatrix =Application.MetaData.StringMatrices.ItemByName("BCCKonfig")
+	Set oMatrix =Application.MetaData.StringMatrices.ItemByName("ASF_BCCKonfig")
+	If Not oMatrix Is Nothing Then
+		For i = 0 To oMatrix.RowCount -1
+			sGuid =oMatrix.Value(i,0)
+			If sGuid = mBCCDlg.DialogDefinition.DocClassGUID Then
+				sKonfig =Trim(oMatrix.Value(i,1))
+				Exit For
+			End If
+		Next i
+	End If
+	If sKonfig <> "" Then
+		ReDim sKonfigSplit(6)
+		sKonfigSplit = Split(sKonfig,",")
+		If sKonfigSplit(5) = "" Then
+			sKonfigSplit(5) = "0"
+		End If
+		If sKonfigSplit(3) = "" Then
+			sKonfigSplit(3)= "0"
+		End If
+		If sKonfigSplit(2) = "" Then
+			sKonfigSplit(2)= "0"
+		End If
+		Call mBCControl.SetConfiguration (CInt(sKonfigSplit(0)), sKonfigSplit(1),CInt(sKonfigSplit(2)), CBool(sKonfigSplit(3)),sKonfigSplit(4),CLng(sKonfigSplit(5)))
+	End If
+
+On Error GoTo 0
+     Exit Sub
+
+   SetConfiguration_Error:
+     MsgBox "Fehler :" & Err.Number & " (" & Err.Description & ") in Sub " _
+     & Chr(34) & "SetConfiguration" & Chr(34) & " von " & Chr(34) & "global bcc" _
+     & Chr(34), vbCritical Or vbOkOnly, "Fehler"
+   Err.Clear
+   On Error GoTo 0
+
+End Sub
+
+'-------------------------------------------------------------------------
+'Funktion: Starten des Batchscan
+'-------------------------------------------------------------------------
+
+Private Sub Application_OnKeyDown(Key As Integer, ByVal Shift As Boolean, ByVal Ctrl As Boolean, ByVal Alt As Boolean)
+	If bBCCIgnorePages = True  Then
+		If Key = 114 Then
+			mBCCCount=0
+			mBCCScanTool.Scan mbScanPages
+			Key = 0
+		End If
+	End If
+	If Key = 123 Then
+		bBCCIgnorePages = True
+	End If
+End Sub
+Private Sub mBCCFiling_OnRibbonBarInitialized()
+Dim mycat As RibbonCategory
+
+    Set mycat = mBCCFiling.RibbonBar.Category(0)
+	mycat.AddPanel("ID_BCC","BatchContentControl")
+	mycat.PanelByID("ID_BCC").AddElement rtButton,"ID_STARTBATCH","Starten (F3)","Startet den Scanvorgang",13,13
+	'mycat.PanelByID("ID_BCC").AddElement rtButton,"ID_STOPBATCH","Stoppen (F12)","Stoppt den Scanvorgang",9,9
+	mycat.PanelByID("ID_BCC").AddElement rtButton,"ID_CONFIG","Konfiguration","Zeigt die aktuelle Konfiguration",10,10
+End Sub
+
+Private Sub mBCCFiling_OnRibbonElementClicked(ByVal ElementID As String, ByRef Handled As Boolean)
+	Select Case ElementID
+	'Case "ID_STOPBATCH"
+	'		bBCCIgnorePages = True
+	'End Select
+	Case "ID_CONFIG"
+	mBCControl.ShowConfig
+
+
+	Case "ID_STARTBATCH"
+		If bBCCIgnorePages = True Then
+			'Select Case ElementID
+			mBCCCount=0
+			mBCCScanTool.Scan mbScanPages
+		End If
+	End Select
+End Sub
+
+
+
+'-------------------------------------------------------------------------
+'Funktion: ScanEvents
+'-------------------------------------------------------------------------
+
+Private Sub mBCCScanTool_OnData(FrontPage As SWADATALib.DocData, FrontPageInfo As SCANNERLib.ImageInfo, BackPage As SWADATALib.DocData, BackPageInfo As SCANNERLib.ImageInfo, ByVal JobId As Long, Handled As Boolean)
+
+Dim bAddData As Boolean
+
+On Error GoTo ScanTool_OnData_error
+
+	Handled = True
+
+	mBCCCount  = mBCCCount + 1
+
+	If  mBCCCurrentJob  = JobId Then
+		If bBCCIgnorePages=False  Then
+			bAddData=  mBCControl.AddData (FrontPage,BackPage)
+			If bAddData=False Then
+				bBCCIgnorePages =True
+			End If
+		End If
+	End If
+
+	Exit Sub
+
+ScanTool_OnData_error:
+	mBCCCurrentJob = -1
+	bBCCIgnorePages  =True
+	MsgBox Err.Description & vbNewLine & vbNewLine & "Scan aborted!(BCC)"
+
+End Sub
+
+
+Private Sub mBCCScanTool_OnEndJob(ByVal JobId As Long, Handled As Boolean)
+
+On Error GoTo ScanTool_OnData_error
+
+	If mBCCCount = mbScanPages And mBCCCount <> 0   Then
+		If bBCCIgnorePages  = False Then
+			mBCCCount=0
+ 			mBCCScanTool.Scan mbScanPages
+ 		Else
+			bBCCIgnorePages = True
+ 		End If
+ 	Else
+		bBCCIgnorePages = True
+	End If
+
+Exit Sub
+
+ScanTool_OnData_error:
+	mBCCCurrentJob = -1
+	bBCCIgnorePages  =True
+
+End Sub
+Private Sub mBCCScanTool_OnStartJob(ByVal JobId As Long, Handled As Boolean)
+	mBCCCurrentJob = JobId
+	bBCCIgnorePages=False
+End Sub
+

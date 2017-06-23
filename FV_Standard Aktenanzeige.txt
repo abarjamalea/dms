@@ -1,0 +1,514 @@
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Folder Tree View/ Standard Aktenanzeige
+'*	Autor	:	Markus D. Hartbauer, SER Solutions Österreich GmbH
+'*	Datum	:	20.07.2010
+'*
+'*	Ü001	:	29.10.2014  Guido Bachmayr, SER: Modif: ExportAllDocs aus Akte + Neuerstellung ExportResultListDocs CR 6, Tranche 7
+'*	Ü002	:	03.03.2015  Guido Bachmayr, SER: MultiDok-Ablage auch für D&D auf Aktenregister implementieren (OTRS 1012450)
+'*  Ü003    :   02.10.2015  Guido Bachmayr, SER: MultiDok-Ablage: Bei File-Drop wird das Zielregister auch selektiert (OTRS 1012450)
+'*
+'************************************************************************
+
+	Option Explicit
+
+
+	Dim WithEvents MyFEW As FilingEnvironmentWindow
+
+	'Declare Controls/Vars für RegisterselectionexportDlg
+	Dim WithEvents btnRegSelOk As Button
+	Dim WithEvents btnRegSelCancel As Button
+	Dim chkExportChilds As CheckBox
+	Dim WithEvents ctcRegister As CategoryTreeControl
+	Dim folderForExport As ItaFolder
+	Dim myActiveXWindow As ActiveXWindow
+	Dim myExportFolderPath As String
+
+	Private Type RECT
+		Left As Long
+		Top As Long
+		Right As Long
+		Bottom As Long
+	End Type
+
+
+	Declare Function SetWindowPos Lib "user32" Alias "SetWindowPos"  _
+           (ByVal hwnd As Long, _
+           ByVal hWndInsertAfter As Long, _
+           ByVal x As Long, _
+            ByVal y As Long, _
+            ByVal cx As Long, _
+            ByVal cy As Long, _
+            ByVal wFlags As Long  ) As Long
+
+	Private Declare Function GetWindowRect Lib "user32" (ByVal hWnd As Long, lpRect As RECT) As Long
+
+
+	Private Declare Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" (ByVal hwnd As Long, ByVal lpOperation As String, ByVal lpFile As String, ByVal lpParameters As String, ByVal lpDirectory As String, ByVal nShowCmd As Long) As Long
+
+
+
+'************************************************************************
+'*	Globale Objekte
+'************************************************************************
+
+
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+
+
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+Private Sub FolderViewWindow_OnAddDocument(ByRef Handled As Boolean)
+	Set ASF_aktuelle_Akte = FolderTreeView.Document
+	'2011-08-03 GBA Korrektur CR37 (Reihenfolge der Befehle)
+	Application.Globals.Item ("ASF_Aktuelles_Register") = FolderTreeView.SelectedNode
+	Application.Globals.Item ("ASF_Aktuelle_FolderViewWindow") = FolderViewWindow
+
+	Set MyFEW = Application.OpenEnvironment2(Application.MetaData.FilingEnvironments.ItemByName("Dokument").GUID, True)
+	Handled = True
+End Sub
+
+Private Sub FolderViewWindow_OnElementAdded(ByVal Element As Object, ByVal ParentNode As Object)
+	If FolderTreeView.FocusedNode.ID <> ParentNode.ID Then
+		Set FolderTreeView.FocusedNode= ParentNode				'GBA 2015-12-03
+	End If
+End Sub
+
+Private Sub FolderViewWindow_OnFileDrop(ByRef FileNames() As String, ByVal Node As Object, ByRef Handled As Boolean)   '* Ü002
+	Set ASF_aktuelle_Akte = FolderTreeView.Document
+
+	Set FolderTreeView.SelectedNode = Node			'Ü003 02.10.2015 GBA
+	Set FolderTreeView.FocusedNode = Node
+
+	'2011-08-03 GBA Korrektur CR37 (Reihenfolge der Befehle)
+	Application.Globals.Item ("ASF_Aktuelles_Register") = FolderTreeView.SelectedNode
+	Application.Globals.Item ("ASF_Aktuelle_FolderViewWindow") = FolderViewWindow
+End Sub
+
+Private Sub FolderViewWindow_OnFileDrop123(ByRef Files() As Object, ByVal Node As Object, ByRef Handled As Boolean)   '* Ü002
+
+	Exit Sub
+	'*********************************************** OnFileDrop UND OnFileDrop2 sind nicht nötig! GBA 2015-12-02   Ü003
+
+	Set ASF_aktuelle_Akte = FolderTreeView.Document
+	'2011-08-03 GBA Korrektur CR37 (Reihenfolge der Befehle)
+	Application.Globals.Item ("ASF_Aktuelles_Register") = FolderTreeView.SelectedNode
+	Application.Globals.Item ("ASF_Aktuelle_FolderViewWindow") = FolderViewWindow
+End Sub
+
+Private Sub FolderViewWindow_OnRibbonBarInitialized()
+
+	Dim XRC As RibbonCategory
+	Dim XRP As RibbonPanel
+	Dim mySecurityObject As SecurityModule
+
+	Set mySecurityObject = Application.System.SecurityModule
+
+	Set XRC = FolderViewWindow.RibbonBar.CategoryByName("Akte")
+	If XRC Is Nothing Then Set XRC = FolderViewWindow.RibbonBar.CategoryByName("Record")		'GBA 2014-10-29 Ü001  CR6, Tr7
+	If Not XRC Is Nothing Then
+		Set XRP = XRC.AddPanel("IDweitere", "weitere Funktionen")
+		If Not XRP Is Nothing Then
+			XRP.AddElement(rtButton, "IDneueAkte", "neue Akte", "Fügt eine neue Akte zu dem ausgewählten Register hinzu", 79, 79)
+			'CR30/T11 (Auskommentiert da in neuem Dialog hinterlegt)
+			'XRP.AddElement(rtButton, SER_ExpAllDocs_ID, SER_ExpAllDocs_Name, SER_ExpAllDocs_Help, SER_ExpAllDocs_SMI, SER_ExpAllDocs_LMI)
+			'XRP.AddElement(rtButton, SER_ExpRLDocs_ID, SER_ExpRLDocs_Name, SER_ExpRLDocs_Help, SER_ExpRLDocs_SMI, SER_ExpRLDocs_LMI) 'GBA 2014-10-29 Ü001  CR6, Tr7
+			XRP.AddElement(rtButton, "IDExportieren","Dokumente exportieren","Zeigt Optionen für den Dokumentenexport an.",4,4)
+			'/CR30/T11
+		If mySecurityObject.CheckRight (bfRight03 ,"DMS Dokumente","ASF - Funktionsrechte") Then
+			XRP.AddElement rtButton, "ID_GISLink", "GIS", "Öffnet die Koordinaten des Dokuments im GIS System", 54,54
+		End If
+		End If
+	End If
+
+End Sub
+
+Private Sub FolderViewWindow_OnRibbonElementClicked(ByVal ElementID As String, ByRef Handled As Boolean)
+	Dim XDocTypes(2) As String
+	Dim myResultlist As IResultList
+
+	'Variablen für RegisterExport
+	Dim AXC As ActiveXControl
+	Dim XDlgI As IQueryDlgInternal
+
+	Dim mynode As CNode
+	Select Case ElementID
+		Case "IDneueAkte"
+			doNeueAkte
+		Case SER_ExpAllDocs_ID
+			SER_ExportAllRecordDocs(FolderTreeView.Document, FolderViewWindow.Caption)
+		Case SER_ExpRLDocs_ID																	'GBA 2014-10-29 Ü001  CR6, Tr7
+			SER_ExportResultListDocs(FolderTreeView.Document, FolderTreeView.SelectedNode, FolderViewWindow.DocumentLinksWindow)
+		Case "ID_GISLink"
+			openGISLink(FolderTreeView.Document)
+		Case "IDExportieren"
+	Begin Dialog UserDialog 230,168,"Export Dokumente" ' %GRID:10,7,1,1
+		PushButton 20,42,190,21,"Registerselektion",.btnSelRegister
+		PushButton 20,98,190,21,"Alle Dokumente",.PushButton2
+		PushButton 20,70,190,21,"Gewähltes Register",.btnExportRL
+		CancelButton 110,140,100,21
+		Text 20,14,200,14,"Wie möchten Sie exportieren?",.Text1
+	End Dialog
+			Dim dlg As UserDialog
+			Dim dlgResult As Long
+			dlgResult = Dialog (dlg)
+
+			Select Case dlgResult
+			Case 0
+				Exit Sub
+			Case 1 	' Registerselektion
+
+				Dim myQueryDlg As QueryDlg
+				Dim myAppRec As RECT
+
+				GetWindowRect(Application.hWnd,myAppRec)
+				Set myActiveXWindow = Application.CreateActiveXWindow(Application.MetaData.ActiveXWindowDefinitions.ItemByName("RegisterExport").GUID,enumActiveXWindowType.wtNone)
+
+				myActiveXWindow.Open(wsModeless)
+				'20170330 KGR
+				'myActiveXWindow.Sizeable = false
+				myActiveXWindow.Sizeable = True
+
+				'myActiveXWindow.Height = 340
+				'myActiveXWindow.Width = 263
+				myActiveXWindow.Height = 370
+				myActiveXWindow.Width = 280
+				'/20170330 KGR
+
+				Set AXC = myActiveXWindow.CreateControl("SwaQyDlg.QueryDlg")
+				AXC.Height = myActiveXWindow.Height
+				AXC.Width = myActiveXWindow.Width
+				AXC.Left = 0
+				AXC.Top = 0
+				AXC.Visible = True
+				Set XDlgI = AXC.Control
+				XDlgI.Init(Application.System,Application.MetaData.QueryDocClasses.ItemByName("_RegisterExport").QueryDlgDefinitions.ItemByType("default"))
+				Set myQueryDlg = XDlgI
+
+				Set btnRegSelOk = myQueryDlg.ControlByName("btnOK")
+				btnRegSelOk.Enabled = False
+				Set btnRegSelCancel = myQueryDlg.ControlByName("btnCancel")
+				Set ctcRegister = myQueryDlg.ControlByName("CTCNodes")
+				Set chkExportChilds = myQueryDlg.ControlByName("chkExportChilds")
+				Set folderForExport = FolderTreeView.Document
+				initNodes(folderForExport,ctcRegister)
+
+			Case 2 	' Alle Dokumente
+				SER_ExportAllRecordDocs(FolderTreeView.Document, FolderViewWindow.Caption)
+			Case 3	' Gewähltes Register
+				SER_ExportResultListDocs(FolderTreeView.Document, FolderTreeView.SelectedNode, FolderViewWindow.DocumentLinksWindow)
+			End Select
+
+	End Select
+
+End Sub
+
+Private Sub ctcRegister_OnClickItem(ByVal vKey As Variant)
+	If ctcRegister.DataCount = 0 Then
+		btnRegSelOk.Enabled = False
+		Else
+		btnRegSelOk.Enabled = True
+	End If
+End Sub
+
+
+Private Sub btnRegSelOk_OnClicked()
+
+	Dim mynode As CNode
+	Dim exportMode As String
+
+	'SWA DMS-315 nur eine Verzeichnisebene soll erlaubt sein
+	myExportFolderPath = SER_SelectPath("Export Ordner wählen",1)
+
+	If myExportFolderPath = "" Then
+		Exit Sub
+	End If
+
+	If chkExportChilds.Checked Then
+		exportMode = "rec-nested"
+	Else
+		exportMode = "just-rec"
+	End If
+
+	Dim i As Integer
+	For i = 0 To ctcRegister.DataCount - 1
+		searchInTreeNodeByID(folderForExport.Nodes,ctcRegister.Data(i),mynode)
+		MLA_ExportNodeAdvancedForSelection(mynode,"",myExportFolderPath,exportMode,"",0)
+	Next
+
+	myActiveXWindow.Close
+
+	ShellExecute(0, "Open", myExportFolderPath, "", "", 1)
+
+	Set btnRegSelOk = Nothing
+	Set btnRegSelCancel = Nothing
+	Set ctcRegister = Nothing
+	Set folderForExport = Nothing
+	Set myActiveXWindow = Nothing
+	myExportFolderPath = ""
+
+End Sub
+
+Private Sub btnRegSelCancel_OnClicked()
+	myActiveXWindow.Close
+
+	Set btnRegSelOk = Nothing
+	Set btnRegSelCancel = Nothing
+	Set ctcRegister = Nothing
+	Set folderForExport = Nothing
+	Set myActiveXWindow = Nothing
+	myExportFolderPath = ""
+
+End Sub
+Private Sub initNodes(oFolder As ItaFolder, ctcRegister As CategoryTreeControl)
+	  On Error GoTo ErrHandler
+
+               Dim folderUUID As String
+               Dim root As String
+
+               Dim oNodes As FolderManager.CNodes
+    			Dim oNode As FolderManager.CNode
+
+
+               folderUUID = oFolder.DocumentID
+
+               ' die StringMatrix für die Register
+               Dim smFolder As New StringMatrix
+
+               smFolder.AddColumn
+               smFolder.ColumnName(0) = "ID"
+
+               smFolder.AddColumn
+               smFolder.ColumnName(1) = "PID"
+
+               smFolder.AddColumn
+               smFolder.ColumnName(2) = "TextValue"
+
+               smFolder.AddColumn
+               smFolder.ColumnName(3) = "ShortValue"
+
+               ' die Properties am CategoryTreeControl setzen
+               ctcRegister.IDColumnName = "ID"
+               ctcRegister.NameColumnName = "TextValue"
+               ctcRegister.ParentIDColumnName = "PID"
+               ctcRegister.ShortNameColumnName = "ShortValue"
+
+               ' die einzelnen TreeNodes / Register erstellen
+               Set oNodes = oFolder.Nodes
+               If oNodes.Count = 0 Then
+                              MsgBox "Keine Register vorhanden!", vbInformation, "Information"
+                              GoTo Exit_
+               End If
+
+               Dim displayNameAttach As String
+               Dim i As Long
+               For i = 0 To oNodes.Count -1
+
+                              displayNameAttach = ""
+                              Set oNode = oNodes.Item(i)
+
+                              ' die root Node erzeugen
+                              If i = 0 Then
+                                            root = "_root"
+
+                                            smFolder.AddRow
+                                            smFolder.Value(0,0) = root
+                                            smFolder.Value(0,1) = "parentid"
+                                            smFolder.Value(0,2) = "Root Node"
+                                            smFolder.Value(0,3) = "Root Node"
+                              End If
+
+                              ' das Register als Node anlegen
+                              If oNode.Type = FMNodeType.NT_STATIC Or _
+                                 oNode.Type = FMNodeType.NT_NODESONLY Or _
+                                 oNode.Type = FMNodeType.NT_VIRTUAL Then
+
+                                            If oNode.Elements.Count > 0 Then
+                                                           displayNameAttach = " (" & CStr(oNode.Elements.Count) & ")"
+                                            End If
+
+                                            smFolder.AddRow
+                                            smFolder.Value(smFolder.RowCount-1,0) = oNode.ID
+                                            smFolder.Value(smFolder.RowCount-1,1) = root
+                                            smFolder.Value(smFolder.RowCount-1,2) = oNode.DisplayString & displayNameAttach
+                                            smFolder.Value(smFolder.RowCount-1,3) = oNode.DisplayString & displayNameAttach
+
+                                            ' rekursiv nach unten vorarbeiten
+                                            If oNode.ChildNodes.Count > 0 Then
+                                                           addNodeToStringMatrix smFolder, oNode.ChildNodes, oNode
+                                            End If
+                              End If
+               Next
+
+               ctcRegister.IgnoreRootItem = True
+
+               ' das CategoryTreeControl initialisieren
+               ctcRegister.Init smFolder.CreateRecordset(), root
+
+Exit_:
+
+    ' die Objekte aufräumen
+    On Error Resume Next
+
+    Exit Sub
+
+ErrHandler:
+               ' nur eine MsgBox
+    MsgBox("Fehler beim Aufbau der Register!" & vbCrLf & _
+                                 "Error: " & Err.Number & ", Fehlerbeschreibung: " & Err.Description,vbCritical,"Error" )
+
+    GoTo Exit_
+
+End Sub
+
+
+Private Sub addNodeToStringMatrix(ByRef sm As StringMatrix, ByVal FolderNodes As FolderManager.CNodes, ByVal ParentFolder As FolderManager.CNode)
+
+               'Dim oNodes As FolderManager.CNodes
+    Dim oNode As FolderManager.CNode
+               Dim displayNameAttach As String
+
+    Dim i As Long
+
+               For i = 0 To FolderNodes.Count -1
+                              displayNameAttach = ""
+                              Set oNode = FolderNodes.Item(i)
+
+                              ' rekursiv nach unten vorarbeiten
+                              If oNode.Type = FMNodeType.NT_STATIC Or _
+                                 oNode.Type = FMNodeType.NT_NODESONLY Or _
+                                 oNode.Type = FMNodeType.NT_VIRTUAL Then
+
+                                            If oNode.Elements.Count > 0 Then
+                                                           displayNameAttach = " (" & CStr(oNode.Elements.Count) & ")"
+                                            End If
+
+                                            sm.AddRow
+                                            sm.Value(sm.RowCount-1,0) = oNode.ID
+                                            sm.Value(sm.RowCount-1,1) = ParentFolder.ID
+                                            sm.Value(sm.RowCount-1,2) = oNode.DisplayString & displayNameAttach
+                                            sm.Value(sm.RowCount-1,3) = oNode.DisplayString & displayNameAttach
+
+                                             If oNode.ChildNodes.Count > 0 Then
+                                                           addNodeToStringMatrix sm, oNode.ChildNodes, oNode
+                                            End If
+                              End If
+
+               Next
+
+End Sub
+
+Public Sub doNeueAkte()
+
+	Set ASF_aktuelle_Akte = FolderTreeView.Document
+	Set MyFEW = Application.OpenEnvironment2(Application.MetaData.FilingEnvironments.ItemByName("Akte").GUID, True)
+
+End Sub
+Private Sub MyFEW_OnDocumentExecuted(ByVal Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean, ByRef Handled As Boolean)
+	Dim XNode As CNode
+	Set XNode =	FolderViewWindow.FolderTreeView.FocusedNode
+	XNode.Elements.AddNew(LT_DOCUMENT).Link = Doc.DocumentID
+End Sub
+
+Private Sub MyFEW_OnFolderExecuted(ByVal Folder As SWAFRAMELib.ItaFolder, ByVal Succeeded As Boolean, ByRef Handled As Boolean)
+
+	Dim XNode As CNode
+	Set XNode =	FolderViewWindow.FolderTreeView.FocusedNode
+	XNode.Elements.AddNew(LT_FOLDER).Link = Folder.DocumentID
+
+End Sub
+'Beim Hinzufügen eines neuen Registers zu einer Akte, wird dem Register die DMS-Trefferliste 'Akte_Allgemein'
+'zugewiesen
+Private Sub FolderViewWindow_OnNodeAdded(ByVal Node As Object, ByVal ParentNode As Object)
+
+	Dim mynode As CNode
+	Dim myResultDlgDefinition As ResultDlgDefinition
+
+	Set myResultDlgDefinition = Application.MetaData.ResultDlgDefinitions.ItemByName ("Akte_Allgemein")
+	If myResultDlgDefinition Is Nothing Then
+	Else
+		Set mynode = Node
+		mynode.Presentation.ResultDlgDefinition (LT_DOCUMENT)= myResultDlgDefinition.GUID
+	End If
+End Sub
+
+'Clean Up dead links
+
+Private Sub FolderTreeView_OnDocumentChanged(ByVal newDoc As Object)
+	Call CleanupElements
+End Sub
+
+Private Sub CleanupElementsInNode(oNode As FolderManager.CNode)
+     Dim oElements As FolderManager.CElements
+     Dim nElements As Long
+     Dim i As Long
+     Dim Links As New SWATOOLSLib.VariantSet
+     Dim Link As String
+     Dim oDoc As Object
+     Dim oSecObj As SWASMLib.SecurityObject
+     Dim nDuplicates As Long
+
+ On Error Resume Next
+
+     Set oElements = oNode.Elements
+     With oElements
+         nElements = .Count
+         For i = nElements - 1 To 0 Step -1
+             If .Item(i).LinkType = LT_DOCUMENT Then
+                 Set oDoc = Application.System.GetDocument(.Item(i).Link, "")
+                 Set oSecObj = oDoc
+                 Link = oSecObj.GUID
+
+                 If Links.Contains(Link) Then
+                     .Remove(i)
+                     nDuplicates = nDuplicates + 1
+                 Else
+                     Links.Add(Link)
+                 End If
+             End If
+         Next i
+     End With
+
+     If nDuplicates > 0 Then
+             Dim oFolder As SWAFRAMELib.ItaFolder
+             Set oFolder = FolderTreeView.Document
+             oFolder.Commit
+     End If
+ End Sub
+
+ Private Sub CleanupElementsInNodes(oNodes As FolderManager.CNodes)
+     Dim oNode As FolderManager.CNode
+     Dim nNodes As Long
+     Dim i As Long
+
+     With oNodes
+         nNodes = .Count
+         For i = 0 To nNodes - 1
+             Set oNode = .Item(i)
+             If oNode.Type = FolderManager.NT_STATIC Then
+                 If oNode.CheckRights(FolderManager.RT_NODE_SHOW_ELEMENTS) Then
+                     CleanupElementsInNode(oNode)
+                 End If
+             End If
+         Next i
+     End With
+ End Sub
+
+ Private Sub CleanupElements
+     Dim oFolder As SWAFRAMELib.ItaFolder
+     Dim oNodes As FolderManager.CNodes
+
+     Set oFolder = FolderTreeView.Document
+     Set oNodes = oFolder.Nodes.Item(0).ChildNodes
+
+     CleanupElementsInNodes(oNodes)
+ End Sub
+
+

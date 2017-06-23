@@ -1,0 +1,1475 @@
+'#Reference {F0380C4E-354B-4BFE-B0EF-BA54159674A5}#1.0#0#C:\PROGRA~2\SER\COMPON~1\Swa\SWB139~1.DLL#SwaOrgaCSB 1.0-Typbibliothek#SwaOrgaCSBLib
+'#Reference {DC752F70-69D7-49F3-8756-9F765D0CE953}#1.0#0#C:\PROGRA~2\SER\COMPON~1\Swa\SwaGM.dll#SwaGM 1.0 Type Library#SWAGMLib
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Global Script/ SER GSC Globale Functionen
+'*	Autor	:	Günther F. Schinko, SER Solutions Österreich GmbH
+'*	Datum	:	27.07.2010
+'*
+'*  Überarbeitung Ü001:	16.02.2011, Christian Aigner, SER
+'*  Überarbeitung Ü002:	24.02.2011, Günther F. Schinko, SER
+'*	Überarbeitung Ü003: 21.09.2011, Markus D. Hartbauer, SER: Bugfix in SER_PersonIsMemberOfGroup: für 'everybody' war eine falsche ID eingepflegt (eine 0 fehlte)
+'*  Überarbeitung Ü004:	04.08.2011, Christian Aigner, SER, Fkt. SER_LinkDocuments hinzugefügt
+'*  Überarbeitung Ü005:	25.10.2011, Günther F. Schinko, SER, Viewer - Viewer/Originalanwendung - CR 58
+'*  Überarbeitung Ü006:	05.01.2012, Günther F. Schinko, SER, Viewer - Viewer/Originalanwendung - CR 58
+'*  Überarbeitung Ü007:	13.02.2012, Christian Aigner, SER, Behebung einer Fehlermeldung (s. OTRS-Ticket#1007944)
+'*  Überarbeitung Ü008:	05.04.2012, Christian Aigner, SER, Behebung einer Fehlermeldung (s. OTRS-Ticket#1008214)
+'*  Überarbeitung Ü009:	11.04.2012, Günther F. Schinko, SER, Behebung Mail-Drop nachträglich
+'*  Überarbeitung Ü010:	24.10.2012, Günther F. Schinko, SER, Ordnerauswahl Dialogbox
+'*  Überarbeitung Ü011:	15.05.2013, Günther F. Schinko, SER, Dateinamen bei exportversionshistorie w/Änderung Dateinamen im Titel durch GBA
+'*  Überarbeitung Ü012:	05.11.2014, Günther F. Schinko, SER, Fehler lt. OTRS-Ticket 1012442
+'*
+'************************************************************************
+
+Option Explicit
+
+Const DESC_RS_CONVERT_GUID = "8785928f-8be7-4f3d-b592-0398fe2447e1"
+Const CTRACELOG = "c:\temp\gsctrace"
+
+'Ü010
+Private stracefile As String
+'/Ü010
+
+Public g_ismartofficecnt As Integer
+
+'Ü010
+ Private Type BROWSEINFO
+          hWndOwner As Long
+          pidlRoot As Long
+          pszDisplayName As String
+          lpszTitle As String
+          ulFlags As Long
+          lpFn As Long
+          lParam As String
+         iImage As Long
+End Type
+Private Declare Function SHBrowseForFolder Lib "shell32.dll" _
+         Alias "SHBrowseForFolderA" (ByRef lpbi As BROWSEINFO) As Long
+Private Declare Function SHGetPathFromIDList Lib "shell32.dll" _
+         Alias "SHGetPathFromIDListA" (ByVal pidl As Long, _
+         ByVal pszPath As String) As Long
+Private Declare Sub CoTaskMemFree Lib "ole32.dll" (ByVal pv As Long)
+Private Declare Function SendMessage Lib "user32" Alias "SendMessageA" _
+         (ByVal hWnd As Long, ByVal wMsg As Long, ByVal wParam As Long, _
+         ByVal lParam As Long) As Long
+Private Declare Function lstrcat Lib "kernel32" _
+		Alias "lstrcatA" ( _
+			ByVal lpstring1 As String, ByVal lpstring2 As String) As String
+
+Private Const WM_USER As Long = &H400
+Private Const BIF_RETURNONLYFSDIRS As Long = 1
+Private Const BFFM_INITIALIZED As Long = 1
+Private Const BFFM_SETSELECTION As Long = (WM_USER + 102)
+Private Const MAX_PATH As Long = 260
+'/Ü010
+
+
+Private Sub Application_OnDebugResume()
+
+	Exit Sub
+	Dim fso As Object
+	Set fso = CreateObject("Scripting.FileSystemObject")
+
+	If fso.FileExists("c:\temp\gsc_filelist.txt") Then
+		fso.GetFile("c:\temp\gsc_filelist.txt").Delete
+	End If
+
+	Call SER_GetDirectoryList("C:\Temp","c:\temp\","gsc_filelist.txt")
+End Sub
+
+
+	'*	Lokale Objekte
+	'**	Business Logik
+
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+
+Public Function SER_FillStr(ByVal sStr As String, ByVal iLen As Integer,ByVal schar As String) As String
+
+'*	Lokale Objekte
+	Dim ii
+	'**	Business Logik
+'*	sstring mit Zeichen lt. schar in der Länge iLen auffüllen
+	For ii = 1 To iLen - Len(Trim(sStr))
+		SER_FillStr = SER_FillStr & schar
+	Next
+	SER_FillStr = SER_FillStr & Trim(sStr)
+End Function
+
+
+Public Sub SER_Export2CSV(ByVal pResultList As SWARESULLib.ResultListLanguageExtension, _
+				ByVal pResultWindow As winCube.ResultWindow)
+	'*	Lokale Objekte
+	Dim myColumn As String
+	Dim myDesc As SWAFRAMELib.Descriptor
+	Dim myOutput As String
+	Dim myidoc As SWAFRAMELib.IDocument
+	Dim myPath As String
+	Dim fn As Integer
+	Dim colCount
+	Dim i As Long
+	Dim ii As Long
+	Dim iii As Long
+	Dim myFileName As String
+
+
+	'**	Business Logik
+
+	On Error GoTo ErrHandler
+	myFileName = GetFilePath(pResultWindow.Caption & ".csv", "csv", Environ("userprofile") & "\Desktop", _
+	            "Export in CSV-Datei ...",3)
+
+	If myFileName = "" Then
+		Exit Sub
+	End If
+
+	myPath = Environ("userprofile") & "\Desktop"
+	colCount = -1
+	With pResultList
+		.LockControlUpdate
+			For i = 0 To .ColumnCount-1
+				Select Case .ColumnVisible(.ColumnName(i))
+					Case True
+						colCount = colCount + 1
+						If colCount = 0 Then
+							myOutput = .ColumnName(i)
+						Else
+							myOutput = myOutput & ";" & .ColumnName(i)
+						End If
+					Case Else
+				End Select
+			Next i
+			fn = FreeFile
+			Open myFileName For Output As #fn
+			Print #fn, myOutput
+			myOutput = ""
+			For i = 0 To .Resultset.AvailableCount-1
+				Set myidoc = .Document(i)
+				If .Selected(myidoc)=True Then
+			  		colCount = -1
+			  		myOutput = ""
+			  		For ii = 0 To .ColumnCount-1
+				     	Select Case .ColumnVisible(.ColumnName(ii))
+				        	Case True
+				           		colCount = colCount + 1
+				           		If colCount = 0 Then
+				              		myOutput = CStr(.CellValue(myidoc,.ColumnName(ii)))
+				           		Else
+				              		myOutput = myOutput & ";" & CStr(.CellValue(myidoc,.ColumnName(ii)))
+				           		End If
+				        	Case Else
+				     	End Select
+		  			Next ii
+					Print #fn, myOutput
+					Application.StatusBarInfoText = " Exportiere Trefferlisten - Zeile " & i
+				End If
+		Next i
+		.UnlockControlUpdate
+	End With
+	Close #fn
+	Application.StatusBarInfoText = ""
+	Exit Sub
+
+ErrHandler:
+   Application.ShowError "Fehler beim Trefferlistenexport", "Sub Export2CSV", 0, 0, Err.Description, 0
+End Sub
+'************************************************************************
+'*	GLOBALE BUSINESS LOGIK
+'************************************************************************
+
+'************************************************************************
+'*	MATRIX-FUNKTIONEN
+'************************************************************************
+
+
+'		Lädt eine globale Werteliste by-Name und Key und gibt das Ergebniss in ein Array zurück - je nachdem ob horizontal oder vertikal gesucht wird
+
+
+Public Function SER_getKeyValueFromStringMatrixByName(ByVal pinStringMatrix As String, _
+			ByVal pinKey As String,ByRef pinarray() As String, _
+			ByVal pvertical As Boolean)  As Boolean
+
+
+	'**	Business Logik
+
+'*		Checks
+		If pinKey = "" Then Exit Function
+		If pinStringMatrix = "" Then Exit Function
+
+'*		lokale Objekte
+		Dim myMatrix As StringMatrix
+		Dim xi As Integer
+		Dim xi1 As Integer
+
+'**		Business Logik
+		Set myMatrix = SER_getStringMatrixByName(pinStringMatrix)
+		If Not myMatrix Is Nothing Then
+			If pvertical = False Then
+				For xi = 0 To myMatrix.RowCount - 1
+					ReDim pinarray(myMatrix.ColumnCount-1)
+					For xi1=0 To myMatrix.ColumnCount -1
+						pinarray(xi1)=myMatrix.Value(xi, xi1)
+					Next
+					For xi1=0 To myMatrix.ColumnCount -1
+						If myMatrix.Value(xi, xi1) = pinKey Then
+						'If myMatrix.Value(xi, 0) = pinKey Then
+							'getKeyValueFromStringMatrixByName = myMatrix.Value(xi, 1)
+							SER_getKeyValueFromStringMatrixByName=True
+							Exit Function
+						End If
+					Next xi1
+				Next xi
+			Else				'Vertikal
+				For xi = 0 To myMatrix.ColumnCount - 1
+					ReDim pinarray(myMatrix.RowCount-1)
+					For xi1=0 To myMatrix.RowCount -1
+						pinarray(xi1)=myMatrix.Value(xi1, xi)
+					Next
+					For xi1=0 To myMatrix.RowCount -1
+						If myMatrix.Value(xi1, xi)=pinKey Then
+							SER_getKeyValueFromStringMatrixByName=True
+							Exit Function
+						End If
+					Next
+
+				Next xi
+			End If
+
+		End If
+
+End Function
+
+Public Function SER_getgloballist_all(ByVal listname As String,ByRef pinarray() As String)As Boolean
+	Dim i As Integer
+	Dim y As Integer
+
+	Dim myMatrix As SWAMDLib.StringMatrix
+	Set myMatrix = Application.MetaData.StringMatrices.ItemByName(listname)
+	If Not myMatrix Is Nothing Then
+		With myMatrix
+			'Erase g_listvalues
+			ReDim pinarray(.RowCount,.ColumnCount) '0 basierend
+			For i = 0 To .RowCount - 1
+				For y = 0 To .ColumnCount - 1
+					pinarray(i,y)=myMatrix.Value(i,y)
+				Next
+			Next
+		End With
+		SER_getgloballist_all=True
+	Else
+		SER_getgloballist_all=False
+	End If
+End Function
+
+
+
+
+
+'*		getStringMatrixByName()
+'		Lädt eine globale Werteliste by-Name
+
+Private Function SER_getStringMatrixByName(ByVal pinName As String) As StringMatrix
+
+'*		Checks
+		On Error GoTo err_handler
+
+'*		lokale Objekte
+		Dim xi As Integer
+
+		For xi = 0 To Application.MetaData.StringMatrices.Count - 1
+			If Application.MetaData.StringMatrices(xi).Name = pinName Then
+				Set SER_getStringMatrixByName = Application.MetaData.StringMatrices(xi)
+				Exit For
+			End If
+		Next xi
+
+	Exit Function
+
+	err_handler:
+		MsgBox "Es ist ein Fehler aufgetreten: " & Err.Description & " (" & Err.Number & ")", vbCritical, "Stop"
+
+End Function
+
+'************************************************************************
+'*	URLENCODE
+'************************************************************************
+
+
+
+' Umlaute und Sonderzeichen verschlüsseln
+'
+' pUsePlusRatherThanHexForSpace:
+'  False:  Leerzeichen als %32 verschlüsseln
+'  True :  Leerzeichen als + verschlüsseln
+Public Function SER_URLEncode(pStringToEncode As String, Optional _
+  		pUsePlusRatherThanHexForSpace As Boolean = False) As String
+	'*	Lokale Objekte
+  	Dim TempAns As String
+  	Dim CurChr As Integer
+
+
+	'**	Business Logik
+  	CurChr = 1
+  	Do Until CurChr - 1 = Len(pStringToEncode)
+    	Select Case Asc(Mid$(pStringToEncode, CurChr, 1))
+      		Case 48 To 57, 65 To 90, 97 To 122
+        		TempAns = TempAns & Mid$(pStringToEncode, CurChr, 1)
+      		Case 32
+        		If pUsePlusRatherThanHexForSpace = True Then
+          			TempAns = TempAns & "+"
+        		Else
+          			TempAns = TempAns & "%" & Hex(32)
+        	End If
+      		Case Else
+        		TempAns = TempAns & "%" & Hex(Asc(Mid$(pStringToEncode, _
+          			CurChr, 1)))
+    		End Select
+    		CurChr = CurChr + 1
+  	Loop
+  	SER_URLEncode = TempAns
+End Function
+
+
+'************************************************************************
+'*	PDF erzeugen
+'************************************************************************
+
+
+Public Function SER_get_default_printer As String
+
+
+	SER_get_default_printer = ""
+	Dim objWMIService As Object
+	Dim colInstalledPrinters As Object
+	Dim WshNetwork As Object
+	Dim objPrinter As Object
+	Dim strwmi As String
+
+	strwmi= "winmgmts:"
+	Set objWMIService = GetObject(strwmi)
+
+	Set colInstalledPrinters = objWMIService.ExecQuery ("SELECT * FROM Win32_Printer")
+
+	Set WshNetwork = CreateObject("WScript.Network")
+
+
+	For Each objPrinter In colInstalledPrinters
+
+		If (objPrinter.Attributes And 4) = 4 Then
+			SER_get_default_printer=objPrinter.Name
+			Exit Function
+		End If
+
+	Next
+End Function
+
+Public Function SER_change_default_printer(ByVal psprintserver As String) As Boolean
+
+	Dim objPrinter As Object
+	Dim strPrintServer As String
+
+	SER_change_default_printer=False
+	'strPrintServer ="eDocPrintPro"
+
+	On Error GoTo errorhandler
+
+	Set objPrinter = CreateObject("WScript.Network")
+
+	objPrinter.SetDefaultPrinter psprintserver
+	SER_change_default_printer=True
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Defaultprinter konnte nicht auf Printer " & psprintserver +  "geändert werden", Err.Source, 0, Err.Number, Err.Description, 0
+End Function
+
+
+'************************************************************************
+'*	Textdatei schreiben/erweitern
+'************************************************************************
+
+
+
+Public Function SER_file_write_append(ByVal objFSO As Object,ByVal pstrdirectory As String, _
+	ByVal pstrfile As String, ByVal pstrtext As String,ByVal pbappend As Boolean) As Boolean
+
+	Const FSOReading=1
+	Const FSOWriting=2
+
+	Const FSOAppending=8
+
+	Const FSODefault=-2
+	Const FSOUnicode=-1
+	Const FSOANSI=0
+
+	Const FSOappend=True
+	Const FSOnewfile=False
+
+	Const FSOUnicodemode=True
+	Const FSOnoUnicodemode=False
+
+
+	Dim objFolder As Object
+	Dim objShell As Object
+	Dim objTextFile As Object
+	Dim objFile As Object
+	Dim forwriting As Integer
+
+	On Error GoTo errorhandler
+
+	SER_file_write_append=False
+	' Create the File System Object
+	Set objFSO = CreateObject("Scripting.FileSystemObject")
+
+	' Check that the strDirectory folder exists
+	If objFSO.FolderExists(pstrdirectory) Then
+	   Set objFolder = objFSO.GetFolder(pstrdirectory)
+	   'WScript.Echo "Gefunden " & strdirectory
+	Else
+	   Set objFolder = objFSO.CreateFolder(pstrdirectory)
+	   'WScript.Echo "Just created " & strDirectory
+	End If
+
+	If objFSO.FileExists(pstrdirectory & pstrfile) Then
+	   Set objFolder = objFSO.GetFolder(pstrdirectory)
+	Else
+	   Set objFile = objFSO.CreateTextFile(pstrdirectory & pstrfile)
+	   'Wscript.Echo "Just created " & pstrDirectory & pstrFile
+	End If
+
+	Set objFile = Nothing
+	Set objFolder = Nothing
+	' OpenTextFile Method needs a Const value
+	' ForAppending = 8 ForReading = 1, ForWriting = 2
+
+	If pbappend = False Then
+		forwriting=FSOWriting
+	Else
+		forwriting=FSOAppending
+	End If
+	Set objTextFile = objFSO.OpenTextFile _
+	(pstrdirectory & pstrfile, forwriting, False)
+
+	' Writes strText every time you run this VBScript
+	objTextFile.WriteLine(pstrtext)
+	objTextFile.Close
+
+
+   	SER_file_write_append=True
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Schreiben der Datei '" & pstrdirectory & pstrfile &  "'", Err.Source, 0, Err.Number, Err.Description, 0
+End Function
+
+
+
+'************************************************************************
+'*	Verzeichnisliste schreiben
+'************************************************************************
+'---------------------------------------------------------------------
+'Ausgehend von p_rootpath, sämtliche Dateien und Ordner rekursiv in Datei einlesen
+'---------------------------------------------------------------------
+Public Sub SER_GetDirectoryList(ByVal p_rootpath As String,ByVal p_filepath As String, ByVal p_filename As String)
+
+    Dim objFolder As Object		' FolderObject (in SubFolders)
+    Dim objFile As Object	 	' FileObject (in Files)
+    Dim objfold	As Object
+
+    Dim fso As Object
+
+
+	Set fso = CreateObject("Scripting.FileSystemObject")
+
+
+    'Verweis auf übergeordneten Ordner holen
+    Set objfold = fso.GetFolder(p_rootpath)
+
+
+        'Für jede Datei in Files-Auflistung zum Ordner
+        For Each objFile In objfold.Files
+
+            If SER_file_write_append(fso,p_filepath & "\",p_filename,"F|" & objFile.Path,True)=False Then
+				Exit Sub
+			End If
+        Next
+
+        'und nun für alle SubFolders
+        For Each objFolder In objfold.SubFolders
+            'WriteInTextFile strLogFile, objFolder.Path
+            If SER_file_write_append(fso,p_filepath & "\",p_filename,"D|" & objFolder.Path,True)=False Then
+				Exit Sub
+			End If
+            SER_GetDirectoryList objFolder.Path,p_filepath,p_filename ' Rekursiv aufrufen
+        Next
+End Sub
+
+
+'************************************************************************
+'*	Audittrail
+'************************************************************************
+
+Public Function SER_write_audittrail(ByRef pdoc As ItaDocument) As Boolean
+
+	Dim arrmatrix() As String
+	SER_write_audittrail=False
+
+	On Error GoTo errorhandler
+
+	If SER_getKeyValueFromStringMatrixByName("ASF_Audittrail","Mailversand",arrmatrix,False ) = False Then
+		Application.ShowError("Werteliste 'ASF_Audittrail/Mailversand' nicht/falsch konfiguriert")
+		Exit Function
+	End If
+	SER_write_audittrail = SER_Audittrail(arrmatrix(1),arrmatrix(2),pdoc)
+	Exit Function
+
+ErrorHandler:
+	Application.ShowError "Fehler bei SER_write_audittrail", Err.Source, 0, Err.Number, Err.Description, 0
+End Function
+
+
+
+Public Function SER_Audittrail(ByVal p_audit As String, ByVal p_audittyp As String,ByRef p_itadoc As ItaDocument) As Boolean
+	'"00000014-0016-9000-0000-000000009000"		'p_audittyp
+	'"7b9676f4-57cd-4b2a-bd90-7a8ac55f20df"		'p_auditstring
+
+	Dim AuditOperationType As SWAFRAMELib.AuditTrailOperationType
+	Dim AuditCat As SWAFRAMELib.AuditTrailCategory
+	Dim AuditRecord As SWAFRAMELib.AuditTrailRecord
+
+
+
+	SER_Audittrail=False
+
+	On Error GoTo errorhandler
+
+	Set AuditCat = Application.System.AuditTrailCategories.ItemByGUID(p_audit) 'benutzerdefinierte Auditss
+	Set AuditOperationType = AuditCat.AuditTrailOperationTypes.ItemByGUID(p_audittyp) 'angelegter Typ
+	Set AuditRecord = AuditOperationType.PrepareAuditTrailRecord(p_itadoc, Nothing, Nothing)
+
+	If Len(AuditRecord.TargetReferenceId(rtTarget1)) = 0 Then 'check this, because PrepareAuditTrailRecord will fill the complete entry in future
+		AuditRecord.TargetReferenceId(rtTarget1) = p_itadoc.InternalDescriptors.ItemByGUID("VUUID").Value(0)
+		AuditRecord.TargetReferenceDatabaseGUID(rtTarget1) = p_itadoc.Database.GUID
+		AuditRecord.TargetReferenceDate(rtTarget1) = p_itadoc.DocumentDate
+		AuditRecord.TargetReferenceType(rtTarget1) = SWAFRAMELib.enumAuditTrailRecordTargetType.ttItaDocument
+	End If
+
+    AuditOperationType.SaveAuditTrailRecord(AuditRecord)
+	SER_Audittrail=True
+	Exit Function
+
+ErrorHandler:
+	Application.ShowError "Fehler beim Schreiben von Audittrail", Err.Source, 0, Err.Number, Err.Description, 0
+End Function
+
+Public Function SER_write_mail_audittrail2(ByRef pDocRefList As IwfDocRefList) As Boolean
+	Dim doc As ItaDocument
+	Dim i As Integer
+
+	For i = 0 To pDocRefList.SelectedCount  -1
+		Set doc = pDocRefList.SelectedDocumentReferences  (i).Document
+		If SER_write_audittrail(doc)=False Then
+			SER_write_mail_audittrail2=False
+			Exit Function
+		End If
+	Next
+	SER_write_mail_audittrail2=True
+End Function
+Public Function SER_write_mail_audittrail(ByRef presultlist As IResultList) As Boolean
+	Dim doc As ItaDocument
+	Dim i As Integer
+
+	For i = 0 To presultlist.SelectedCount -1
+		Set doc = presultlist.SelectedDocument(i)
+		If SER_write_audittrail(doc)=False Then
+			SER_write_mail_audittrail=False
+			Exit Function
+		End If
+	Next
+	SER_write_mail_audittrail=True
+End Function
+
+'************************************************************************
+'*	Rendition-Server
+'************************************************************************
+'wird nicht mehr verwendet
+Public Sub SER_RenditionServer (ByRef pbConvert As Boolean,ByRef pmyDoc As ItaDocument,ByRef pocontrol As Object)
+  On Error GoTo Errorhandler
+
+   'Fallunterscheidung für KeyChange ...
+   Select Case pocontrol.Data
+	   Case "CONVERT"
+
+	      Exit Sub 'wird noch bearbeitet, nur Geduld ...
+	   Case "CONVERTED"
+
+	      Exit Sub 'bereits bearbeitet
+	   Case "ERROR"
+	      Err.Number=0906			'Erzeuge Fehler
+	   Case Else
+		If pbConvert Then
+	        If jSER_setConvertDescriptor(pmyDoc,pocontrol) = True Then
+		    Else
+		    	pocontrol.Data = ""
+		    End If
+		End If
+
+
+    End Select
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler Renditionserver", Err.Source, 0, Err.Number, Err.Description, 0
+End Sub
+
+Public Function SER_setConvertDescriptor(ByRef pmyDoc As ItaDocument,Optional ByRef pocontrol As Object) As Boolean
+	Dim sOCRFormat As String
+	Dim valueForConvertDescriptor As String
+	On Error GoTo ErrHandler
+	SER_setConvertDescriptor=False
+	sOCRFormat = ".DOC .DOCX .HTM .HTML .MSG .PPS .PPT .PPTX .RTF .TXT .XLS .XLSM .XLSX .PDF "
+	If pmyDoc.Representations.Count > 0 Then
+		'Ü002
+		'If InStr(1, sOCRFormat, Right(UCase(pmyDoc.Representations(0).PartDocuments(0).DataObject.FileName),3)) Then
+		If InStr(1, sOCRFormat, Right(UCase(pmyDoc.Representations(0).PartDocuments(0).DataObject.fileName),4)) >= 1 Then
+		'
+			pmyDoc.Representations(0).Fulltext = True
+			valueForConvertDescriptor="CONV2PDFONLY"
+		Else
+			valueForConvertDescriptor="CONVERT"
+			pmyDoc.Representations(0).Fulltext=False
+		End If
+		If Not pocontrol Is Nothing Then
+			pocontrol.Data = valueForConvertDescriptor
+		Else
+			' Ü002
+			'pmyDoc.Descriptors.ItemByGUID(DESC_RS_CONVERT_GUID)
+			If Not pmyDoc.Descriptors.ItemByGUID(DESC_RS_CONVERT_GUID) Is Nothing Then
+				pmyDoc.Descriptors.ItemByGUID(DESC_RS_CONVERT_GUID).RemoveValues
+				pmyDoc.Descriptors.ItemByGUID(DESC_RS_CONVERT_GUID).AddValue valueForConvertDescriptor
+			Else
+				pmyDoc.Descriptors.AddNewByGUID(DESC_RS_CONVERT_GUID).AddValue valueForConvertDescriptor
+			End If
+
+			'
+		End If
+
+
+	End If
+	'pmyDoc.Commit
+	SER_setConvertDescriptor =True
+	Exit Function
+ErrHandler:
+	Application.ShowError("Beim Hinzufügen des Deskriptors '" +pocontrol.Name + "' ist ein Fehler aufgetreten: " ,Err.Source, 0, Err.Number, Err.Description, 0)
+End Function
+
+Public Function jSER_setConvertDescriptor(ByRef pmyDoc As ItaDocument,Optional ByRef pocontrol As Object) As Boolean
+	Dim sOCRFormat As String
+	Dim sOCROnlyFormat As String
+	Dim sNothingFormat As String
+	Dim sOCRPDFFormat As String
+	Dim i As Integer
+	Dim doFulltext As Boolean
+
+	Dim valueForConvertDescriptor As String
+
+	On Error GoTo ErrHandler
+
+	'Ü008: Wenn alle Teildokumente archiviert sind, wird keine Volltextindizierung durchgeführt
+	doFulltext = False
+	For i = 0 To pmyDoc.Representations(0).PartDocuments.Count - 1
+		If Not pmyDoc.Representations(0).PartDocuments(i).isArchived Then
+			doFulltext = True
+		End If
+	Next
+
+	If Not doFulltext Then
+		jSER_setConvertDescriptor =True
+		Exit Function
+	End If
+
+	For i = 0 To pmyDoc.Representations.Count - 1
+		If pmyDoc.Representations(i).Fulltext Then
+			pmyDoc.Representations(i).Fulltext = False
+		End If
+	Next
+'/Ü008
+
+	jSER_setConvertDescriptor=False
+	sOCRFormat = " .DOC .DOCX .HTM .HTML .MSG .PPS .PPT .PPTX .RTF .TXT .LOG .XLS .XLSM .XLSX .DOT .DOTM .DOCM .DOTX .PPSX .RTF .VSD .XLT .XLTX .XLTM .XML .XSL .CSV .POT .POTX .MDI " 	' JMB: für Fulltext von CSB und PDF von Rendition Server
+	sOCROnlyFormat = " .ADE .DTN " 															' JMB: für OCR von CSB und sonst nix !!
+	sOCRPDFFormat = " .TIF .TIFF .JPEG .JPG .BMP .GIF .PDF .PNG"								' JMB: für Bildformate wo OCR und PDF vom Rendition Server kommt (muss mit der ConvertConfig.xml am Rendition Server übereinstimmen)
+	sNothingFormat = " .TMP .RAR .EXE .ZIP .PLT .DWG .2010 .DB .MANIFEST .DLL .BAK"				' JMB: wo weder CSB Fulltext noch Rendition Server was tun soll
+
+	If pmyDoc.Representations.Count > 0 Then
+
+		'Ü002
+		'If InStr(1, sOCRFormat, Right(UCase(pmyDoc.Representations(0).PartDocuments(0).DataObject.FileName),3)) Then
+		If InStr(1, sOCRFormat, Right(UCase(pmyDoc.Representations(0).PartDocuments(0).DataObject.fileName),4)) >=1 Then
+			pmyDoc.Representations(0).Fulltext = True
+			valueForConvertDescriptor="CONV2PDFONLY"
+		ElseIf InStr(1, sOCROnlyFormat, Right(UCase(pmyDoc.Representations(0).PartDocuments(0).DataObject.fileName),4)) >=1 Then
+			pmyDoc.Representations(0).Fulltext = True
+			valueForConvertDescriptor="NOCONVERT"
+		ElseIf InStr(1, sOCRPDFFormat, Right(UCase(pmyDoc.Representations(0).PartDocuments(0).DataObject.fileName),4)) >=1 Then
+			valueForConvertDescriptor="CONVERT"
+			pmyDoc.Representations(0).Fulltext=False
+		ElseIf InStr(1, sNothingFormat, Right(UCase(pmyDoc.Representations(0).PartDocuments(0).DataObject.fileName),4)) >=1 Then
+			valueForConvertDescriptor="NOCONVERT"
+			pmyDoc.Representations(0).Fulltext = False
+		Else
+			valueForConvertDescriptor="NEWTYPE"
+			pmyDoc.Representations(0).Fulltext = False
+		End If
+		If Not pocontrol Is Nothing Then
+			pocontrol.Data = valueForConvertDescriptor
+		Else
+			' Ü002
+			'pmyDoc.Descriptors.ItemByGUID(DESC_RS_CONVERT_GUID)
+			If Not pmyDoc.Descriptors.ItemByGUID(DESC_RS_CONVERT_GUID) Is Nothing Then
+				pmyDoc.Descriptors.ItemByGUID(DESC_RS_CONVERT_GUID).RemoveValues
+				pmyDoc.Descriptors.ItemByGUID(DESC_RS_CONVERT_GUID).AddValue valueForConvertDescriptor
+			Else
+				pmyDoc.Descriptors.AddNewByGUID(DESC_RS_CONVERT_GUID).AddValue valueForConvertDescriptor
+			End If
+		End If
+
+
+	End If
+	'pmyDoc.Commit
+	jSER_setConvertDescriptor =True
+	Exit Function
+ErrHandler:
+	Application.ShowError("Beim Hinzufügen des Deskriptors '" +pocontrol.Name + "' ist ein Fehler aufgetreten: " ,Err.Source, 0, Err.Number, Err.Description, 0)
+End Function
+
+'Dokumentanzeige - nur Dokumente, keine Akten anzeigen
+
+Global Function SER_check_document_type(pDocument As IDocument) As Boolean
+
+	SER_check_document_type=False
+	If pDocument.Type=6 Then		'Akte
+		SER_check_document_type=False
+	Else
+		SER_check_document_type=True
+	End If
+
+End Function
+
+
+'************************************************************************
+'*	MAIL mit Drag & Drop in das Dokument holen
+'************************************************************************
+Public Sub SER_loadMailAndAttachmentsToDocument(ByRef pMail As SWATOOLSLib.MSGReader, ByRef pDocument As Object)
+
+'*	Checks
+	If pMail Is Nothing Then Exit Sub
+	If pDocument Is Nothing Then Exit Sub
+
+'*	Lokale Objekte/Variablen
+	Dim XDoc As SWAFRAMELib.ItaDocument
+	Dim XRep As SWAFRAMELib.Representation
+	Dim XPartDoc As SWAFRAMELib.PartDocument
+	Dim xl As Long
+
+'**	Business Logik
+'*	MSG laden
+	If pDocument.Representations.Count = 0 Then
+		Set XRep = pDocument.Representations.AddNew
+	Else
+		Set XRep = pDocument.Representations(0)
+	End If
+	Set XPartDoc = XRep.PartDocuments.AddNew
+	XPartDoc.DataObject = pMail.MSGFile
+'*	Attachments laden
+	For xl = 0 To pMail.AttachmentCount - 1
+		Set XPartDoc = XRep.PartDocuments.AddNew
+		XPartDoc.DataObject = pMail.Attachment(xl)
+	Next
+
+End Sub
+
+'************************************************************************
+'*	MAIL mit Drag & Drop in das Dokument holen
+'************************************************************************
+Public Sub SER_loadFileToDocument(ByRef pFile As SWADATALib.DocData, ByRef pDocument As Object)
+
+'*	Checks
+	If pFile Is Nothing Then Exit Sub
+	If pDocument Is Nothing Then Exit Sub
+
+'*	Lokale Objekte/Variablen
+	Dim XDoc As SWAFRAMELib.ItaDocument
+	Dim XRep As SWAFRAMELib.Representation
+	Dim XPartDoc As SWAFRAMELib.PartDocument
+	Dim xl As Long
+
+'**	Business Logik
+'*	File laden
+	If pDocument.Representations.Count = 0 Then
+		Set XRep = pDocument.Representations.AddNew
+	Else
+		Set XRep = pDocument.Representations(0)
+	End If
+	Set XPartDoc = XRep.PartDocuments.AddNew
+	XPartDoc.DataObject = pFile
+
+
+End Sub
+
+'************************************************************************
+'* Pflichtfelder prüfen
+'************************************************************************
+Public Function SER_Check_Mandatory(ByVal pdlg As Object) As Boolean
+
+	Dim MyInternal As SWACTRLSLib.IControlInternal
+	Dim i As Integer
+	SER_Check_Mandatory=False
+	Dim bmandatory As Boolean
+	bmandatory = True
+
+	For i = 0 To pdlg.ControlCount - 1
+		Set MyInternal = pdlg.Control(i)
+		If MyInternal.Name <> "TabEinordnung_ASFBezeichnung" And MyInternal.Name <> "TabBasisinfo_ASFBezeichnung" Then
+			If MyInternal.Required = True And MyInternal.DataCount=0 Then
+				bmandatory=False
+			End If
+		End If
+	Next
+	If bmandatory=False Then
+			Application.ShowError "Bitte befüllen Sie alle Pflichtfelder!","SER_Check_Mandatory"
+			Exit Function
+	Else
+		SER_Check_Mandatory=True
+	End If
+End Function
+
+'************************************************************************
+'* SMARTOFFICE abfangen
+'************************************************************************
+
+Public Function SER_Check_Smartoffice(ByVal pPara1 As Variant, ByVal pPara2 As Variant, _
+										ByVal pPara3 As Variant, _
+										ByRef pmymail As SWATOOLSLib.MSGReader, _
+										ByRef pmyfile As SWADATALib.DocData, _
+										ByRef psfilename As String) As Integer
+
+
+	Dim senv As String
+	Dim sid As String
+	Dim sfilename As String
+
+
+
+
+	SER_Check_Smartoffice=0
+	Select Case UCase(pPara1)
+		Case "SMARTOFFICE"				'* Button deaktivieren"
+			senv=Environ("TEMP")
+		   	'TabTest_btnMail.Enabled=False
+			Select Case UCase(pPara2)
+				Case "OUTLOOK"
+					If IsObject(pPara3) Then
+							If Not pPara3 Is Nothing Then
+								Set pmymail = New SWATOOLSLib.MSGReader
+								sid=pPara3.EntryID
+								sfilename=senv & "\" & sid & ".msg"
+								pPara3.SaveAs(sfilename,3)	'mail wird gespeichert 'olMSG=3
+								DoEvents
+								pmymail.MSGFileName = sfilename
+								SER_Check_Smartoffice=1
+								GoTo Ende
+							End If
+						End If
+
+				Case "WORD", "EXCEL", "POWERPOINT"
+
+					'/Ü012
+
+					If 	g_ismartofficecnt=3 Then
+						Set pmyfile = New SWADATALib.DocData
+						psfilename = pPara3.Name
+						pmyfile.SetFile(pPara3.FullName,False)
+
+
+						SER_Check_Smartoffice=2
+						g_ismartofficecnt=0
+
+
+					End If
+
+
+				Case "REPBUTTON"
+					g_ismartofficecnt=3
+
+
+			End Select
+
+	End Select
+	Ende:
+End Function
+
+'************************************************************************
+'* RIBBONS
+'************************************************************************
+
+'Ü001
+'Optionalen Parameter pRibbonElementSmallIndexImage hinzugefügt
+'/Ü001
+Public Sub SER_ADD_DELETE_RIBBON_ELEMENTS(ByRef pbadd As Boolean, ByRef pFEW  As FilingEnvironmentWindow,ByRef ppanelid As String, _
+					ByRef pbuttonid As String, Optional ByRef ptext As String, Optional ByRef pbuttontooltip As String, _
+					Optional pRibbonElementSmallIndexImage As Long = -1)
+
+	Dim XRbPnl As RibbonPanel
+	Dim XRbBtn As RibbonButton
+
+
+
+	'Ü009
+	If pFEW Is Nothing Then Exit Sub
+	'/Ü009
+	Set XRbPnl = pFEW.RibbonBar.Category(0).PanelByID(ppanelid)
+	Select Case pbadd
+		Case True		'Button dazu
+			If XRbPnl Is Nothing Then
+				'Set XRbPnl = pFEW.RibbonBar.Category(0).AddPanel(ppanelid,ptext)
+			Else
+				If XRbPnl.ElementByID(pbuttonid) Is Nothing Then
+					Set XRbBtn = XRbPnl.AddElement(rtButton, pbuttonid, ptext, pbuttontooltip,pRibbonElementSmallIndexImage,-1)
+				End If
+			End If
+		Case False		'Button löschen
+			If Not XRbPnl Is Nothing Then
+				If Not XRbPnl.ElementByID(pbuttonid) Is Nothing Then
+					XRbPnl.RemoveElement(pbuttonid)
+				End If
+			End If
+	End Select
+
+
+End Sub
+'Diese Funktion ermittelt, ob ein Benutzer, der in einer bestimmten Rolle und Einheit am System angemeldet ist,
+'Mitglied einer bestimmten Gruppe ist.
+'Param: pPerson: Name der Person
+'Param: pRole: Name der Rolle
+'Param: pUnit: Name der Einheit
+'param: pGroup: Name, der Gruppe, deren Mitgliedschaft geprüft werden soll
+'param: pErrMsg: Text im Fehlerfall
+'return: true: Benutzer ist Mitglied er Gruppe
+'return: false: Benutzer ist nicht Mitglied er Gruppe
+Public Function SER_PersonIsMemberOfGroup(pPerson As String, pRole As String, pUnit As String , pGroup As String, ByRef pErrMsg As String) As Boolean
+
+	Dim myGroupManager As SWAGMLib.GroupManager
+	Dim myOrgaObj As SwaOrgaCSBLib.Organisation
+	Dim i As Integer
+	Dim personGUID As String
+	Dim roleGUID As String
+	Dim unitGUID As String
+	Dim identifierGUID As String
+	Dim identifierName As String
+	Dim identifierType As String
+
+	On Error GoTo fError
+
+	pErrMsg = ""
+	SER_PersonIsMemberOfGroup = False
+
+	Set myGroupManager =Application.System.GroupManager
+	Set myOrgaObj = Application.System.Organisation
+
+	If Not myOrgaObj.Persons.ItemByName(pPerson)  Is Nothing Then
+		personGUID = myOrgaObj.Persons.ItemByName(pPerson).ID
+	Else
+		pErrMsg = "Die Person '" + pPerson + "' existiert nicht!"
+		GoTo finish
+	End If
+
+	If Not myOrgaObj.Roles.ItemByName(pRole)  Is Nothing Then
+		roleGUID = myOrgaObj.Roles.ItemByName(pRole).ID
+	Else
+		pErrMsg = "Die Rolle '" + pRole + "' existiert nicht!"
+		GoTo finish
+	End If
+
+	If pUnit <> "" Then
+		If Not myOrgaObj.Units.ItemByName(pUnit)  Is Nothing Then
+			unitGUID = myOrgaObj.Units.ItemByName(pUnit).ID
+		Else
+			pErrMsg = "Die Einheit '" + pUnit + "' existiert nicht!"
+			GoTo finish
+		End If
+	End If
+
+	myGroupManager.ClearIdentifiers
+	myGroupManager.AddIdentifier personGUID,"Person",pPerson
+	myGroupManager.AddIdentifier roleGUID ,"Role", pRole
+	If pUnit <> "" Then
+		myGroupManager.AddIdentifier unitGUID  ,"Group", pUnit
+	End If
+'Ü003
+'	myGroupManager.AddIdentifier ("00000004-0006-9000-000-000000000001", "Generic","everybody")
+	myGroupManager.AddIdentifier ("00000004-0006-9000-0000-000000000001", "Generic","everybody")
+'/Ü003
+	myGroupManager.ResolveIdentifiers
+	For i = 0 To myGroupManager.IdentifierCount - 1
+		myGroupManager.GetIdentifier (i,identifierGUID, identifierType, identifierName)
+		If UCase(identifierName) = UCase(pGroup) Then
+			SER_PersonIsMemberOfGroup = True
+			Exit For
+		End If
+	Next
+finish:
+	Set myGroupManager = Nothing
+	Set myOrgaObj  = Nothing
+	Exit Function
+fError:
+	SER_PersonIsMemberOfGroup = False
+	pErrMsg = Err.Description
+	GoTo finish
+End Function
+Rem See DialogFunc help topic for more information.
+Public Function SER_DialogFunc(DlgItem$, Action%, SuppValue%) As Boolean
+	Select Case Action%
+	Case 1 ' Dialog box initialization
+	Case 2 ' Value changing or button pressed
+		If DlgItem$="Abbrechen" Then
+			SER_DialogFunc = True	' TextBox or ComboBox text changed
+			DlgEnd 1000
+		End If
+		Rem DialogFunc = True ' Prevent button press from closing the dialog box
+	Case 3
+	Case 4 ' Focus changed
+	Case 5 ' Idle
+		Rem Wait .1 : DialogFunc = True ' Continue getting idle actions
+	Case 6 ' Function key
+	End Select
+End Function
+
+
+
+Public Sub SER_GSCtrace(LogLine As String)
+	Const loglevel As Integer = 0
+	On Error GoTo ErrHandling
+
+	If loglevel = 0 Then Exit Sub
+
+
+	Dim DateiName As String
+	Dim timeinfo As String
+
+
+	DateiName = CTRACELOG & "_" & Environ("COMPUTERNAME") & ".txt"
+
+	timeinfo = Date & " " & Time
+
+ 	Open DateiName For Append As #1
+
+			Print #1,timeinfo & Chr(9) & LogLine
+
+	Close #1
+
+	ErrHandling:
+
+	Resume Next
+
+End Sub
+'Ü004
+Public Function SER_LinkDocuments(pDoc1 As ItaDocument, pDoc2 As ItaDocument, ByRef errMsg As String)As Boolean
+
+	Dim XDL As SWAFRAMELib.DocumentLink
+
+	On Error GoTo fError
+
+	Set XDL = pDoc2.DocumentLinks.AddNew
+    XDL.DocumentID = pDoc1.DocumentID
+    pDoc2.Commit
+
+	SER_LinkDocuments = True
+finish:
+	Exit Function
+fError:
+	errMsg = "Beim Verknüpfen zweier Dokumente ist ein Fehler aufgetreten: " + Err.Description
+	SER_LinkDocuments = False
+	GoTo finish
+End Function
+'/Ü004
+
+
+'Ü005
+
+Public Function SER_get_compound_document(ByRef p_odoc As IDocument) As Boolean
+
+	Dim oitadocument As ItaDocument
+	Dim xl As Long
+	Dim xl1 As Long
+
+	SER_get_compound_document = False
+
+	On Error GoTo ferror
+
+	Set oitadocument = p_odoc
+	If oitadocument.Representations.Count<1 Then
+		Exit Function
+	End If
+
+	'For xl = 0 To oitadocument.Representations.Count - 1
+		If oitadocument.Representations.Item(0).MimeType = "multipart/mixed" Then
+			SER_get_compound_document = True
+			Exit Function
+		End If
+	'Next
+	finish:
+	Exit Function
+fError:
+	Application.ShowError ("Beim Überprüfen auf Compound-Dokumente ist ein Fehler aufgetreten: " &  Err.Description)
+	SER_get_compound_document = False
+	GoTo finish
+End Function
+
+
+
+Public Sub SER_set_viewer4document(ByRef p_odoc As IDocument)
+
+	Dim oitadocument As ItaDocument
+	Dim xl As Long
+	Dim xl1 As Long
+	Dim sswitch As String
+
+	On Error GoTo ferror
+
+	Set oitadocument = p_odoc
+
+	If SER_get_compound_document(p_odoc) = True Then Exit Sub
+
+	sswitch=GetSetting("SER",oitadocument.Representations.Item(0).MimeType,"VIEWER")
+
+	Select Case Trim(sswitch)
+		Case "0"
+			SaveSetting("SER",oitadocument.Representations.Item(0).MimeType,"VIEWER","1")
+		Case "1"
+			SaveSetting("SER",oitadocument.Representations.Item(0).MimeType,"VIEWER","0")
+		Case Else
+			SaveSetting("SER",oitadocument.Representations.Item(0).MimeType,"VIEWER","1")
+	End Select
+
+finish:
+	Exit Sub
+fError:
+	Application.ShowError("Beim Konfigurieren der Vieweranwendung ist ein Fehler aufgetreten: " & Err.Description)
+	GoTo finish
+
+End Sub
+
+Public Sub SER_start_viewer4document(ByRef p_odoc As IDocument, ByRef p_oviewer As ViewerWindow)
+
+	Dim oitadocument As ItaDocument
+	Dim sxviewer As String
+
+
+	On Error GoTo ferror
+
+	'Ü007
+	If p_odoc Is Nothing Then
+		Exit Sub
+	End If
+	'/Ü007
+
+	Set oitadocument = p_odoc
+
+	If SER_get_compound_document(p_odoc) = True Then Exit Sub
+	If oitadocument.Representations.Count=0 Then Exit Sub
+
+	sxviewer=GetSetting("SER",oitadocument.Representations.Item(0).MimeType,"VIEWER")
+	Application.StatusBarInfoText="docviewer= " & sxviewer
+	If sxviewer <> "1" Then Exit Sub
+
+	p_oviewer.DocViewer.ThumbnailPreview=False
+	'Ü006
+	If  oitadocument.CheckOutState=0 Then
+		If p_oviewer.IsDocumentWindow = True  Then
+			p_oviewer.DocViewer.StartExternalApplication
+			p_oviewer.Close
+		End If
+	End If
+	'/Ü006
+
+'Next
+finish:
+	Application.StatusBarInfoText=""
+	Exit Sub
+fError:
+	Application.ShowError("Beim Start der Vieweranwendung ist ein Fehler aufgetreten: " & Err.Description)
+	GoTo finish
+End Sub
+
+Public Sub SER_check4viewer(pResultWindow As ResultWindow)
+	On Error Resume Next
+	Dim XRC As RibbonCategory
+    Set XRC = pResultWindow.RibbonBar.CategoryByName("Ergebnisse")
+    If XRC Is Nothing Then
+    	Set XRC = pResultWindow.RibbonBar.CategoryByName("Results")
+    End If
+    Dim XRCCB As RibbonCheckBox
+
+	If XRC.PanelByID("VIEWER01") Is Nothing Then Exit Sub
+	Set XRCCB = 	XRC.PanelByID("VIEWER01").ElementByID("ID_ChangeViewer")
+
+
+	XRCCB.Checked=False
+	If pResultWindow.ResultList.DocumentCount = 0 Then
+		Exit Sub
+	End If
+	If pResultWindow.ResultList.SelectedCount <> 1 Then
+		Exit Sub
+	End If
+	If pResultWindow.ResultList.SelectedDocument(0).Type <> 0 Then
+		Exit Sub
+	End If
+
+	If SER_get_compound_document(pResultWindow.ResultList.SelectedDocument(0)) = True Then
+		Exit Sub
+	End If
+
+	If  SER_get_viewer4document(pResultWindow.ResultList.SelectedDocument(0)) = True Then
+		XRCCB.Checked=True
+		Exit Sub
+	End If
+
+End Sub
+
+
+Public Function SER_get_viewer4document(ByRef p_odoc As IDocument) As Boolean
+
+	Dim oitadocument As ItaDocument
+	Dim xl As Long
+	Dim xl1 As Long
+	Dim sswitch As String
+
+	SER_get_viewer4document=False
+
+	On Error GoTo ferror
+
+	Set oitadocument = p_odoc
+	If oitadocument.Representations.Count = 0 Then
+		SER_get_viewer4document=False
+		Exit Function
+	End If
+	sswitch=GetSetting("SER",oitadocument.Representations.Item(0).MimeType,"VIEWER")
+
+	Select Case Trim(sswitch)
+		Case "0"
+			SER_get_viewer4document=False
+		Case "1"
+			SER_get_viewer4document=True
+		Case Else
+			SER_get_viewer4document=False
+	End Select
+
+finish:
+	Exit Function
+fError:
+	Application.ShowError("Beim Lesen der Vieweranwendung ist ein Fehler aufgetreten: " & Err.Description)
+	GoTo finish
+
+End Function
+
+
+'/Ü005
+
+'Ü010
+
+
+
+Public Function GetFolderInternal(ByVal Caption As String, _
+         ByVal Default As String) As String
+	Dim bi As BROWSEINFO
+	Dim ListIdx As Long
+	Dim Path As String
+	With bi
+		'.lpszTitle = Caption
+		.ulFlags = BIF_RETURNONLYFSDIRS
+		'.lpFn = MakeFktnPtr(AddressOfBrowseCallbackProc)
+		.lParam = Caption
+		.lpszTitle = lstrcat(Caption,Default)
+		.pidlroot=0
+	End With
+	'Path = String(MAX_PATH + 1, vbNullChar)
+	Path = String(MAX_PATH , vbNullChar)
+	ListIdx = SHBrowseForFolder(bi)
+	If SHGetPathFromIDList(ListIdx, Path) Then
+		GetFolderInternal = Left(Path, InStr(Path, vbNullChar) - 1)
+	End If
+	CoTaskMemFree ListIdx
+End Function
+
+Private Function BrowseCallbackProc(ByVal hwnd As Long, _
+         ByVal Msg As Long, _
+         ByVal lParam As Long, _
+         ByVal lpData As Long) As Long
+	On Error Resume Next
+	If Msg = BFFM_INITIALIZED Then
+		SendMessage hwnd, BFFM_SETSELECTION, 1&, lpData
+	End If
+End Function
+
+'Public Sub Doc_exportRepresentations(ByRef pDoc As SWAFRAMELib.ItaDocument, ByVal pToDir As String,ByRef ptitle As String, ByRef pversion As Long)
+Public Sub Doc_exportRepresentations(ByRef pDoc As SWAFRAMELib.ItaDocument, ByVal pToDir As String,ByRef ptitle As String, ByRef pversion As String)
+	Dim repCounter As Integer
+	Dim pdCounter As Integer
+	Dim fileCounter As Integer
+
+	Dim fileNames() As String
+	Dim origNames() As String
+	Dim representationPath As String
+	Dim partDocName As String
+
+	On Error GoTo catch
+
+	stracefile = CTRACELOG & "\gsctrace.log"
+
+	Call g_trace(stracefile,"pToDir=" & pToDir,True)
+	'Ü011
+	ptitle=Left(ptitle,Len(ptitle)-(Len(IO_getSuffixOfFilename(ptitle))+1))
+	'/Ü011
+
+	If(pDoc.Representations.Count = 0) Then
+		Call g_trace(stracefile,"document has no representations",True)
+		GoTo Exit_
+	End If
+
+	If(Not IO_existsDirectory(pToDir)) Then
+		Call g_trace(stracefile,"directory '" & pToDir & "' could not be found",True)
+		Err.Raise(999, "Doc_exportRepresentations", "directory '" & pToDir & "' could not be found")
+	End If
+
+	'For repCounter = 0 To pDoc.Representations.Count -1
+	For repCounter = 0 To 0		'Nur Rep1 wird berücksichtigt
+		Call g_trace(stracefile,"exporting representation '" & CStr(repCounter) & "'",True)
+		'Application.ExportItaDocument(pDoc, fileNames, origNames, False, repCounter)
+		Application.ExportWithAnnotations(pDoc,fileNames,origNames,False,repCounter)
+		If(UBound(fileNames) <> pDoc.Representations.Item(repCounter).PartDocuments.Count - 1) Then
+			Call g_trace(stracefile,"Application.ExportItaDocument has not exported all part documents",True)
+			GoTo Exit_
+		End If
+
+		representationPath = pToDir & "\" & Format(CStr(repCounter), "0000")
+		representationPath = pToDir
+		If(Not IO_existsDirectory(representationPath)) Then
+			Call g_trace(stracefile,"creating directory '" & representationPath & "'",True)
+			MkDir(representationPath)
+		End If
+		For pdCounter = 0 To pDoc.Representations.Item(repCounter).PartDocuments.Count -1
+			Call g_trace(stracefile,"exporting partdocument '" & CStr(pdCounter) & "'",True)
+			'partDocName = representationPath & "\" &  Format(CStr(pdCounter), "0000") & "." & IO_getSuffixOfFilename(fileNames(pdCounter))
+			'partDocName = representationPath & "\" & ptitle & "_" & Format(CStr(pversion), "0000") & "_" & Format(CStr(pdCounter), "0000") & "." & IO_getSuffixOfFilename(fileNames(pdCounter))
+			partDocName = representationPath & "\" & ptitle & "_" & pversion & "_" & Format(CStr(pdCounter), "0000") & "." & IO_getSuffixOfFilename(fileNames(pdCounter))
+			Call g_trace(stracefile,"exporting partdocument to file '" & partDocName & "'",True)
+			FileCopy(fileNames(pdCounter), partDocName)
+		Next
+
+		For fileCounter = 0 To UBound(fileNames)
+			On Error Resume Next
+			If(IO_existsFile(fileNames(fileCounter))) Then
+				Call g_trace(stracefile,"deleting tmp file '" & fileNames(fileCounter) & "'",True)
+				Kill(fileNames(fileCounter))
+			End If
+			On Error GoTo catch
+		Next
+	Next
+
+Exit_:
+	Exit Sub
+catch:
+	Call g_trace(stracefile,Err.Number & " " &  Err.Description & " export representation failed",True)
+	Err.Raise(999, "Doc_exportRepresentations", "export representations failed")
+End Sub
+
+
+Public Function IO_existsDirectory(ByVal pDirName As String) As Boolean
+    On Error GoTo catch
+
+    IO_existsDirectory = GetAttr(pDirName) And vbDirectory
+
+Exit_:
+	On Error Resume Next
+
+    Exit Function
+
+catch:
+    IO_existsDirectory = False
+    GoTo Exit_
+End Function
+
+
+
+
+Public Function IO_existsFile(ByVal pfilename As String) As Boolean
+	Const NotFile = vbDirectory Or vbVolume
+    On Error GoTo catch
+	'Log_TraceEnter("file=" & pFilename)
+	IO_existsFile = (GetAttr(pfilename) And NotFile) = 0
+
+Exit_:
+	On Error Resume Next
+	'Log_TraceLeaving(CStr(IO_existsFile))
+	Exit Function
+
+catch:
+	IO_existsFile = False
+	GoTo Exit_
+End Function
+
+
+Public Function IO_getSuffixOfFilename(ByVal pfilename As String) As String
+	Dim lastDot As Long
+	Dim lastSlash As Long
+
+	lastDot = InStrRev(pfilename, ".")
+	If(lastDot <= 0) Then
+		IO_getSuffixOfFilename = ""
+	Else
+		lastSlash = InStrRev(pfilename, "\")
+
+		If(lastSlash > lastDot) Then ' no suffix available
+			IO_getSuffixOfFilename = ""
+		Else
+			IO_getSuffixOfFilename = Right(pfilename, Len(pfilename) - lastDot)
+		End If
+	End If
+End Function
+
+Private Sub g_trace(stracefile As String ,msgtext As String,btrace As Boolean)
+	On Error GoTo ErrHandling
+	Dim TimeInfo As String
+
+	If btrace = False Then Exit Sub
+	Dim i As Integer
+	Dim fmt_msgtext As String
+
+	For i = 1 To Len(msgtext)
+		If Mid(msgtext,i,1)=Chr(13) Then
+			fmt_msgtext=fmt_msgtext+Mid(msgtext,i,1) + Chr(10)
+		Else
+			fmt_msgtext=fmt_msgtext+Mid(msgtext,i,1)
+		End If
+	Next
+	'Application.ShowError(fmt_msgtext)
+	TimeInfo = Date & " " & Time
+ 	Open stracefile For Append As #1
+		Print #1,TimeInfo & Chr(9) & msgtext
+	Close #1
+
+	Exit Sub
+ErrHandling:
+	Resume Next
+End Sub
+
+
+
+'/Ü010
+
+
+
+
+

@@ -1,0 +1,178 @@
+Default
+'#Reference {B3FC9758-FFE6-4EE5-A95A-B4662532FF1C}#1.0#0#C:\PROGRA~2\SER\COMPON~1\Swa\WFWORK~2.DLL#wfWorkflowDialogs 1.0 Type Library#WFWFDLGSLib
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Query Dialog/ BAV Aufgabe
+'*	Autor	:	Christian Aigner, SER Solutions Österreich GmbH
+'*	Datum	:	4.4.2013
+'*
+'************************************************************************
+Option Explicit
+Public Const DESCID_FÄLLIGKEITSTERMIN As String ="e4c7856d-e2f0-4371-8c75-101a81f231b7"
+Public Const DESCID_ERINNERUNGSDATUM As String ="99e973d3-152e-4b04-9d06-7580dc64f1a5
+Private Sub cmdSelectVerantwortlicher_OnClicked()
+
+	Dim XWFReceivers As wfReceivers
+	Dim XWFReceiver As wfReceiver
+	Dim XwfPS As New WFWFDLGSLib.wfParticipantSelect
+	Dim XWFGroupWorkBaskets As wfReceivers
+
+	Set XWFGroupWorkBaskets = ASF_wf_getGroupWorkBasketsAsWfReceiver()
+
+'**	Business Logik
+'*	wählen
+	With XwfPS
+        .Caption = "Auswahl Umsetzungsverantwortlicher"
+        .InformationText = "Wählen Sie die den Umsetzungsverantwortlichen für die Aufgabe aus!"
+        .SelectMode = wfPS_SM_SingleSelect
+        .DisplayMode = wfPS_DM_Combined
+        Set .Receivers = XWFGroupWorkBaskets
+	    Set XWFReceivers = .Show(Application.wfSession)
+
+	    If Not XWFReceivers Is Nothing Then
+	    	If XWFReceivers.Count > 0 Then
+	    		ASFVerantwortlicher.Data = XWFReceivers.Item (0).Name
+	    	End If
+	    End If
+    End With
+
+    Set XWFReceivers = Nothing
+    Set XwfPS = Nothing
+End Sub
+
+Private Sub Dlg_OnExecute(ByRef Continue As Boolean)
+
+	If Not datFälligkeitsDatumVon.Empty  And Not datFälligkeitsDatumBis.Empty Then
+		If datFälligkeitsDatumVon.Data  > datFälligkeitsDatumBis.Data Then
+			Application.ShowMessage("Das Von-Datum muss kleiner als das Bis-Datum sein!")
+			Continue = False
+		End If
+	End If
+
+	If Not datFälligkeitsDatumVon.Empty  And datFälligkeitsDatumBis.Empty Then
+		If datFälligkeitsDatumVon.Data  > Now Then
+			Application.ShowMessage("Das Von-Datum muss kleiner als das aktuelle Tagesdatum sein!")
+			Continue = False
+		End If
+	End If
+End Sub
+
+Private Sub Dlg_OnExecuteSQL(ByRef pStatement As String)
+
+
+	If datFälligkeitsDatumVon.Empty  And datFälligkeitsDatumBis.Empty Then
+		Exit Sub
+	End If
+
+	Dim myDescDef1 As DescriptorDefinition
+	Dim myDescDef2 As DescriptorDefinition
+	Dim faelligkeitsdatum As Variant
+	Dim faelligkeitsdatumBis As Variant
+	Dim erinnerungsdatum As Variant
+	Dim erinnerungsdatumBis As Variant
+	Dim iIndex As Integer
+	Dim orderbyClause As String
+
+	If datFälligkeitsDatumVon.Empty And datFälligkeitsDatumBis.Empty Then
+		Exit Sub
+	End If
+
+	Set myDescDef1 = Application.System.DescriptorDefinitions.ItemByGUID (DESCID_FÄLLIGKEITSTERMIN)
+	If myDescDef1 Is Nothing Then
+		Application.ShowError("Der Deskriptor mit der ID " + DESCID_FÄLLIGKEITSTERMIN + " existiert nicht!", _
+							"Query Dialog/ BAV Aufgabe Dlg_OnExecuteSQL")
+		Exit Sub
+	End If
+
+	Set myDescDef2 = Application.System.DescriptorDefinitions.ItemByGUID (DESCID_ERINNERUNGSDATUM)
+	If myDescDef2 Is Nothing Then
+		Application.ShowError("Der Deskriptor mit der ID " + DESCID_ERINNERUNGSDATUM + " existiert nicht!", _
+							"Query Dialog/ BAV Aufgabe Dlg_OnExecuteSQL")
+		Exit Sub
+	End If
+
+	If pStatement = "" Then
+		pStatement = "select * where 0 = 0"
+	End If
+
+	iIndex = InStr(1, UCase(pStatement), "ORDER BY")
+	If iIndex > 0 Then
+		orderbyClause = Mid (pStatement, iIndex)
+		pStatement = Left (pStatement, iIndex -1)
+	End If
+'CAI 2013.06.26: Die folgenden Zeilen sind ein Workaround, weil der Server keine BETWEEN-Suche in Multivalue-Feldern zulässt.
+'Diesbezüglich gibt es den Feature-Request 37401 (Voraussichtlich für CSB 3.0)
+	If datFälligkeitsDatumVon.Empty Then
+		faelligkeitsdatum  = "2013.01.01"
+	Else
+		faelligkeitsdatum  = CDate(datFälligkeitsDatumVon.Data)
+	End If
+
+	If datFälligkeitsDatumBis.Empty Then
+		faelligkeitsdatumBis = Now
+	Else
+		faelligkeitsdatumBis = CDate(datFälligkeitsDatumBis.Data)
+	End If
+
+'Aufgaben nach Fälligkeitsdaten suchen
+	If DateDiff ("d", faelligkeitsdatum, faelligkeitsdatumBis) >= 0 Then
+		pStatement = pStatement + " and (" + myDescDef1.QueryLiteral + " in ('" + Format(faelligkeitsdatum, "yyyy.mm.dd") + "'"
+		faelligkeitsdatum = DateAdd("d", 1, faelligkeitsdatum)
+	End If
+	While DateDiff ("d", faelligkeitsdatum, faelligkeitsdatumBis) >= 0
+		pStatement = pStatement + ", "
+		pStatement = pStatement + "'" + Format(faelligkeitsdatum, "yyyy.mm.dd") + "'"
+		faelligkeitsdatum = DateAdd("d", 1, faelligkeitsdatum)
+	Wend
+	pStatement = pStatement + ")"
+
+'Aufgaben nach Erinnerungsdaten (Fälligkeitsdaten - Vorlauf) suchen
+	If datFälligkeitsDatumVon.Empty Then
+		faelligkeitsdatum  = "2013.01.01"
+	Else
+		faelligkeitsdatum  = CDate(datFälligkeitsDatumVon.Data)
+	End If
+	If DateDiff ("d", faelligkeitsdatum, faelligkeitsdatumBis) >= 0 Then
+		pStatement = pStatement + " or (" + myDescDef2.QueryLiteral + " like '" + Format(faelligkeitsdatum, "yyyy.mm.dd") + "*'"
+	End If
+	If DateDiff ("d", faelligkeitsdatum, faelligkeitsdatumBis) <> 0 Then
+		While DateDiff ("d", faelligkeitsdatum, faelligkeitsdatumBis) >= 0
+			pStatement = pStatement + " or " + myDescDef2.QueryLiteral + " like '" + Format(faelligkeitsdatum, "yyyy.mm.dd") + "*'"
+			faelligkeitsdatum = DateAdd("d", 1, faelligkeitsdatum)
+		Wend
+	End If
+	pStatement = pStatement + "))"
+	If orderbyClause <> "" Then
+		pStatement = pStatement + orderbyClause
+	End If
+End Sub
+
+Private Sub btnAbleger_OnClicked()
+	ASF_AblegerOpenDlg(dbrsAbleger, Ableger)
+End Sub
+
+Private Sub dbrsAbleger_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsAbleger.DataCount > 0 Then
+			Ableger.Data= dbrsAbleger.Data(0)
+		End If
+	End If
+End Sub
+
+Private Sub btnASFErsteller_OnClicked()
+	ASF_ErstellerOpenDlg(dbrsASFErsteller, ASFErsteller)
+End Sub
+
+Private Sub dbrsASFErsteller_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsASFErsteller.DataCount > 0 Then
+			ASFErsteller.Data= dbrsASFErsteller.Data(0)
+		End If
+	End If
+End Sub
+
+Private Sub Dlg_OnInit()
+ASF_InitErsteller(dbrsASFErsteller,dbrsAbleger)
+End Sub
+

@@ -1,0 +1,3546 @@
+'#Reference {00020905-0000-0000-C000-000000000046}#8.6#0#C:\Program Files (x86)\Microsoft Office\Office15\MSWORD.OLB#Microsoft Word 15.0 Object Library#Word
+'#Reference {2A75196C-D9EB-4129-B803-931327F72D5C}#2.8#0#C:\Program Files (x86)\Common Files\System\ado\msado28.tlb#Microsoft ActiveX Data Objects 2.8 Library#ADODB
+'#Reference {420B2830-E718-11CF-893D-00A0C9054228}#1.0#0#C:\Windows\SysWOW64\scrrun.dll#Microsoft Scripting Runtime#Scripting
+Option Explicit
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	Global Script/ ASF CAI Globale Funktionen
+'*	erstellt am / von	:	30.08.2010/ Christian Aigner, SER
+'*	Überarbeitung Ü001	:	27.10.2010/ Markus D. Hartbauer, SER
+'*	Überarbeitung Ü002	:	20.12.2010/ Markus D. Hartbauer, SER: ASF_security_checkPoststueckRechte()
+'*	Überarbeitung Ü003	:	29.01.2011/ Markus D. Hartbauer, SER: ASF_CheckDocumentRights() und ASF_CheckDocumentRights2(): Zugriff jedenfalls, wenn 'admins' oder 'Gesamtzugriff ausgen. Personal'
+'*	Überarbeitung Ü004	:	31.01.2011/ Günther F. Schinko, SER: ASF_CreatePoststück(pDoc As ItaDocument()
+'*	Überarbeitung Ü005	:	24.02.2011/ Günther F. Schinko, SER: Rendition bei Einchecken
+'*	Überarbeitung Ü006	:	03.03.2011/ Günther F. Schinko, SER: Rendition beim Speichern
+'*	Überarbeitung Ü007	:	28.03.2011/ Christian Ainer, SER: Fkt. ASF_wf_ChangeSkippingAllowed hinzugefügt
+'*	Überarbeitung Ü008	:	28.03.2011/ Christian Ainer, SER: Beim initialisieren der Anwendung (Application_OnInitAufruf der Fkt. ASF_wf_ChangeSkippingAllowed
+'*	Überarbeitung Ü009	:	06.04.2011/ Christian Ainer, SER: ASF_wf_checkDocumentInWorkItem
+'*	Überarbeitung Ü010	:	12.04.2011/ Guido Bachmayr, SER: ASF_StartVorgangDokumentlebenszyklus: PI-Name aus Dokument übernehmen anstatt generieren
+'*	Überarbeitung Ü011	:	27.04.2011/ Christian Aigner, SER: neue Funktion ASF_DokumentArtIstGeschützt
+'*	Überarbeitung Ü012	:	04.08.2011/ Christian Aigner, SER: CR 29 (Verknüpfung zwischen Poststück und Dokument)
+'*	Überarbeitung Ü013	:	19.10.2011/ Christian Aigner, SER: CR 27(Textänderung bei Erstellung Ausgangspoststück)
+'*	Überarbeitung Ü014	:	25.10.2011/ Christian Aigner, SER: CR 44: Fkt. ASF_SetDocState4DocVersions hinzugefügt und Aufruf in ASF_SetDocInValid
+'*	Überarbeitung Ü015  :	10.10.2012/ Christian Aigner, SER: CR 7 Tranche 4 (aktuelle Version auf Entwurf bei ungültig aufheben)
+'*	Überarbeitung Ü016	:	19.11.2012  Christian Aigner, SER: Fkt. ASF_CheckDocument4Edit hinzugefügt
+'*	Überarbeitung Ü017	:	28.05.2013  Christian Aigner, SER: Fkt. ASF_MassKeyChange, ASF_MassKeyChangeCheckDocTypes, ASF_MultiDocumentDescriptorModification hinzugefügt
+'*	Überarbeitung Ü018	:	11.06.2013  Christian Aigner, SER: Fkt. ASF_MassKeyChange_onExecute hinzugefügt
+'*	Überarbeitung Ü019	:	10.07.2013  Guido Bachmayr, SER: Fkt. mySystem_OnDocCreateNewVersion hinzugefügt
+'*	Überarbeitung Ü020	:	22.07.2013  Christian Aigner, SER: Fkt. ASF_BAV_addDoc2BAVFolder hinzugefügt
+'*	Überarbeitung Ü021	:	12.08.2013  Christian Aigner, SER: Funktionen ASF_FolderAddDoc2ReferencingNodes hinzugefügt
+'*	Überarbeitung Ü022	:	21.08.2013  Christian Aigner, SER: Erweiterungen an der Fkt. ASF_SingleDocumentDescriptorModification eingebaut															Fkt. ASF_MassKeyChange_copyOrtsbezuege hinzugefügt
+'*	Überarbeitung Ü023	:	30.08.2013  Christian Aigner, SER: Fkt. ASF_BAV_AufgabeExists hinzugefügt
+'*	Überarbeitung Ü024	:	13.11.2013  Christian Aigner, SER: Fkt. ASF_wf_getReferencingWorkItemsOfDoucment hinzugefügt
+'*	Überarbeitung Ü025	:	17.12.2013  Christian Aigner, SER: Fkt. ASF_wf_getGroupWorkBasketsAsWfReceiver hinzugefügt
+'*	Überarbeitung Ü026	:	31.03.2014  Christian Aigner, SER: OTRS-Ticket 1011437: Erstellen eines PDF's (PDF-Producer) beim Einchecken
+'*	Überarbeitung Ü027	:	07.05.2014  Christian Aigner, SER: OTRS-Ticket 1011232: Dokument mit Status 'in Prüfung' darf nicht ungültig gesetzt werden
+'*	Überarbeitung Ü028	:	28.05.2014  Christian Aigner, SER: CR 2 Tranche 6: Fkt. ASF_GetWebLink: Der WebLink muss als zusätzlichen Parameter die verhashte DokId beinhalten. Es muss dafür der Doxis4HashConnector installiert werden
+'*	Überarbeitung Ü029	:	26.03.2015  Christian Aigner, SER: CR 11 Tranche 8: Funktionen addS05Neu2Documents, calcKMS05Neu, updateS05 hinzugefügt
+'*	Überarbeitung Ü030	: 	11.06.2015	Christian Aigner, SER:CR10 Tranche 7: BAV-Akte wird mit dem BAV-Annahme-WF versendent
+'*	Überarbeitung Ü031	:	23.10.2015,	Christian Aigner, SER: CR 21/Tranche 9 Scan2DMS Dokumentname nicht übernehmen
+'*	Überarbeitung Ü032	:	20.11.2015,	Christian Aigner, SER: CR 20/Tranche 9 Nachindizierung Rechtsmaterie
+'*	Überarbeitung Ü033	:	04.02.2016,	Christian Aigner, SER: CR 27/Tranche 10 Anpassung Übernahme Poststück
+'*	Überarbeitung Ü034	:	15.03.2016,	Christian Aigner, SER: CR 25/Tranche 10 Drucken BAV-Arbeitsaufträge und BAV-Aufgaben
+'*  Überarbeitung Ü036	:	29.09.2016, Christian Aigner, SER: Umkilometrieung A221: Neue Fkt. calcKMA221Neu, updateA221, addA221Neu2Documents
+'************************************************************************
+
+Private WithEvents mySystem As SWAFRAMELib.System
+Private WithEvents myDocToCheckIn As SWAFRAMELib.ItaDocument
+Private Const PD_GUID_FREIGABE_SERIELL As String = "8" 'GUID zur Prozessdefinition 'ASF zur Freigabe Seriell'
+Private Const PD_GUID_REVISION As String = "xxxxx" 'GUID zur Prozessdefinition 'ASF Revision'
+Private Const PS_PRÜFEN As String = "prüfen"
+Private Const PS_GENEHMIGEN As String = "genehmigen"
+Dim WithEvents oTimer As SwaTimer
+Dim SetRetentionBaseDateInNewVersion As Boolean
+'Ü017
+Private Const DESC_ID_DOKUMENTART As String = "35e25364-1574-4fa1-9af1-118bc28394c5"
+Private Const DESC_ID_DOKUMENT_ID As String = "56dd9d18-fa70-4ee0-9629-7fdc7f5ac637"
+Private Const DESC_ID_ASF_ZUGRIFF As String = "adbe1d35-987a-4062-819f-ff35d3695e65"
+
+'Ü033
+Public Const DESC_ASF_DOK_NUMMER As String = "ASF_Dok_Nummer"
+'/Ü033
+'Ü018
+Private Const DESC_ID_ASF_ORTSBEZUG_DOKID As String = "8a721942-3dfa-44eb-af7f-adb57b4c5be2"
+'Ü031
+Public Const DESC_ID_ASF_BEZEICHNUNG As String = "6f31de4d-0d91-49a8-9859-3f09b32ac86b"
+'/Ü031
+Dim gSelectedRowsCount As Long
+'Ü030
+Public Function ASF_BAV_AufgabeExists(pGeschäftsfallIDDesc As String, pGeschäftsfallIDValue As String, pRangeStartDate As String, pQueryDatabaseName As String) As Boolean
+
+	Dim XQuery As  Query
+	Dim XresultSet As SWAFRAMELib.IResultset
+
+	ASF_BAV_AufgabeExists = False
+
+	On Error GoTo fError
+	Set XQuery = Application.System.CreateQuery()
+	With XQuery
+		.Databases.Add Application.System.QueryDatabases.ItemByName(pQueryDatabaseName)
+		.RangeStart = pRangeStartDate
+		.RangeEnd = Format(Now, "YYYYMMDD")
+		.HitLimit = 100
+		If pGeschäftsfallIDValue <> "" Then
+			.SQLStatement = "SELECT * WHERE " & Application.System.DescriptorDefinitions.ItemByName(pGeschäftsfallIDDesc).QueryLiteral & " = '" & pGeschäftsfallIDValue & "'"
+		Else
+			.SQLStatement = "SELECT * WHERE 1=0"
+		End If
+		Set XresultSet = .Execute
+		If Not XresultSet Is Nothing Then
+			If XresultSet.TotalCount > 0 Then
+				ASF_BAV_AufgabeExists = True
+			Else
+				ASF_BAV_AufgabeExists = False
+			End If
+		End If
+	End With
+finish:
+	Set XresultSet = Nothing
+	Set XQuery = Nothing
+	Exit Function
+fError:
+Application.ShowError  "Bei der Prüfung, ob die Aufabe mit Geschäftsfall-ID " + pGeschäftsfallIDValue + " bereits existiert, ist ein Fehler aufgetreten!" + Trim(Str(Err.Number)),"Global Script/ ASF CAI Globale Funktionen ASF_BAV_AufgabeExists",,Err.Description
+GoTo finish
+End Function
+'/Ü030
+Public Function ASF_MassKeyChange_onExecute(pArchiveDlg As ArchiveDlg, _
+										pArchiveViewWindow As ArchiveViewWindow, ctcASFKategorie As CategoryTreeControl, _
+										sbASFDokart As SelectionBox, pindexOfNextDocument2Process As Integer, _
+										cbKeepValues As CheckBox, chkDeleteOriginalDocument As CheckBox, _
+										chkKeyChange As CheckBox, Optional sbStartCategory As SelectionBox) As Boolean
+
+	Dim i As Integer
+	Dim myDoc As ItaDocument
+	Dim errMsg As String
+	Dim iDocCount As Integer
+	Dim logfileHandle As Long
+	Dim userPath As String
+	Dim logFile As String
+	Dim keyChange As Boolean
+	Dim deleteOriginalDocument As Boolean
+	Dim keepValues As Boolean
+	Dim rlOrtsbezug 		As SWARESULLib.ResultList
+	Dim rlOrtsbezugLE 	As SWARESULLib.ResultListLanguageExtension
+	Dim selectedDocuments() As Object
+
+	userPath = Environ("USERNAME")
+	logFile = "C:\Users\" + userPath + "\Documents\winCubeMassenSchlüsseländerung.log"
+
+	logfileHandle = FreeFile
+	Open logFile For Append As #logfileHandle
+
+	deleteOriginalDocument = chkDeleteOriginalDocument.Checked
+	keepValues = cbKeepValues.Checked
+	keyChange = chkKeyChange.Checked
+	If Not pArchiveViewWindow Is Nothing Then
+		If IsArray(selectedDocuments) Then
+			selectedDocuments = pArchiveViewWindow.Tag
+			If Not cbKeepValues.Checked Then
+				If gSelectedRowsCount = 0 Then
+					gSelectedRowsCount = UBound(selectedDocuments) + 1
+				End If
+				Print #logfileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + " : Bearbeite Dokument " & Format(pindexOfNextDocument2Process+1, "0") & " von " & CStr(gSelectedRowsCount)
+				Set myDoc = selectedDocuments(pindexOfNextDocument2Process)
+				If ASF_SingleDocumentDescriptorModification(myDoc,pArchiveDlg,ctcASFKategorie, _
+										sbASFDokart, errMsg, Not keyChange, _
+										deleteOriginalDocument, logfileHandle, sbStartCategory) Then
+
+					Application.ShowMessage "Das Dokument wurde erfolgreich verarbeitet!"
+					Print #logfileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Dokument erfolgreich geändert!"
+					SER_ClearAllControls(pArchiveDlg)
+					ASF_Ortsbezug_initDialogAndObjectsNew(rlOrtsbezug, _
+									rlOrtsbezugLE, _
+									pArchiveDlg.ControlByName("TabOrtsbezug_CCResultList"), _
+									"Ortsbezug", "IndexOnly", "20100101", "")
+					chkKeyChange.Checked = keyChange
+					cbKeepValues.Checked = keepValues
+					chkDeleteOriginalDocument.Checked = deleteOriginalDocument
+					If pindexOfNextDocument2Process < gSelectedRowsCount - 1 Then
+						pindexOfNextDocument2Process = pindexOfNextDocument2Process + 1
+						Application.StatusBarInfoText  = "Bearbeite Dokument " & Format(pindexOfNextDocument2Process + 1, "0") & " von " & CStr(gSelectedRowsCount) & "..."
+					Else
+						Application.ShowMessage "Es wurden alle Dokumente verarbeitet!"
+						GoTo closeArchiveDlg
+					End If
+				Else
+					Application.ShowError  "Bei der Verarbeitung des Dokuments ist ein Fehler aufgetreten: " + errMsg
+					Print #logfileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Bei der Verarbeitung des Dokuments ist ein Fehler aufgetreten: " + errMsg
+				End If
+			Else
+				Call ASF_MultiDocumentDescriptorModification(selectedDocuments, _
+						pArchiveDlg,ctcASFKategorie,sbASFDokart,cbKeepValues.Checked, _
+						deleteOriginalDocument, Not keyChange, logfileHandle, sbStartCategory)
+				GoTo closeArchiveDlg
+			End If
+		End If
+	End If
+finish:
+	Set myDoc = Nothing
+	Set rlOrtsbezug = Nothing
+	Set rlOrtsbezugLE = Nothing
+	Exit Function
+closeArchiveDlg:
+	'Archivdialog schließen. Kann entweder als eignes Fenster oder als Register geöffnet sein.
+	For i = 0 To Application.Windows.Count - 1
+		If Application.Windows.Item(i).Type = "ArchiveViewWindow" Then
+			If Application.Windows.Item(i).ArchiveDlg.DialogDefinition.GUID  = pArchiveDlg.DialogDefinition.GUID  Then
+				Set pArchiveDlg.Document = Application.System.CreateDocument(TDocumentType.ItaDocument)
+				Application.Windows.Item(i).Close
+			End If
+		End If
+	Next
+	For i = 0 To Application.Tabs.TabCount - 1
+		If Application.Tabs.TabWindow(i).Type = "ArchiveViewWindow" Then
+			If Application.Tabs.TabWindow(i).ArchiveDlg.DialogDefinition.GUID  = pArchiveDlg.DialogDefinition.GUID  Then
+				Set pArchiveDlg.Document = Application.System.CreateDocument(TDocumentType.ItaDocument)
+				Application.Tabs.TabWindow (i).Close
+			End If
+		End If
+	Next i
+	Application.StatusBarInfoText = ""
+	GoTo finish
+Fehlerbehandlung:
+	Print #logfileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Bei der Bearbeitung ist ein Fehler aufgetreten!" + Trim(Str(Err.Number)) + " " + Err.Description
+	Application.ShowError  "Bei der Massenänderung Beschlagwortung ist ein Fehler aufgetreten!" + Trim(Str(Err.Number)),"Global Script/ ASF CAI Globale Funktionen ASF_MassKeyChange_onExecute",,Err.Description
+	GoTo finish
+End Function
+'/Ü018
+
+'*Diese Funktion prüft, ob alle selektierten Dokumente einer Trefferliste die gleiche Dokumentenklasse haben.
+'* @param: pTargetDocType: Dokumentenklasse, die alle selektierten Dokumente der Trefferliste haben sollen.
+'* @param: pResultlist: Trefferliste
+'* @ return: true: Alle selektierten Dokumente haben die gleiche Dokumentenklasse
+'* @ return: false: Die selektierten Dokumente haben nicht die gleiche Dokumentenklasse
+Public Function ASF_MassKeyChangeCheckDocTypes(pResultlist As IResultList) As Boolean
+
+	Dim xl As Long
+	Dim myDoc As ItaDocument
+	Dim documentTypeGUID As String
+
+	On Error GoTo fError
+	ASF_MassKeyChangeCheckDocTypes = True
+
+	documentTypeGUID = ""
+	For xl = 0 To pResultlist.SelectedCount - 1
+		Set myDoc = pResultlist.SelectedDocument(xl)
+		If documentTypeGUID = "" Then
+			documentTypeGUID = myDoc.DocumentTypeGUID
+		End If
+		If myDoc.DocumentTypeGUID <> documentTypeGUID Then
+			ASF_MassKeyChangeCheckDocTypes = False
+			Exit Function
+		End If
+	Next
+finish:
+	Set myDoc = Nothing
+	Exit Function
+fError:
+	Application.ShowError ("Beim Prüfen der Dokumentenklasse ist ein Fehler aufgetreten!", "Global Script/ ASF CAI Globale Funktionen ASF_MassKeyChangeCheckDocTypes",,,Err.Description)
+	ASF_MassKeyChangeCheckDocTypes = False
+	GoTo finish
+End Function
+Public Function ASF_MultiDocumentDescriptorModification(pSelectedDocuments() As Object, p_o_Dlg As ArchiveDlg, _
+											pctrlKategorieID As CategoryTreeControl, pctrlDokumentart As SelectionBox, _
+											pBeschlagwortungBeibehalten As Boolean, _
+											bDeleteOriginalDocument As Boolean, pChangeDocClass As Boolean, _
+											pLogFileHandle As Long, _
+											Optional pctrlStartKategorie As SelectionBox) As Boolean
+	On Error GoTo Fehlerbehandlung
+
+	Dim iDocCount As Long
+	Dim iDocCountProcessed As Long
+	Dim iDocCountError As Long
+	Dim oDoc As ItaDocument
+	Dim errMsg As String
+	Dim myDescDef As DescriptorDefinition
+	Dim myDesc As Descriptor
+	Dim dokumentart As String
+	Dim dokumentID As String
+	Dim wrongDokumentart As Boolean
+	Dim dokumentartID As String
+	Dim asfZugriff As String
+	Dim lSelectedRowsCount As Long
+
+	ASF_MultiDocumentDescriptorModification = False
+
+	iDocCountProcessed = 0
+	iDocCountError = 0
+
+	If MsgBox("Die Beschlagwortung ALLER ausgewählter Dokumente" & vbCr & "wird auf die NEUE Beschlagwortung geändert!" & vbCr & vbCr & "Fortfahren?", vbQuestion + vbYesNo + vbDefaultButton2, "Warnung / Frage") <> vbYes Then
+		Print #pLogFileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Der Vorgang wurde durch den Anwender abgebrochen."
+		Exit Function
+	End If
+
+	lSelectedRowsCount = UBound(pSelectedDocuments) + 1
+	For iDocCount = 0 To lSelectedRowsCount - 1
+		Print #pLogFileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + " : Bearbeite Dokument " & Format(iDocCount+1, "0") & " von " & lSelectedRowsCount
+		Application.StatusBarInfoText  = "Bearbeite Dokument " & Format(iDocCount+1, "0") & " von " & lSelectedRowsCount & "..."
+
+		Set oDoc = pSelectedDocuments(iDocCount)
+		If ASF_SingleDocumentDescriptorModification(oDoc,p_o_Dlg,pctrlKategorieID,pctrlDokumentart, _
+															errMsg, pChangeDocClass, _
+															bDeleteOriginalDocument, pLogFileHandle, _
+															pctrlStartKategorie) Then
+			Print #pLogFileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Dokument erfolgreich geändert!"
+			iDocCountProcessed = iDocCountProcessed + 1
+		Else
+			Print #pLogFileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Bei der Verarbeitung des Dokuments ist ein Fehler aufgetreten: " + errMsg
+			iDocCountError = iDocCountError + 1
+		End If
+	Next
+	Print #pLogFileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Massenänderung der Beschlagwortung ist beendet: Erfolgreiche Dokumente: " + Trim(Str(iDocCountProcessed)) + ", fehlerhafte Dokumente: " + Trim(Str(iDocCountError))
+	Application.ShowMessage "Massenänderung der Beschlagwortung ist beendet: Erfolgreiche Dokumente: " + Trim(Str(iDocCountProcessed)) + ", fehlerhafte Dokumente: " + Trim(Str(iDocCountError))
+	Application.StatusBarInfoText = "Massenänderung der Beschlagwortung ist beendet: Erfolgreiche Dokumente: " + Trim(Str(iDocCountProcessed)) + ", fehlerhafte Dokumente: " + Trim(Str(iDocCountError))
+	ASF_MultiDocumentDescriptorModification = True
+
+finish:
+	Set oDoc = Nothing
+	Set myDescDef = Nothing
+	Set myDesc = Nothing
+	Exit Function
+Fehlerbehandlung:
+	Print #pLogFileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Bei der Bearbeitung ist ein Fehler aufgetreten!" + Trim(Str(Err.Number)) + " " + Err.Description
+	Application.ShowError  "Bei der Massenänderung Beschlagwortung ist ein Fehler aufgetreten!" + Trim(Str(Err.Number)),"Global Script/ ASF CAI Globale Funktionen ASF_MultiDocumentDescriptorModification",,,Err.Description
+	GoTo finish
+End Function
+Public Function ASF_SingleDocumentVersionDescriptorModification(ByRef pDoc2Change As ItaDocument, p_o_Dlg As ArchiveDlg, _
+											pctrlKategorieID As CategoryTreeControl, pctrlDokumentart As SelectionBox, _
+											ByRef pErrMsg As String, pChangeDocClass As Boolean, _
+											bDeleteOriginalDocument As Boolean, _
+											pLogFileHandle As Long, _
+											Optional pctrlStartKategorie As SelectionBox) As Boolean
+	On Error GoTo Fehlerbehandlung
+
+	Dim myDescDef As DescriptorDefinition
+	Dim myDesc As Descriptor
+	Dim myDokIdDesc As Descriptor
+	Dim dokumentart As String
+	Dim dokumentID As String
+	Dim wrongDokumentart As Boolean
+	Dim dokumentartID As String
+	Dim asfZugriff As String
+	Dim newDoc As ItaDocument
+	Dim i As Integer
+
+	ASF_SingleDocumentVersionDescriptorModification = False
+	wrongDokumentart = False
+	pDoc2Change.Update
+
+	Set myDescDef = Application.System.DescriptorDefinitions.ItemByGUID(DESC_ID_DOKUMENT_ID)
+	If Not myDescDef Is Nothing Then
+		Set myDokIdDesc = pDoc2Change.Descriptors.ItemByGUID (myDescDef.GUID)
+		If Not myDokIdDesc Is Nothing Then
+			If myDokIdDesc.ValueCount > 0 Then
+				dokumentID = myDokIdDesc.Value (0)
+			End If
+		End If
+	End If
+	Print #pLogFileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Bearbeite Dokument mit der Dokument ID '" + dokumentID + "'"
+
+	If pDoc2Change.CheckOutState <> enumCheckOutState.csNone Then
+		pErrMsg = "Das Dokument mit der Dokument ID '" + dokumentID + "' ist ausgecheckt und kann nicht weiter bearbeitet werden!"
+		Exit Function
+	End If
+	If pDoc2Change.Mutability = enumMutability.mutabilityImmutable Then
+		pErrMsg = "Das Dokument mit der Dokument ID '" + dokumentID + "' ist eingefroren und kann nicht weiter bearbeitet werden!"
+		Exit Function
+	End If
+
+	If Not pctrlStartKategorie Is Nothing Then
+		If pctrlStartKategorie.SelectedItem   <> -1 And pctrlKategorieID.DataCount = 0 Then
+			pErrMsg = "Bitte geben Sie die vollständige Kategorisierung an!"
+			Exit Function
+		End If
+	End If
+	'Prüfen, ob eine Kategorie ausgewählt ist. Wenn ja, wird geprüft ob eine Dokumentart ausgewählt ist.
+	'Wenn nein, muss die Dokumentart des Dokuments zur gewählten Kategorie passen
+	If pctrlKategorieID.DataCount > 0 Then
+		If pctrlDokumentart.Data = "" Then
+			Set myDescDef = Application.System.DescriptorDefinitions.ItemByGUID(DESC_ID_DOKUMENTART)
+			Set myDesc = pDoc2Change.Descriptors.ItemByGUID (myDescDef.GUID)
+			If Not myDesc Is Nothing Then
+				dokumentart = myDesc.Value (0)
+				If Not ASF_DokumentartIsPartOfKategorie(pctrlKategorieID.StartId,dokumentart,dokumentartID,pctrlKategorieID.Data (0)) Then
+					wrongDokumentart = True
+					pErrMsg= "Beim Dokument mit der Dokument ID '" + dokumentID + "' passt die Dokumentart " + dokumentart + " nicht zu Ihrer gewählten Kategorisierung!"
+				Else
+					If dokumentartID <> "" Then
+						'If pDoc2Change.DocumentTypeGUID <> Application.System.DocumentTypes.ItemByGUID ("5bbe277a-b94b-4449-a3cb-19ef371d7cd6").GUID Then
+						If p_o_Dlg.DialogDefinition.DocClassGUID <> Application.System.DocumentTypes.ItemByGUID ("5bbe277a-b94b-4449-a3cb-19ef371d7cd6").GUID Then
+							asfZugriff = ASF_getDokumentartBerechtigung(dokumentartID)
+							If asfZugriff <> "" Then
+								If Not p_o_Dlg.ControlByName ("MvASFZugriff") Is Nothing Then
+									p_o_Dlg.ControlByName ("MvASFZugriff").ResetContent()
+									p_o_Dlg.ControlByName ("MvASFZugriff").AddData(asfZugriff)
+								End If
+							End If
+						End If
+					End If
+				End If
+			End If
+		End If
+	End If
+
+	If Not wrongDokumentart Then
+
+		If pChangeDocClass Then
+			'Bei Zielklasse BauBestandDok, muss der Deskriptor ASF_Startkategorie aus dem Quelldokument entfernt werden.
+			'Dieser Deskriptor ist in BausBestandDok nicht enthalten
+			If p_o_Dlg.DialogDefinition.DocClassGUID = "5bbe277a-b94b-4449-a3cb-19ef371d7cd6" Then
+				For i = 0 To pDoc2Change.Descriptors.Count -1
+					If pDoc2Change.Descriptors(i).DescriptorDefinition.GUID ="6061f403-3481-46ba-9e31-673f09ec0d9d" Then
+						pDoc2Change.Descriptors.Remove(i)
+						Exit For
+					End If
+				Next i
+				p_o_Dlg.ControlByName("ASFZugriff").Data = "ASF"
+			End If
+			'Das neue Dokument bekommt die Zieldokumentenklasse zugewiesen
+			pDoc2Change.DocumentTypeGUID = p_o_Dlg.DialogDefinition.DocClassGUID
+		End If
+
+		If SER_copyControlValues2Descriptors(p_o_Dlg,pDoc2Change,pErrMsg, True,False,True) Then
+
+			If pChangeDocClass Then
+				pDoc2Change.Database = p_o_Dlg.DefaultDatabase
+			End If
+
+			'Wenn das Dokument keine ASF_Dok_ID besitzt, wird eine vergeben
+			If myDokIdDesc Is Nothing Then
+				dokumentID = ASF_IDs_getNextDocId()
+				On Error Resume Next
+				Print #pLogFileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Dokument besitzt keine DokumentID. Es wird die ID '" + dokumentID + "' vergeben!"
+				On Error GoTo Fehlerbehandlung
+				Set myDokIdDesc = pDoc2Change.Descriptors.AddNewByGUID(DESC_ID_DOKUMENT_ID)
+				Application.ShowMessage "Das Dokument besitzt keine DokumentID. Es wird die ID '" + dokumentID + "' vergeben!"
+				myDokIdDesc.AddValue dokumentID
+			End If
+			pDoc2Change.Commit
+			On Error Resume Next
+			Print #pLogFileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Das Dokument wurde erfolgreich gespeichert!"
+			On Error GoTo Fehlerbehandlung
+		Else
+			Exit Function
+		End If
+	Else
+		Exit Function
+	End If
+	ASF_SingleDocumentVersionDescriptorModification = True
+
+finish:
+	Set myDescDef = Nothing
+	Set myDesc = Nothing
+	Set myDokIdDesc = Nothing
+	Set newDoc = Nothing
+	Exit Function
+Fehlerbehandlung:
+	pErrMsg = Err.Description
+	GoTo finish
+End Function
+
+Public Function ASF_SingleDocumentDescriptorModification(pDoc2Change As ItaDocument, p_o_Dlg As ArchiveDlg, _
+											pctrlKategorieID As CategoryTreeControl, pctrlDokumentart As SelectionBox, _
+											ByRef pErrMsg As String, pChangeDocClass As Boolean, _
+											bDeleteOriginalDocument As Boolean, _
+											pLogFileHandle As Long, _
+											Optional pctrlStartKategorie As SelectionBox) As Boolean
+
+	Dim mySourceDocVersion As ItaDocument
+	Dim myTargetDocVersion As ItaDocument
+	Dim i As Integer
+	Dim myDocumentVersionInfo As DocumentVersionInfo
+	Dim newDoc As ItaDocument
+	Dim ccResultList As ControlContainer
+	Dim rlOrtsbezug As ResultList
+	Dim oldDoc As ItaDocument
+	Dim docsToDelete() As String
+	Dim currentVersion As Boolean
+	Dim published As Boolean
+
+	On Error GoTo Fehlerbehandlung
+
+	ASF_SingleDocumentDescriptorModification = False
+	Set oldDoc = pDoc2Change
+
+	If Not pChangeDocClass Then
+		If Not ASF_SingleDocumentVersionDescriptorModification(pDoc2Change, p_o_Dlg, pctrlKategorieID, pctrlDokumentart, _
+											pErrMsg, pChangeDocClass, bDeleteOriginalDocument, _
+											pLogFileHandle, pctrlStartKategorie) Then
+			Exit Function
+		End If
+	Else
+		'Im Falle eine Änderung der Dokumentenklasse müssen alle Versionen übernommen werden
+		Set myDocumentVersionInfo = pDoc2Change.GetDocumentVersionInfo
+		For i = 0 To myDocumentVersionInfo.Count - 1
+			Set mySourceDocVersion = myDocumentVersionInfo.Document(i)
+			currentVersion= mySourceDocVersion.CurrentVersion
+			published = mySourceDocVersion.Published
+			If i = 0 Then
+				Set newDoc = Application.System.CreateDocument (TDocumentType.ItaDocument)
+				newDoc.Copy mySourceDocVersion,True,True,True
+				Set mySourceDocVersion = newDoc
+			Else
+				Set myTargetDocVersion = myTargetDocVersion.CreateNewVersion()
+				myTargetDocVersion.Copy(mySourceDocVersion,True, True, True)
+				Set myTargetDocVersion.Database = Nothing
+				Set mySourceDocVersion = myTargetDocVersion
+			End If
+			mySourceDocVersion.CurrentVersion = currentVersion
+			mySourceDocVersion.Published  = published
+			If Not ASF_SingleDocumentVersionDescriptorModification(mySourceDocVersion, p_o_Dlg, pctrlKategorieID, pctrlDokumentart, _
+												pErrMsg, pChangeDocClass, bDeleteOriginalDocument, _
+												pLogFileHandle, pctrlStartKategorie) Then
+				Exit Function
+			Else
+				Set myTargetDocVersion = mySourceDocVersion
+			End If
+		Next
+		Set pDoc2Change = myTargetDocVersion
+	End If
+
+	If pChangeDocClass Then
+		'Das neue Dokument in die gleiche Akte verlinken wie das ursprüngliche Dokument
+		If Not ASF_MassKeyChange_AddDoc2Folder(oldDoc,pDoc2Change, pErrMsg, pLogFileHandle)	Then
+			Err.Raise 101,"Global Script/ ASF CAI Globale Funktionen ASF_SingleDocumentDescriptorModification", "Beim Verlinken des neu erstellten Dokuments zu einer Akte ist ein Fehler aufgetreten: " + pErrMsg
+		End If
+	End If
+
+	'Ortsbezüge übernehmen
+
+	Set ccResultList = p_o_Dlg.ControlByName("TabOrtsbezug_CCResultList")
+	Set rlOrtsbezug = ccResultList.Control
+
+'Ü022
+	'Alle Ortsbezüge aus dem Schlüsseländerungsdialog in das Dokument übernehmen. Auf dem Dokument vorhandene
+	'Ortsbezüge werden gelöscht.
+	If rlOrtsbezug.Resultset.TotalCount > 0 Then
+		If Not ASF_Ortsbezug_deleteOrtsbezuege(pDoc2Change, "IndexOnly", "20100101", pErrMsg) Then
+			Err.Raise 101,"Global Script/ ASF CAI Globale Funktionen ASF_SingleDocumentDescriptorModification", "Beim Löschen der Ortsbezüge ist ein Fehler aufgetreten: " + pErrMsg
+		Else
+			If Not ASF_MassKeyChange_copyOrtsbezuege(rlOrtsbezug.Resultset, pDoc2Change, pErrMsg) Then
+				Err.Raise 102,"Global Script/ ASF CAI Globale Funktionen ASF_SingleDocumentDescriptorModification", "Beim Übernehmen der neuen Ortsbezüge ist ein Fehler aufgetreten: " + pErrMsg
+			Else
+				If Not ASF_Ortsbezug_copyOrtsbezuege2(pDoc2Change, pDoc2Change, True,True) Then
+					Exit Function
+				End If
+			End If
+		End If
+'/Ü022
+	Else
+		If pChangeDocClass Then
+			'Ortsbezüge vom Quell- in das Zieldokument übernehmen
+			If Not ASF_Ortsbezug_copyOrtsbezuege2(pDoc2Change, pDoc2Change, True,True) Then
+				Exit Function
+			End If
+		End If
+	End If
+	If pChangeDocClass Then
+		If bDeleteOriginalDocument Then
+			Erase docsToDelete
+			ReDim docsToDelete(-1 To -1)
+			ReDim docsToDelete(0)
+			'Das  Originaldokument wird gelöscht
+			docsToDelete(0) = oldDoc.DocumentID
+			Application.StatusBarInfoText = "Das Orignialdokument wird gelöscht!"
+			Application.System.DeleteDocuments(docsToDelete)
+			Application.StatusBarInfoText = ""
+		End If
+	End If
+	ASF_SingleDocumentDescriptorModification = True
+finish:
+	Set ccResultList = Nothing
+	Set rlOrtsbezug = Nothing
+	Set mySourceDocVersion  = Nothing
+	Set myTargetDocVersion  = Nothing
+	Set myDocumentVersionInfo  = Nothing
+	Set newDoc = Nothing
+	Set oldDoc = Nothing
+	Exit Function
+Fehlerbehandlung:
+	pErrMsg = Err.Source + " " + Err.Description
+	GoTo finish
+End Function
+'Ü022
+Private Function ASF_MassKeyChange_copyOrtsbezuege(ByRef pResultset As SWAFRAMELib.IResultset, _
+													ByRef pDoc As ItaDocument, ByRef pErrMsg As String) As Boolean
+
+'*	Info
+'	lädt die Daten der Ortsbezüge aus einem Resultset in die entsprechenden Deskriptoren des Dokuments
+
+'*	Checks
+	If pResultset Is Nothing Then Exit Function
+	If pDoc Is Nothing Then Exit Function
+
+'*	Lokale Objekte
+	Dim xl As Long
+	Dim xi As Integer
+	Dim xy As Integer
+	Dim XDesc As Descriptor
+	Dim xDescNames(6) As String
+	Dim XDescDef As DescriptorDefinition
+	Dim descValue As String
+	Dim ortsbezugDocSource As ItaDocument
+	Dim ortsbezugDocTarget As ItaDocument
+	Dim XSourceDesc As Descriptor
+	Dim rsOrtsbezuege As IResultset
+	Dim straßenZug1 As String
+	Dim kmVon1 As String
+	Dim kmBis1 As String
+	Dim objektTyp1 As String
+	Dim objekt1 As String
+	Dim objektDetail1 As String
+	Dim richtung1 As String
+	Dim straßenZug2 As String
+	Dim kmVon2 As String
+	Dim kmBis2 As String
+	Dim objektTyp2 As String
+	Dim objekt2 As String
+	Dim objektDetail2 As String
+	Dim richtung2 As String
+	Dim errMsg As String
+	Dim addOrtsbezug As Boolean
+
+'*	zu kopierende Deskriptoren
+
+	On Error GoTo fError
+	xDescNames(0)= "ASF_Dok_Strasse"
+	xDescNames(1)= "ASF_Dok_StrKmVon"
+	xDescNames(2)= "ASF_Dok_StrKmBis"
+	xDescNames(3)= "ASF_Dok_Objekttyp"
+	xDescNames(4)= "ASF_Dok_Objekt"
+	xDescNames(5)= "ASF_Dok_Objektdetail"
+	xDescNames(6)= "ASF_Ort_Ortsbezug_DokId"
+
+	ASF_MassKeyChange_copyOrtsbezuege = False
+	'bestehende Ortsbezüge aus dem Zieldokument laden
+	Set rsOrtsbezuege = ASF_Ortsbezug_loadOrtsbezuegeByInternalUUID(pDoc.InternalDescriptors.ItemByGUID("UUID").Value(0), "IndexOnly", "20100101")
+
+	For xl = 0 To pResultset.TotalCount - 1
+		'Ortsbezug aus dem Massenbeschlagwortungsdialog laden
+		descValue = pResultset.Document(xl).DocumentID
+		Set ortsbezugDocSource = Application.System.GetDocumentDirect(descValue)
+		addOrtsbezug = True
+		xy = 0
+		'Prüfen, ob der Ortsbezug bereits im Zieldokument ist
+		While xy < rsOrtsbezuege.TotalCount And addOrtsbezug
+			Set ortsbezugDocTarget = rsOrtsbezuege.Document (xy)
+			straßenZug1 = SER_getFirstDescriptorValueByName(ortsbezugDocSource.Descriptors , "ASF_Ort_Straße")
+			straßenZug2 = SER_getFirstDescriptorValueByName(ortsbezugDocTarget.Descriptors , "ASF_Ort_Straße")
+
+			'Prüfen, ob der Straßenzug im Zieldokument existiert.
+			If (straßenZug1 = straßenZug2) Then
+				addOrtsbezug = False
+				kmVon1 = SER_getFirstDescriptorValueByName(ortsbezugDocSource.Descriptors , "ASF_Ort_KmVon")
+				kmBis1 = SER_getFirstDescriptorValueByName(ortsbezugDocSource.Descriptors , "ASF_Ort_KmBis")
+
+				objektTyp1 = SER_getFirstDescriptorValueByName(ortsbezugDocSource.Descriptors , "ASF_Ort_Objekttyp")
+				objekt1  = SER_getFirstDescriptorValueByName(ortsbezugDocSource.Descriptors , "ASF_Ort_Objekt")
+				objektDetail1 = SER_getFirstDescriptorValueByName(ortsbezugDocSource.Descriptors , "ASF_Ort_Objektdetail")
+				'richtung1 =
+
+				kmVon2 = SER_getFirstDescriptorValueByName(ortsbezugDocTarget.Descriptors , "ASF_Ort_KmVon")
+				kmBis2 = SER_getFirstDescriptorValueByName(ortsbezugDocTarget.Descriptors , "ASF_Ort_KmBis")
+
+				objektTyp2 = SER_getFirstDescriptorValueByName(ortsbezugDocTarget.Descriptors , "ASF_Ort_Objekttyp")
+				objekt2 = SER_getFirstDescriptorValueByName(ortsbezugDocTarget.Descriptors , "ASF_Ort_Objekt")
+				objektDetail2 = SER_getFirstDescriptorValueByName(ortsbezugDocTarget.Descriptors , "ASF_Ort_Objektdetail")
+				'richtung2=
+				'Wenn die Ortsbezüge ident sind, passwirt nichts, wenn Sie unterschiedlich sind,
+				'wird der Ortsbezug am Zieldokument geändert
+				If Not (kmVon1 = kmVon2 And kmBis1 = kmBis2 And objektTyp1 = objektTyp2 And objekt1 = objekt2 And _
+							objektDetail1 = objektDetail2) Then
+					'change ortsbezug on target doc
+					If Not ASF_Ortsbezug_ChangeDescriptors(ortsbezugDocTarget,straßenZug1,kmVon1,kmBis1,objektTyp1, _
+									objektDetail1,objekt1, errMsg) Then
+						Err.Raise 12,"Global Script/ ASF CAI Globale Funktionen ASF_MassKeyChange_copyOrtsbezuege",errMsg
+					End If
+
+				Else
+					'do nothing
+				End If
+			End If
+			xy = xy + 1
+		Wend
+		'Wenn der Ortsbezug noch nicht im Zieldokument existiert, einfach hinzufügen
+		If addOrtsbezug Then
+			For xi = 0 To 6
+				Set XDescDef = Application.System.DescriptorDefinitions.ItemByName (xDescNames(xi))
+				If Not XDescDef Is Nothing Then
+					If pDoc.Descriptors.ItemByGUID (XDescDef.GUID) Is Nothing Then
+						Set XDesc = pDoc.Descriptors.AddNewByGUID (XDescDef.GUID)
+					Else
+						Set XDesc = pDoc.Descriptors.ItemByGUID (XDescDef.GUID)
+					End If
+					Select Case XDescDef.Name
+						Case xDescNames(0)
+							descValue = SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Straße")
+							If descValue <> "" Then
+								XDesc.AddValue descValue
+							End If
+						Case xDescNames(1)
+							descValue = ASF_Ortsbezug_getSearchableKmString(SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_Straße"), _
+		   											SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_KmVon"))
+							If descValue <> "" Then
+								XDesc.AddValue descValue
+							End If
+						Case xDescNames(2)
+							descValue = ASF_Ortsbezug_getSearchableKmString(	SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_Straße"), _
+		   											SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_KmBis"))
+							If descValue <> "" Then
+								XDesc.AddValue descValue
+							End If
+						Case xDescNames(3)
+							descValue = SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Objekttyp")
+							If descValue <> "" Then
+								XDesc.AddValue descValue
+							End If
+						Case xDescNames(4)
+							descValue = SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Objekt")
+							If descValue <> "" Then
+							XDesc.AddValue descValue
+							End If
+						Case xDescNames(5)
+							descValue = SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Objektdetail")
+							If descValue <> "" Then
+								XDesc.AddValue descValue
+							End If
+						Case xDescNames(6)
+							descValue = pResultset.Document(xl).DocumentID
+							If descValue <> "" Then
+								XDesc.AddValue descValue
+							End If
+					End Select
+				End If
+			Next xi
+		End If
+	Next xl
+	ASF_MassKeyChange_copyOrtsbezuege = True
+finish:
+	Set XDesc = Nothing
+	Set XDescDef = Nothing
+	Set ortsbezugDocSource = Nothing
+	Set ortsbezugDocTarget = Nothing
+	Set XSourceDesc = Nothing
+	Set rsOrtsbezuege = Nothing
+	Exit Function
+fError:
+	pErrMsg = Err.Description
+	GoTo finish
+End Function
+'/Ü022
+'Ü021
+'Diese Funktion ermittelt alle Akten, in denen ein bestimmtes Dokument verlinkt ist und verlinkt ein anderes Dokument
+'in dassekbe Register
+Private Function ASF_MassKeyChange_AddDoc2Folder(pOrigDoc As ItaDocument, pNewDoc As ItaDocument, ByRef pErrMsg As String, _
+										pLogfileHandle As Long) As Boolean
+
+	Dim myReferencingDocuments As IResultset
+	Dim myReferencingDocument As IDocument
+	Dim myReferencingFolder As ItaFolder
+	Dim j As Integer
+
+	On Error GoTo fError
+	Print #pLogfileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Ermitteln aller Akte, die auf das ursprüngliche Dokument referenzieren!"
+
+	ASF_MassKeyChange_AddDoc2Folder = False
+	Set myReferencingDocuments = pOrigDoc.GetReferencingDocuments()
+	If myReferencingDocuments.TotalCount = 0 Then
+		ASF_MassKeyChange_AddDoc2Folder = True
+		Exit Function
+	End If
+	For j = 0 To myReferencingDocuments.TotalCount - 1
+		Set myReferencingDocument = myReferencingDocuments.Document(j)
+		If myReferencingDocument.Type = enumDocumentType.ItaFolder Then
+			Set myReferencingFolder = myReferencingDocument
+			Print #pLogfileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Akte mit der ID " + myReferencingFolder.DocumentID + " gefunden!"
+			If Not ASF_FolderAddDoc2ReferencingNodes(myReferencingFolder,myReferencingFolder.Nodes,pOrigDoc.DocumentID,pNewDoc.DocumentID, pErrMsg, pLogfileHandle) Then
+				Exit Function
+			End If
+		End If
+	Next
+	ASF_MassKeyChange_AddDoc2Folder = True
+finish:
+	Set myReferencingDocuments = Nothing
+	Set myReferencingDocument = Nothing
+	Set myReferencingFolder = Nothing
+	Exit Function
+fError:
+	pErrMsg = Err.Description
+	GoTo finish
+End Function
+'Diese Fkt. ermittelt alle Register einer Akte, in denen ein bestimmtes Dokument verknüpft ist und verlinkt
+' ein anderes Dokument in diese Register
+Private Function ASF_FolderAddDoc2ReferencingNodes(pITAFolder As ItaFolder, pNodes As CNodes, pDocID2Search As String, pDocID2Add As String, _
+												ByRef pErrMsg As String, pLogfileHandle As Long) As Boolean
+
+	Dim i As Integer
+	Dim myNode As CNode
+	Dim myElements As CElements
+	Dim myElement As CElement
+	Dim myNewElement As CElement
+
+	On Error GoTo fError
+
+	ASF_FolderAddDoc2ReferencingNodes = True
+	For i = 0 To pNodes.Count - 1
+		Set myNode = pNodes.Item(i)
+		If Not myNode.ChildNodes Is Nothing Then
+			ASF_FolderAddDoc2ReferencingNodes = ASF_FolderAddDoc2ReferencingNodes And _
+						ASF_FolderAddDoc2ReferencingNodes(pITAFolder, myNode.ChildNodes, pDocID2Search, pDocID2Add, pErrMsg, pLogfileHandle)
+		End If
+		If myNode.Type = FMNodeType.NT_STATIC Then
+			Set myElements = myNode.Elements
+			If myElements.Count > 0 Then
+				Set myElement = myElements.ItemByLinkVersionIndependent (LT_DOCUMENT, pDocID2Search)
+				If Not myElement Is Nothing Then
+					On Error Resume Next
+					Print #pLogfileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Das neue Dokument wird zum Register " + myNode.Name + " hinzugefügt!"
+					On Error GoTo fError
+					pITAFolder.WeakLock
+					Set myNewElement = myElements.AddNew(LT_DOCUMENT)
+					myNewElement.Link = pDocID2Add
+					pITAFolder.Commit
+					pITAFolder.WeakUnlock
+					On Error Resume Next
+					Print #pLogfileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Das Dokument wurde erfolgreich zum Register " + myNode.Name + " hinzugefügt!"
+					On Error GoTo fError
+				End If
+			End If
+		End If
+	Next
+finish:
+	Set myNode = Nothing
+	Set myElements = Nothing
+	Set myElement = Nothing
+	Set myNewElement = Nothing
+	Exit Function
+fError:
+	pErrMsg = pErrMsg + " " + Err.Description
+	ASF_FolderAddDoc2ReferencingNodes = False
+	GoTo finish
+End Function
+'/Ü021
+Public Function ASF_MassKeyChange(pArchiveDocClass As String, pResultWindow As ResultWindow , pBeschlagwortungBeibehalten As Boolean, _
+											pChangeDocumentClass As Boolean, pOriginalDokLoeschen As Boolean ) As Boolean
+
+	On Error GoTo fError
+
+'*	Business Logik
+	Dim myArchiveViewWindow As ArchiveViewWindow
+	Dim myDoc As ItaDocument
+	Dim userPath As String
+	Dim logFile As String
+	Dim fileHandle As Long
+	Dim myCheckBox1 As CheckBox
+	Dim myCheckBox2 As CheckBox
+	Dim myCheckBox3 As CheckBox
+	Dim selectedDocuments() As Object
+
+	userPath = Environ("USERNAME")
+	logFile = "C:\Users\" + userPath + "\Documents\winCubeMassenSchlüsseländerung.log"
+	gSelectedRowsCount = 0
+	fileHandle = FreeFile
+	Open logFile For Append As #fileHandle
+	Print #fileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": *****************************************************"
+
+	Set myDoc = Application.System.CreateDocument(TDocumentType.ItaDocument)
+	Set myArchiveViewWindow = Application.OpenKeyChange3 (myDoc,Application.MetaData.ArchiveDocClasses.ItemByName (pArchiveDocClass).GUID, "MassKeyChange")
+	Set myCheckBox1 = myArchiveViewWindow.ArchiveDlg.ControlByName ("cbKeepValues")
+	myCheckBox1.Checked = pBeschlagwortungBeibehalten
+	Set myCheckBox2 = myArchiveViewWindow.ArchiveDlg.ControlByName ("chkKeyChange")
+	myCheckBox2.Checked = Not pChangeDocumentClass
+	selectedDocuments = pResultWindow.ResultList.SelectedDocuments
+	myArchiveViewWindow.Tag = selectedDocuments
+	Application.StatusBarInfoText  = "Bearbeite Dokument 1 von " & Format(pResultWindow.ResultList.SelectedCount, "0") & "..."
+	If pChangeDocumentClass Then
+		Print #fileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Massenänderung Dokumentenklasse wird gestartet"
+		myArchiveViewWindow.ArchiveDlg.ControlByName ("Titel").Caption = "Massenänderung Dokumentenklasse"
+		Set myCheckBox3= myArchiveViewWindow.ArchiveDlg.ControlByName ("chkDeleteOriginalDocument")
+		myCheckBox3.Checked = pOriginalDokLoeschen
+		myCheckBox1.ResetDirtyStatus
+		myCheckBox2.ResetDirtyStatus
+		myCheckBox3.ResetDirtyStatus
+		myArchiveViewWindow.Caption ="Massenänderung Dokumentenklasse"
+	Else
+		Print #fileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Massenänderung Beschlagwortung wird gestartet"
+		myArchiveViewWindow.Caption ="Massenänderung Beschlagwortung"
+		myArchiveViewWindow.ArchiveDlg.ControlByName ("Titel").Caption = "Massenänderung Beschlagwortung"
+	End If
+	Print #fileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Originaldokument löschen: " + CStr(pOriginalDokLoeschen)
+	Print #fileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Beschlagwortung beibehalten: " + CStr(pBeschlagwortungBeibehalten)
+finish:
+	Set myArchiveViewWindow = Nothing
+	Set myDoc = Nothing
+	Set myCheckBox1 = Nothing
+	Set myCheckBox2 = Nothing
+	Set myCheckBox3 = Nothing
+	Close #fileHandle
+	Exit Function
+fError:
+	Print #fileHandle, Format(Now, "YYYYMMDD_hh:nn:ss") + ": Bei der Bearbeitung ist ein Fehler aufgetreten!" + Trim(Str(Err.Number)) + " " + Err.Description
+	Application.ShowError  "Bei der Massenänderung Beschlagwortung ist ein Fehler aufgetreten!" + Trim(Str(Err.Number)),"Global Script/ ASF CAI Globale Funktionen ASF_MassKeyChange",,,Err.Description
+	GoTo finish
+End Function
+'/Ü017
+
+'Ü011
+Public Function ASF_DokumentArtIstGeschützt (ByVal pCategoryId As String, ByVal pName As String) As Boolean
+
+	Dim MyASF_Dokumentart As ASF_Dokumentart
+
+	On Error GoTo fError
+	MyASF_Dokumentart = ASF_getASF_Dokumentart(pCategoryId, pName)
+	ASF_DokumentArtIstGeschützt = MyASF_Dokumentart.geschützt
+	Exit Function
+fError:
+	Application.ShowError "Beim Zugriff auf die Tabelle 'Dokumentart' ist ein Fehler aufgetreten!",,,,Err.Description
+End Function
+'/Ü010
+'Ü024
+'Diese Funktion ermittelt alle Workitem zurück, die ein bestimmtes ITADocument referenzieren
+'@param: pDocument: Es werden alle Workitems ermittelt, die dieses Dokument in der Dokumentenliste besitzen
+'@return: wfItems: Liste der Workitems, die das Dokument referenzieren
+Public Function ASF_wf_getReferencingWorkItemsOfDoucment(pDocument As ItaDocument) As wfItems
+
+	Set ASF_wf_getReferencingWorkItemsOfDoucment = Nothing
+
+	If pDocument Is Nothing Then Exit Function
+	On Error GoTo ErrorHandler
+
+'*	lokale Objekte
+	Dim XQuery As BPMLINELib.wfContainedDocQuery
+	Dim XResults As BPMLINELib.wfItems
+	Dim xl As Long
+	Dim XWI As BPMLINELib.wfWorkItem
+
+'**	Business Logik
+'*	WorkItems laden
+	Set XQuery = Application.wfSession.CreateContainedDocQuery()
+	XQuery.Document = pDocument
+	Set XResults = XQuery.Execute()
+	Set ASF_wf_getReferencingWorkItemsOfDoucment = XResults
+finsish:
+	Set XQuery = Nothing
+	Set XResults = Nothing
+	Set XWI = Nothing
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Ermitteln aller Workitems, die ein bestimmtes Dokument referenzieren!", "Global Script / ASF CAI Globale Funktionen / ASF_wf_getReferencingWorkItemsOfDoucment()",,, "Nummer:" & vbTab & Str(Err.Number) & vbCrLf & "Text: " & vbTab & Err.Description
+End Function
+'/Ü024
+'Ü005
+'Private bfirstrun As Boolean
+'
+'Diese Fkt. prüft, ob ein ITADocument in einem aktiven Vorgang referenziert wird.
+'param: pDocument: ITA-Dokument, das überprüft wird
+'return: true: Dokument befindet sich in einem aktiven Vorgang
+'return: false: Dokument befindet sich in keinem aktiven Vorgang
+Public Function ASF_wf_checkDocumentInWorkItem(pDocument As ItaDocument) As Boolean
+
+'*	Checks
+	If pDocument Is Nothing Then Exit Function
+	On Error GoTo ErrorHandler
+
+'*	lokale Objekte
+	Dim XQuery As BPMLINELib.wfContainedDocQuery
+	Dim XResults As BPMLINELib.wfItems
+	Dim xl As Long
+	Dim XWI As BPMLINELib.wfWorkItem
+
+	ASF_wf_checkDocumentInWorkItem = False
+'**	Business Logik
+	Application.StatusBarInfoText = "Prüfe, ob Dokument in einem aktiven Vorgang referenziert wird..."
+'*	WorkItems laden
+	Set XQuery = Application.wfSession.CreateContainedDocQuery()
+	XQuery.Document = pDocument
+	Set XResults = XQuery.Execute()
+'*	Prüfen
+	For xl = 0 To XResults.TotalCount - 1
+		If XResults.Document(xl).Type = enumDocumentType.BPMWorkItem Then
+			Set XWI = XResults.Document(xl)
+			If UCase(XWI.CurrentProcessStep.Name) <> "ENDE" Then
+				ASF_wf_checkDocumentInWorkItem = True
+			End If
+		End If
+	Next
+finsish:
+	Application.StatusBarInfoText = ""
+	Set XQuery = Nothing
+	Set XResults = Nothing
+	Set XWI = Nothing
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Prüfen der Referenz auf ein Dokument aus einem Vorgang!", "Global Script / ASF CAI Globale Funktionen / ASF_wf_checkDocumentInWorkItem()",,, "Nummer:" & vbTab & Str(Err.Number) & vbCrLf & "Text: " & vbTab & Err.Description
+End Function
+'Ü002
+Public Function ASF_security_checkPoststueckRechte(ByRef pPoststueck As SWAFRAMELib.IDocument, _
+													Optional pShowErrorMsg As Boolean = True) As Boolean
+
+'*	Checks
+	If pPoststueck Is Nothing Then Exit Function
+	On Error GoTo ErrorHandler
+
+'*	lokale Objekte
+	Dim XQuery As BPMLINELib.wfContainedDocQuery
+	Dim XResults As BPMLINELib.wfItems
+	Dim xl As Long
+	Dim XWI As BPMLINELib.wfWorkItem
+	Dim myDoc As ItaDocument
+
+'**	Business Logik
+
+'Ü012
+	ASF_security_checkPoststueckRechte = True
+	Set myDoc = pPoststueck
+	If myDoc.IndexOnly Then
+		Exit Function
+	End If
+'/Ü012
+
+	Application.StatusBarInfoText = "Prüfe Rechte auf Poststück ..."
+
+'*	WorkItems laden
+	Set XQuery = Application.wfSession.CreateContainedDocQuery()
+	XQuery.Document = pPoststueck
+	Set XResults = XQuery.Execute()
+'*	Prüfen
+	For xl = 0 To XResults.TotalCount - 1
+		If XResults.Document(xl).Type = enumDocumentType.BPMWorkItem Then
+			Set XWI = XResults.Document(xl)
+'Ü012
+			If	XWI.CurrentWorkBasket.Type = wfWB_FOREIGNPERSONAL_WITH_ACCESS Or _
+				XWI.CurrentWorkBasket.Type = wfWB_FOREIGNWORKGROUP_WITH_ACCESS Or _
+				XWI.CurrentWorkBasket.Type = wfWB_PERSONAL Then
+					Application.StatusBarInfoText = ""
+					Exit Function
+			End If
+'/Ü012
+		End If
+	Next
+	ASF_security_checkPoststueckRechte = False
+		Err.Raise 1000,, "Das Poststück ist in keinem für Sie zugreifbaren Postkorb - Anzeigen/Bearbeiten/Drucken/Exportieren nicht erlaubt!"
+	Application.StatusBarInfoText = ""
+
+finish:
+	Set XResults = Nothing
+	Set XWI  = Nothing
+	Set myDoc  = Nothing
+	Exit Function
+ErrorHandler:
+	Application.StatusBarInfoText = ""
+	If pShowErrorMsg Then
+		Application.ShowError "Fehler beim Prüfen der Rechte für ein Poststück!", "Global Script / ASF CAI Globale Funktionen / ASF_security_checkPoststueckRechte()",,, "Nummer:" & vbTab & Str(Err.Number) & vbCrLf & "Text: " & vbTab & Err.Description
+	End If
+	ASF_security_checkPoststueckRechte = False
+	GoTo finish
+End Function
+'/Ü002
+
+'Diese Fkt. hebt den ungültig-Status für die aktuelle Version eines Dokuments auf und erstellt aus dem Dokument eine neue Arbeitsversion.
+'Der Ungültig-Status darf nur von jenem Benutzer aufgehoben werden, der das Dokument auch ungültig gesetzt hat
+'Param: pDoc: ITA-Dokument, dessen ungültig-Status aufgehoben werden soll
+
+Public Sub ASF_ResetDocInValid (pDoc As ItaDocument)
+
+	On Error GoTo fErrorHandler
+
+	Dim myDescDefDockStatus As DescriptorDefinition
+	Dim myDescDefUngültigSetzer As DescriptorDefinition
+	Dim myDescDefUngültigDatum As DescriptorDefinition
+	Dim descValueEntwurf As String
+	Dim descValueUngültig As String
+	Dim arrmatrix() As String
+	Dim myNewVersion As ItaDocument
+	Dim myCurrentDocVersion As ItaDocument
+	Dim myDocLastVersion As ItaDocument
+
+	If pDoc Is Nothing Then
+		Application.ShowMessage "Es ist kein Dokument ausgewählt!"
+		Exit Sub
+	End If
+
+	If SER_getKeyValueFromStringMatrixByName("ASF_Dok_Status","Entwurf",arrmatrix,False )Then
+		descValueEntwurf = Trim(arrmatrix(0))
+	Else
+		Application.ShowError("Werteliste 'ASF_Dok_Status/Entwurf' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+
+	If SER_getKeyValueFromStringMatrixByName("ASF_Dok_Status","ungültig",arrmatrix,False )Then
+		descValueUngültig = Trim(arrmatrix(0))
+	Else
+		Application.ShowError("Werteliste 'ASF_Dok_Status/ungültig' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+
+	Set myDescDefDockStatus = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Status")
+	Set myDescDefUngültigDatum = Application.System.DescriptorDefinitions.ItemByName("ASF_Ungültig_Datum")
+	If Not myDescDefDockStatus Is Nothing Then
+		If Not pDoc.Descriptors.ItemByGUID(myDescDefDockStatus.GUID) Is Nothing Then
+			'Prüfen, ob das Dokument den Status ungültig hat
+			If pDoc.Descriptors.ItemByGUID(myDescDefDockStatus.GUID).Value(0) = descValueUngültig Then
+
+				'Prüfen, wer das Dokument ungültig gesetzt hat
+				Set myDescDefUngültigSetzer = Application.System.DescriptorDefinitions.ItemByName("ASF_Ungültig_Setzer")
+				If Not myDescDefUngültigSetzer Is Nothing Then
+					If Not pDoc.Descriptors.ItemByGUID(myDescDefUngültigSetzer.GUID) Is Nothing Then
+						If (pDoc.Descriptors.ItemByGUID(myDescDefUngültigSetzer.GUID).Value(0) <> Application.System.User.User)  And _
+								(UCase(Application.System.User.Role ) <> "ADMINS") Then
+							Application.ShowMessage "Sie dürfen den Ungültig-Status des Dokuments nicht aufheben!"
+							Exit Sub
+						End If
+					Else
+						Application.ShowMessage "Sie dürfen den Ungültig-Status des Dokuments nicht aufheben!"
+						Exit Sub
+					End If
+				Else
+					Application.ShowMessage "Die Deskriptordefinition 'ASF_Ungültig_Setzer' existiert nicht im System!"
+					Exit Sub
+				End If
+
+				If Not pDoc.isDirty Then
+					pDoc.ChangeMutability  mutabilityVersionable
+				End If
+
+				'aktuelle Version ermitteln
+				Set myCurrentDocVersion = Application.System.GetDocument (pDoc.DocumentID,"")
+
+				If myCurrentDocVersion.CurrentVersion =  myCurrentDocVersion.LastVersion Then
+					Set myNewVersion = myCurrentDocVersion.CreateNewVersion()
+					Call myNewVersion.Copy (pDoc,True ,True ,True )
+				Else
+					Set myDocLastVersion = Application.System.GetDocumentDirect (myCurrentDocVersion.DocumentIDLastVersion)
+					Set myNewVersion = myDocLastVersion.CreateNewVersion()
+					Call myNewVersion.Copy (myCurrentDocVersion,True ,True ,True )
+				End If
+				myNewVersion.Published = False
+'Ü015
+				myNewVersion.CurrentVersion = True
+'/Ü015
+				myNewVersion.Descriptors.ItemByGUID(myDescDefDockStatus.GUID).RemoveValues
+
+				If Not myNewVersion.Descriptors.ItemByGUID(myDescDefUngültigDatum.GUID) Is Nothing Then
+					myNewVersion.Descriptors.ItemByGUID(myDescDefUngültigSetzer.GUID).RemoveValues
+					myNewVersion.Descriptors.ItemByGUID(myDescDefUngültigSetzer.GUID).AddValue Application.System.User.User
+				End If
+
+				If Not myNewVersion.Descriptors.ItemByGUID(myDescDefUngültigDatum.GUID) Is Nothing Then
+					myNewVersion.Descriptors.ItemByGUID(myDescDefUngültigDatum.GUID).RemoveValues
+				End If
+
+				myNewVersion.Descriptors.ItemByGUID(myDescDefDockStatus.GUID).AddValue descValueEntwurf
+
+
+				myNewVersion.Commit
+			Else
+				Application.ShowMessage "Das Dokument hat nicht den Status 'ungültig'!"
+				Exit Sub
+			End If
+		Else
+			Application.ShowMessage "Das Dokument hat nicht den Status 'ungültig'!"
+			Exit Sub
+		End If
+	Else
+		Application.ShowMessage "Die Deskriptordefinition 'ASF_Dok_Status' existiert nicht im System!"
+		Exit Sub
+	End If
+	Application.ShowMessage "Der Ungültig-Status des Dokuments wurde aufgehoben!"
+	Exit Sub
+fErrorHandler:
+	pDoc.Rollback
+	Application.ShowError "Beim Aufheben des Ungültig-Status ist folgender Fehler aufgetreten!",,,,Err.Description
+End Sub
+'Ü014
+'Diese Fkt. setzt den Dokumentenstatus aller Versionen eines Dokuments auf einen bestimmten Wert
+'@param: pDoc: Dokument, dessen Versionen hinsichtlich des Dokumentenstatus geändert werden
+'@param: pNewState: Status, den die Dokumentversionen bekommen
+Public Sub ASF_SetDocState4DocVersions(pDoc As ItaDocument, pNewState As String)
+
+	Dim myDocumentVersionInfo As DocumentVersionInfo
+	Dim i As Integer
+	Dim myDocVersion As ItaDocument
+	Dim myDescDef As DescriptorDefinition
+
+	On Error GoTo fErrorHandler
+
+	'Dokumentstatus wird auf ungültig gesetzt
+	Set myDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Status")
+
+	Set myDocumentVersionInfo = pDoc.GetDocumentVersionInfo
+	If Not myDocumentVersionInfo Is Nothing Then
+		For i = 0 To myDocumentVersionInfo.Count - 1
+			Set myDocVersion = myDocumentVersionInfo.Document(i)
+			If myDocVersion.Version <> pDoc.Version Then
+				myDocVersion.Update
+				If Not myDocVersion.Descriptors.ItemByGUID(myDescDef.GUID) Is Nothing Then
+					myDocVersion.Descriptors.ItemByGUID(myDescDef.GUID).RemoveValues
+					myDocVersion.Descriptors.ItemByGUID(myDescDef.GUID).AddValue pNewState
+				Else
+					myDocVersion.Descriptors.AddNewByGUID(myDescDef.GUID).AddValue pNewState
+				End If
+				myDocVersion.Commit
+			End If
+		Next i
+	End If
+
+finish:
+	Set myDocumentVersionInfo = Nothing
+	Set myDocVersion = Nothing
+	Set myDescDef = Nothing
+	Exit Sub
+fErrorHandler:
+	Err.Raise 1000,"Beim Ungültigsetzen des Dokuments ist folgender Fehler aufgetreten!","Global Script/ ASF CAI Globale Funktionen -- ASF_SetDocState4DocVersions: " + Err.Description
+	GoTo finish
+End Sub
+'/Ü014
+'Diese Fkt. setzt ein dokument ungültig
+'Param: pDoc: ITA-Dokument, das ungültig gesetzt werden soll
+Public Sub ASF_SetDocInValid(pDoc As ItaDocument)
+
+	On Error GoTo fErrorHandler
+
+	Dim myDescDef As DescriptorDefinition
+	Dim descValueUngültig As String
+	Dim arrmatrix() As String
+	Dim errMsg As String
+	Dim myDocumentVersionInfo As DocumentVersionInfo
+	Dim i As Integer
+	Dim myDocVersion As ItaDocument
+	Dim descValuePrüfung As String
+
+	If pDoc Is Nothing Then
+		Application.ShowMessage "Es ist kein Dokument ausgewählt!"
+		Exit Sub
+	End If
+
+	ASF_doRetentionRule(pDoc, "Ungültig setzen")			'GBA-global
+
+	If SER_getKeyValueFromStringMatrixByName("ASF_Dok_Status","ungültig",arrmatrix,False )Then
+		descValueUngültig = Trim(arrmatrix(0))
+	Else
+		Application.ShowMessage("Werteliste 'ASF_Dok_Status/ungültig' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+
+'Ü027
+	If SER_getKeyValueFromStringMatrixByName("ASF_Dok_Status","in Prüfung",arrmatrix,False )Then
+		descValuePrüfung = Trim(arrmatrix(0))
+	Else
+		Application.ShowMessage("Werteliste 'ASF_Dok_Status/in Prüfung' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+'/Ü027
+
+	'Dokumentstatus wird auf ungültig gesetzt
+	Set myDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Status")
+	If Not myDescDef Is Nothing Then
+		If Not pDoc.Descriptors.ItemByGUID(myDescDef.GUID) Is Nothing Then
+'Ü027
+			If pDoc.Descriptors.ItemByGUID(myDescDef.GUID).ValueCount > 0 Then
+				If pDoc.Descriptors.ItemByGUID(myDescDef.GUID).Value(0) = descValuePrüfung Then
+					Application.ShowMessage("Das Dokument ist in Prüfung und darf daher nicht ungültig gesetzt werden!")
+					Exit Sub
+				End If
+			End If
+'/Ü027
+			pDoc.Descriptors.ItemByGUID(myDescDef.GUID).RemoveValues
+			pDoc.Descriptors.ItemByGUID(myDescDef.GUID).AddValue descValueUngültig
+		Else
+			pDoc.Descriptors.AddNewByGUID(myDescDef.GUID).AddValue descValueUngültig
+		End If
+	Else
+		Application.ShowMessage "Die Deskriptordefinition 'ASF_Dok_Status' existiert nicht im System!"
+		Exit Sub
+	End If
+
+'Ü014: Alle Versionen des Dokuments werden auf ungültig gesetz
+	Call ASF_SetDocState4DocVersions(pDoc, descValueUngültig)
+'/Ü014
+
+	'Am Dokument wird im Deskriptor 'ASF_Ungültig_Setzer' gespeichert, wer das Dokument ungültig gesetzt hat
+
+	Set myDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Ungültig_Setzer")
+	If Not myDescDef Is Nothing Then
+		If Not pDoc.Descriptors.ItemByGUID(myDescDef.GUID) Is Nothing Then
+			pDoc.Descriptors.ItemByGUID(myDescDef.GUID).RemoveValues
+			pDoc.Descriptors.ItemByGUID(myDescDef.GUID).AddValue  Application.System.User.User
+		Else
+			pDoc.Descriptors.AddNewByGUID(myDescDef.GUID).AddValue Application.System.User.User
+		End If
+	Else
+		Application.ShowMessage "Die Deskriptordefinition 'ASF_Ungültig_Setzer' existiert nicht im System!"
+		Exit Sub
+	End If
+
+	Set myDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Ungültig_Datum")
+		If Not myDescDef Is Nothing Then
+			If Not pDoc.Descriptors.ItemByGUID(myDescDef.GUID) Is Nothing Then
+				pDoc.Descriptors.ItemByGUID(myDescDef.GUID).RemoveValues
+				pDoc.Descriptors.ItemByGUID(myDescDef.GUID).AddValue CStr(Now)
+			Else
+				pDoc.Descriptors.AddNewByGUID(myDescDef.GUID).AddValue CStr(Now)
+			End If
+		Else
+			Application.ShowMessage "Die Deskriptordefinition 'ASF_Ungültig_Datum' existiert nicht im System!"
+			Exit Sub
+	End If
+
+	pDoc.Commit
+	pDoc.ChangeMutability  mutabilityImmutable
+
+	Application.ShowMessage "Das Dokument und alle seine Versionen wurden ungültig gesetzt."
+finish:
+	Set myDocumentVersionInfo = Nothing
+	Set myDocVersion = Nothing
+	Set myDescDef = Nothing
+	Exit Sub
+fErrorHandler:
+	pDoc.Rollback
+	Application.ShowError "Beim Ungültigsetzen des Dokuments ist folgender Fehler aufgetreten!",,,,Err.Description
+	GoTo finish
+End Sub
+
+'Diese Fkt. kopiert den WebLink für ein Dokument in die Zwischenablage. Die URL für den
+'WebLink muss in der Globalen Werteliste 'ASF_WebLink' im Parameter 'URL' konfiguriert werden.
+'Aufbau URL für WebLink: http://Host:Port/DMS/GetDocument?Q4=
+'Param: pDoc: ITA-Dokument, für das der WebLink generiert werden soll
+Public Sub ASF_GetWebLink (pDoc As ItaDocument)
+
+	Dim strWebLink As String
+	Dim asfDokId As String
+	Dim arrmatrix() As String
+	Dim strWebLinkUrl As String
+	Dim objHashCalculate As Object  'externe ActiveX-Dll, die eine Funktion zur Berechnung von Hashwerten bereitstellt. Es muss die Doxis4HashConnector.DLL per Setup am Arbeitsplatz ausgerollt werden.
+	Dim hashwertCalculated As String
+	Dim strSharedSecretKey As String
+
+	On Error GoTo fErrorHandler
+
+	If pDoc Is Nothing Then
+		Application.ShowMessage "Es ist kein Dokument ausgewählt!"
+		Exit Sub
+	End If
+
+	'Ermitteln Wert des Deskriptors ASF_Dok_ID
+	asfDokId =Trim(SER_getFirstDescriptorValueByName(pDoc.Descriptors, "ASF_Dok_ID"))
+	If asfDokId = "" Then
+		Application.ShowMessage "Das ausgewählte Dokument enthält keine Dokumenten_ID!"
+		Exit Sub
+	End If
+
+	'Ermitteln URL für den WebLink aus der Globalen Werteliste ASF_WebLink
+	If SER_getKeyValueFromStringMatrixByName("ASF_WebLink","URL",arrmatrix,False ) Then
+		strWebLinkUrl = Trim(arrmatrix(1))
+	Else
+		Application.ShowError("Werteliste 'ASF_Weblink/URL' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+
+'Ü028
+	'Auslesen des Shared Secret Keys aus der globalen Werteliste ASF_WebLnim
+	If SER_getKeyValueFromStringMatrixByName("ASF_WebLink","SharedSecretKey",arrmatrix,False ) Then
+		strSharedSecretKey = Trim(arrmatrix(1))
+	Else
+		Application.ShowError("Werteliste 'ASF_Weblink/URL' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+
+	On Error Resume Next
+	Set objHashCalculate = CreateObject("Doxis4HashConnector.Hash")
+	If Err.Number = 0 Then
+		hashwertCalculated = objHashCalculate.ComputeHash(strSharedSecretKey + asfDokId, "SHA256")
+		strWebLink = strWebLinkUrl + asfDokId + "&Hash=" + hashwertCalculated
+	Else
+		strWebLink = strWebLinkUrl + asfDokId
+	End If
+	Err.Clear
+	On Error GoTo fErrorHandler
+'/Ü028
+
+	Clipboard strWebLink
+	Application.ShowMessage  "Der WebLink des ausgewählten Dokuments wurde in die Zwischenablage kopiert."
+	Exit Sub
+fErrorHandler:
+	Application.ShowError "Beim Kopieren des WebLink in die Zwischenablage ist ein Fehler aufgetreten!",,,,Err.Description
+End Sub
+
+Private Sub Application_OnClose()
+	Set mySystem = Nothing
+	'Set myDoc = Nothing
+End Sub
+
+Private Sub Application_OnDebugResume()
+	'Set mySystem = Application.System
+	'Call exportTemplates
+End Sub
+
+Private Sub Application_OnDocumentVerb(ByVal Document As SWAFRAMELib.IDocument, ByVal Verb As winCube.enumVerb, ByRef bHandled As Boolean)
+
+	Dim strDokBezeichnung As String
+	Dim myDoc As ItaDocument
+
+	If Document.Type = enumDocumentType.ItaDocument Then
+		Set myDoc = Document
+		If Not SER_getDocumentAccessForUser(myDoc) Then
+			Application.ShowMessage "Sie haben keine Berechtigung dieses Dokument zu öffnen!"
+			bHandled = True
+		End If
+	End If
+End Sub
+
+Private Sub Application_OnInit()
+	Set mySystem = Application.System
+
+	'Ü008
+	'Serielle Empfänger für die Aktivität 'Prüfen' in der Prozessdefinition 'ASF zur Freigabe seriell' überspringen
+	If Not ASF_wf_ChangeSkippingAllowed(PD_GUID_FREIGABE_SERIELL, PS_PRÜFEN) Then
+		Exit Sub
+	End If
+	'Serielle Empfänger für die Aktivität 'Genehmigen' in der Prozessdefinition 'ASF zur Freigabe seriell' überspringen
+	If Not ASF_wf_ChangeSkippingAllowed(PD_GUID_FREIGABE_SERIELL, PS_GENEHMIGEN) Then
+		Exit Sub
+	End If
+	'/Ü008
+End Sub
+
+
+
+
+Private Sub mySystem_OnDocCheckIn(ByVal pDoc As SWAFRAMELib.IDocument)
+
+	Dim strDokArt As String
+	Dim strKategorie As String
+	Dim myProzessDefinition As String
+	Dim strErrMsg As String
+	Dim strCategoryStartID As String
+	Dim myDescDef As DescriptorDefinition
+
+	On Error GoTo fError
+
+	If pDoc.Type = enumDocumentType.ItaDocument Then
+		Set myDocToCheckIn = pDoc
+
+		If myDocToCheckIn.DocumentTypeGUID <>  Application.System.DocumentTypes.ItemByName ("Standard").GUID And _
+			myDocToCheckIn.DocumentTypeGUID <>  Application.System.DocumentTypes.ItemByName ("BauBestandsDok").GUID Then
+			GoTo finish 	'gilt nur für Dokumentenklassen 'Standard' und 'BauBestandsDok'
+		End If
+
+		'Prüfung, ob der Dokumentenstatus = 'in Prüfung' ist. In diesem Fall wird das Event wieder verlassen
+		Set myDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Status")
+		If Not myDocToCheckIn.Descriptors.ItemByGUID(myDescDef.GUID) Is Nothing Then
+			If myDocToCheckIn.Descriptors.ItemByGUID(myDescDef.GUID).ValueCount > 0 Then
+				If myDocToCheckIn.Descriptors.ItemByGUID(myDescDef.GUID).Values(0) = "P" Then
+					If Not myDocToCheckIn.Published Then
+						myDocToCheckIn.CurrentVersion = True
+					End If
+'Ü026
+					If Not createPDFRepresentation(pDoc) Then
+						Err.Raise (0, "Global Script/ ASF CAI Globale Funktionen", "Beim Generieren der PDF-Representation ist ein Fehler aufgetreten!")
+					End If
+'/Ü026
+					Exit Sub
+				End If
+			End If
+		End If
+
+		If Not myDocToCheckIn.Published Then
+			If Not ASF_SetDocState (myDocToCheckIn,"E",strErrMsg) Then
+				Application.ShowError "Beim Setzen des Dokumentenstatus auf 'Entwurf' ist ein Fehler aufgetreten!",,,"ASF CAI Globale Funktionen mySystem_OnDocCheckIn",strErrMsg
+				Exit Sub
+			End If
+			GoTo finish
+		Else
+			If Not ASF_SetDocState (myDocToCheckIn,"F",strErrMsg) Then
+				Application.ShowError "Beim Setzen des Dokumentenstatus auf 'Freigegeben' ist ein Fehler aufgetreten!",,,"ASF CAI Globale Funktionen mySystem_OnDocCheckIn",strErrMsg
+				Exit Sub
+			End If
+
+			'Ü005
+			'SER_setConvertDescriptor(myDoc)						'GSC-global
+			'
+			ASF_doRetentionRule(myDocToCheckIn, "Versionierung")			'GBA-global
+
+'Ü026
+			If Not createPDFRepresentation(pDoc) Then
+				Err.Raise (0, "Global Script/ ASF CAI Globale Funktionen", "Beim Generieren der PDF-Representation ist ein Fehler aufgetreten!")
+			End If
+'/Ü02
+		End If
+
+		If myDocToCheckIn.CheckOutState <> enumCheckOutState.csNone Then
+			'Ermitteln Wert des Deskriptors ASF_Dok_Art
+			strDokArt =Trim(SER_getFirstDescriptorValueByName(pDoc.Descriptors, "ASF_Dok_Art"))
+
+			'Ermitteln Wert des Deskriptors ASF_Kategorie
+			strKategorie =Trim(SER_getFirstDescriptorValueByName(pDoc.Descriptors, "ASF_Kategorie"))
+			If strDokArt <> "" And strKategorie <> "" Then
+				myProzessDefinition = ASF_getVorgangByKategorieNameAndDokumentArtName(strKategorie, strDokArt)
+				If myProzessDefinition <> "" Then
+					If ASF_StartVorgangDokumentlebenszyklus(myProzessDefinition,pDoc, Application.System.User.User,strErrMsg) Is Nothing Then
+						Application.ShowError "Beim Starten des Freigabe-Vorgangs '" + myProzessDefinition + "' ist ein Fehler aufgetreten!","Global Script/ ASF CAI Globale Funktionen mySystem_OnDocCheckIn",,,strErrMsg
+					End If
+				End If
+			End If
+		End If
+	End If
+finish:
+	Set myDescDef = Nothing
+	Exit Sub
+fError:
+	Application.ShowError "Beim Einchecken ist ein Fehler aufgetreten!","Global Script/ ASF CAI Globale Funktionen mySystem_OnDocCheckIn",,,Err.Description
+	GoTo finish
+End Sub
+
+'Diese Fkt. startet einen Vorgang zur angegebenen Prozessdefinition.
+'Aufruf der Funktionbeim Einchecken oder der Erstablage eines Dokuments
+'Ü001 Dokument-ID vom Dokument wird auf den Vorgang kopiert
+Public Function ASF_StartVorgangDokumentlebenszyklus(pProzessDefinition As String, ByVal pDoc As SWAFRAMELib.IDocument, pZielpostkorb As String,pErrMsg As String) As wfProcessInstance
+
+	Dim myDescDef As DescriptorDefinition
+	Dim pIDescriptors(1,1) As String 'Ü001 von 0,1 auf 1,1
+	Dim myPI As wfProcessInstance
+	Dim descValueInPrüfung As String
+	Dim arrmatrix() As String
+
+	On Error GoTo fError
+
+	Set ASF_StartVorgangDokumentlebenszyklus = Nothing
+
+	Set myDescDef = Nothing
+
+	'Ü001
+	'Dokument-ID vom Dokument holen
+	pIDescriptors(1,0) = "PI_ASF_DOK_ID"
+	pIDescriptors(1,1) = SER_getFirstDescriptorValueByName(pDoc.Descriptors, "ASF_Dok_ID", True)
+
+	'Vorgang starten
+	Set myDescDef = Application.wfSession.DescriptorDefinitions.ItemByNameWF ("PI_NAME")
+	If Not myDescDef Is Nothing Then
+		pIDescriptors(0,0) = myDescDef.GUID
+		'pIDescriptors(0,1) = Format(Now, "YYYY.MM.DD HH:NN")							'Ü009 GBA 2011-04-12 CR11
+		pIDescriptors(0,1) = SER_getFirstDescriptorValueByName(pDoc.Descriptors, "ASF_Bezeichnung", True) 'Ü009
+
+		Set myPI = SER_wf_createWFPIwithDescriptorsAndDoc(pProzessDefinition,pIDescriptors,pDoc,,,pZielpostkorb)
+		Set ASF_StartVorgangDokumentlebenszyklus = myPI
+	Else
+		pErrMsg = "Die Deskriptordefinition PI_NAME existiert nicht!"
+	End If
+finish:
+	Set myDescDef = Nothing
+	Set myPI = Nothing
+	Exit Function
+fError:
+	pErrMsg = Err.Description
+	GoTo finish
+End Function
+'In dieser fkt. wird geprüft, ob ein Dokument einen bestimmten Status hat.
+'Param: pDoc: Dokument, das geprüft wird.
+'Param: pStatusToCheck: Es wird geprüft, ob das Dokument diesen Status hat
+'Param: pErrMsg: Fehlermeldung im Fehlerfall
+'Return-Value: True: Dokument hat den Status
+'Return-Value: False: Dokument hat den Status nicht
+Public Function ASF_CheckDokStatus(pDoc As ItaDocument, pStatusToCheck As String, pErrMsg As String ) As Boolean
+
+	Dim myDescDefDocStatus As DescriptorDefinition
+
+	ASF_CheckDokStatus = False
+
+	On Error GoTo fError
+
+	Set myDescDefDocStatus = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Status")
+
+	If pDoc.CheckOutState <> csCheckedOutBySelf Then
+		If Not myDescDefDocStatus Is Nothing Then
+			If Not pDoc.Descriptors.ItemByGUID(myDescDefDocStatus.GUID) Is Nothing Then
+				If pDoc.Descriptors.ItemByGUID(myDescDefDocStatus.GUID).Values(0) = pStatusToCheck Then
+					ASF_CheckDokStatus = True
+				End If
+			End If
+		End If
+	End If
+finish:
+	Set myDescDefDocStatus = Nothing
+	Exit Function
+fError:
+	pErrMsg = Err.Description
+	GoTo finish
+End Function
+
+Private Function  ASF_SetDocState(pDoc As ItaDocument, pNewDocState As String, pErrMsg As String) As Boolean
+
+	Dim myDescDef As DescriptorDefinition
+
+	On Error GoTo fError
+
+	ASF_SetDocState = False
+
+	Set myDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Status")
+	If Not myDescDef Is Nothing Then
+		If Not pDoc.Descriptors.ItemByGUID(myDescDef.GUID) Is Nothing Then
+			pDoc.Descriptors.ItemByGUID(myDescDef.GUID).RemoveValues
+			pDoc.Descriptors.ItemByGUID(myDescDef.GUID).AddValue pNewDocState
+		Else
+			pDoc.Descriptors.AddNewByGUID(myDescDef.GUID).AddValue pNewDocState
+		End If
+		pDoc.Commit
+	Else
+		pErrMsg= "Die Deskriptordefinition 'ASF_Dok_Status' existiert nicht im System!"
+	End If
+	ASF_SetDocState = True
+finish:
+	Set myDescDef = Nothing
+	Exit Function
+fError:
+	pErrMsg ="Beim Setzen des Dokumentenstatus ist ein Fehler aufgetreten: " + Err.Description
+	GoTo fError
+End Function
+'Diese Fkt. erstellt einen Vorgang zu einer bestimmten Prozessinstanz im Postkorb des angemeldeten winCube-Benutzers und fügt das Dokument aus der
+'Parameterliste in die Dokumentenliste des Vorgangs hinzu
+'@param: myDoc: Dokument, das in die Dokumentenliste des neu erstellten Vorgangs hinzuzufügen ist
+'@param: outPi: Die erzeugte Prozessinstanz wird als Output-Parameter nach außen weitergereicht.
+'@param: processDefinition: Name der Prozessdefinition, zu der ein Vorgang erzeugt werden soll
+'@param: startActivity: Name der Prozessaktivität, in der der Vorgang angelegt werden soll
+'@return: true: kein Fehler aufgetreten
+'@return: false: es ist ein Fehler aufgetreten
+Public Function ASF_createPIandAddDoc(ByVal pPDName As String, _
+														ByRef pDescriptors() As String, _
+														Optional ByRef pIDoc1 As IDocument, _
+														Optional ByRef pIDoc2 As IDocument, _
+														Optional ByVal pStartActivityName As String, _
+														Optional ByVal pStartWorkbasketName As String) As BPMLINELib.wfProcessInstance
+
+'*	Infos
+'	Erzeugt eine neue ProzessInstanz mit Deskriptoren, 0..2 Dokumenten
+'	erzeugt wird entweder im angegebenen Postkorb oder im persönlichen Postkorb des Benutzers
+'	erzeugt wird entweder in der in der angegebenen Startaktivität oder in der 1. Startaktivität der PD
+'* Definition
+
+'*	lokale Objekte
+	Dim XPD As wfProcessDefinition
+	Dim XPS As wfProcessStep
+	Dim XPCC As wfProcessCreationContext
+	Dim XPI As wfProcessInstance
+	Dim xi As Integer
+	Dim xdGUID As String
+	Dim xdValue As String
+	Dim XDocRef As wfDocumentReference
+	Dim XWB As wfWorkBasket
+	Dim XWI As wfWorkItem
+
+
+    Dim inContext As BPMLINELib.wfProcessCreationContext
+  	Dim inWFLSession As BPMLINELib.wfSession
+
+	Set ASF_createPIandAddDoc = Nothing
+
+	On Error GoTo fError
+
+	Set inWFLSession = Application.wfSession
+
+	If Not inWFLSession Is Nothing Then
+        Set XPI = inWFLSession.CreateProcessInstance 'create process instance object
+        Set inContext = inWFLSession.CreateProcessCreationContext 'create process model context
+		XPI.ProcessCreationContext = inContext 'assign the process model
+        Set XPD = ASF_GetProcessDefinitionByName (pPDName, inWFLSession) 'define the process model
+		If Not XPD Is Nothing Then
+			Set inContext.ProcessDefinition =XPD
+		Else
+    		Application.ShowError("Fehler beim Erzeugen des Vorgangs!",,,,"Die Prozessdefinition " + pPDName+ " existiert nicht!")
+			Exit Function
+		End If
+
+		'*	wfDeskriptoren ergänzen, speichern
+		For xi = 0 To UBound(pDescriptors, 1)
+			xdGUID = pDescriptors(xi,0)
+			xdValue = pDescriptors(xi,1)
+			If XPI.DescriptorsWF.ItemByGUIDWF(xdGUID) Is Nothing Then
+				XPI.DescriptorsWF.AddNewByGUIDWF(xdGUID).AddValue(xdValue)
+			Else
+				XPI.DescriptorsWF.ItemByGUIDWF(xdGUID).ChangeValue(0, xdValue)
+			End If
+		Next xi
+
+		If pStartActivityName <> "" Then
+			Set XPS = XPD.ProcessSteps.ItemByName(pStartActivityName)
+			If Not XPS Is Nothing Then
+		    	Set inContext.StartProcessStep = XPS
+		    Else
+		    	Application.ShowError("Fehler beim Erzeugen des Vorgangs!",,,,"Die Prozessaktivität " +pStartActivityName + " existiert nicht!")
+				Exit Function
+		    End If
+		End If
+
+		'*	optional: 	WI in Postkorb erzeugen
+		If pStartWorkbasketName <> "" Then
+		    Set XWB = ASF_GetWorkBasketByName(pStartWorkbasketName, inWFLSession)
+	        If  XWB Is Nothing Then
+	            Application.ShowError("Fehler beim Erzeugen des Vorgangs!",,,,"Zum Benutzer " +Application.System.User.User + " existiert kein Postkorb!")
+				Exit Function
+		    End If
+		End If
+
+		'*	optional: Dokumentreferenz(en) ergänzen
+		If Not pIDoc1 Is Nothing Then
+			Set XDocRef = XPI.DocumentReferences.AddNewDocument(pIDoc1)
+			Set XPI.DocumentReferences.MainDocument = XDocRef
+		End If
+		If Not pIDoc2 Is Nothing Then
+			Set XDocRef = XPI.DocumentReferences.AddNewDocument(pIDoc2)
+		End If
+
+    Else
+    	Application.ShowError("Fehler beim Erzeugen des Vorgangs!",,,,"Es existiert keine Workflow-Session!")
+		Exit Function
+    End If
+
+'*   Return Values
+   	Set ASF_createPIandAddDoc = XPI
+finish:
+	'clean up
+   	Set inContext = Nothing
+   	Set inWFLSession = Nothing
+   	Set XPD   = Nothing
+	Set XPS   = Nothing
+	Set XPCC   = Nothing
+	Set XPI   = Nothing
+	Set XDocRef   = Nothing
+	Set XWB   = Nothing
+	Set XWI   = Nothing
+
+	Exit Function
+fError:
+	Application.ShowError("Fehler beim Erzeugen des Vorgangs!",,,,Err.Description +", " + CStr(Err.Number))
+	GoTo finish
+End Function
+'Diese Fkt. liefert das winCube-Prozessmodell zu einem bestimmten NAmen zurück
+Public Function ASF_GetProcessDefinitionByName (inName As String,WFLSession As wfSession) As wfProcessDefinition
+
+	Dim sln As Long
+
+	For sln = 0 To WFLSession.ProcessDefinitions.Count -1
+		If UCase(WFLSession.ProcessDefinitions(sln).Name) = UCase(inName) Then
+			Set ASF_GetProcessDefinitionByName = WFLSession.ProcessDefinitions(sln)
+			Exit For
+		End If
+	Next
+End Function
+'Diese Fkt. liefert das winCube Postkorb-Objekt zu einem Namen zurück
+Public Function ASF_GetWorkBasketByName(UserName As String, WFLSession As wfSession) As wfWorkBasket
+
+	Dim sim As Integer
+
+	For sim = 0 To WFLSession.Workbaskets.Count -1 'Alle Postkörbe durchlaufen
+		If UCase(WFLSession.Workbaskets(sim).Name) = UCase(UserName) Then
+			Set ASF_GetWorkBasketByName = WFLSession.Workbaskets(sim)
+		End If
+	Next
+End Function
+'Diese Fkt. prüft, ob der Benutzer für die in einer Trefferliste selektierten Dokumente berechtigt ist. Abbruch, falls
+'der Benutzer für ein Dokument nicht berechtigt ist
+'Return: true: Der Benutzer hat die Berechtigung für alle selektierten Dokumente
+'Return: false: Der Benutzer hat die Berechtigung für zumindest ein selektiertes Dokumente nicht
+'Param: pResultList: Trefferliste mit den selektierten Dokumenten
+'Param: pErrMsg: Text im Fehlerfall
+'Param: pDokBezeichnung: Bezeichnung des Dokuments, für das der Benutzer nicht berechtigt ist
+Public Function ASF_CheckDocumentRights(pResultList As IResultList, pErrMsg As String) As Boolean
+	Dim i As Integer
+	Dim myDoc As ItaDocument
+	Dim myIDoc As IDocument
+	Dim myDescDefDocName As DescriptorDefinition
+	Dim strDokBezeichnung As String
+
+	ASF_CheckDocumentRights = True
+
+'Ü003
+'	Admin
+	If Application.System.User.Role = "admins" Then GoTo finish
+'	Gesamtzugriff
+	If ASF_security_isUserGroupMember("Gesamtzugriff ausgen. Personal") Then GoTo finish
+'/Ü003
+
+	Set myDescDefDocName = Application.System.DescriptorDefinitions.ItemByName("ASF_Bezeichnung")
+	If  myDescDefDocName Is Nothing Then
+		pErrMsg = "Die Deskriptor-Definition ASF_Bezeichnung existiert nicht!"
+		ASF_CheckDocumentRights = False
+		Exit Function
+	End If
+
+	On Error GoTo fError
+	For i = 0 To pResultList.SelectedCount - 1
+		Set myIDoc = pResultList.SelectedDocuments (i)
+		If myIDoc.Type  = enumDocumentType.ItaDocument Then
+			Set myDoc = myIDoc
+			If Not myDoc.Descriptors.ItemByGUID(myDescDefDocName.GUID) Is Nothing Then
+				strDokBezeichnung = myDoc.Descriptors.ItemByGUID(myDescDefDocName.GUID).Values(0)
+			End If
+			If Not SER_getDocumentAccessForUser(myDoc) Then
+				pErrMsg =  "Sie haben keine Berechtigung mit dem Dokument namens '" +strDokBezeichnung + "' zu arbeiten!"
+				ASF_CheckDocumentRights = False
+				Exit Function
+			End If
+		End If
+		Set myDoc = Nothing
+		Set myIDoc = Nothing
+	Next
+finish:
+	Set myDoc = Nothing
+	Set myIDoc = Nothing
+	Set myDescDefDocName = Nothing
+	Exit Function
+fError:
+	pErrMsg = Err.Description
+	ASF_CheckDocumentRights = False
+	GoTo finish
+End Function
+'Diese Fkt. prüft, ob der Benutzer für die in einer Dokumentenliste eines Vorgangs selektierten Dokumente berechtigt ist.Abbruch, falls
+'der Benutzer für ein Dokument nicht berechtigt ist
+'Return: true: Der Benutzer hat die Berechtigung für alle selektierten Dokumente
+'Return: false: Der Benutzer hat die Berechtigung für zumindest ein selektiertes Dokumente nicht
+'Param: pResultList: Trefferliste mit den selektierten Dokumenten
+'Param: pErrMsg: Text im Fehlerfall
+'Param: pDokBezeichnung: Bezeichnung des Dokuments, für das der Benutzer nicht berechtigt ist
+Public Function ASF_CheckDocumentRights2(pWfDocResultList As IwfDocRefList , pErrMsg As String) As Boolean
+	Dim i As Integer
+	Dim myDocRef As wfDocumentReference
+	Dim myDescDefDocName As DescriptorDefinition
+	Dim strDokBezeichnung As String
+	Dim myIDoc As IDocument
+	Dim myDoc As ItaDocument
+
+	ASF_CheckDocumentRights2 = True
+
+'Ü003
+'	Admin
+	If Application.System.User.Role = "admins" Then GoTo finish
+'	Gesamtzugriff
+	If ASF_security_isUserGroupMember("Gesamtzugriff ausgen. Personal") Then GoTo finish
+'/Ü003
+
+	Set myDescDefDocName = Application.System.DescriptorDefinitions.ItemByName("ASF_Bezeichnung")
+	If  myDescDefDocName Is Nothing Then
+		pErrMsg = "Die Deskriptor-Definition ASF_Bezeichnung existiert nicht!"
+		ASF_CheckDocumentRights2 = False
+		Exit Function
+	End If
+
+	On Error GoTo fError
+	For i = 0 To pWfDocResultList.SelectedCount  - 1
+		Set myIDoc = pWfDocResultList.SelectedDocumentReferences (i)
+		If myIDoc.Type  = enumDocumentType.BPMDocumentReference  Then
+			Set myDocRef = pWfDocResultList.SelectedDocumentReferences (i)
+			Set myDoc = myDocRef.Document
+
+			If Not myDoc.Descriptors.ItemByGUID(myDescDefDocName.GUID) Is Nothing Then
+				strDokBezeichnung = myDoc.Descriptors.ItemByGUID(myDescDefDocName.GUID).Values(0)
+			End If
+
+			If Not SER_getDocumentAccessForUser(myDoc) Then
+				pErrMsg =  "Sie haben keine Berechtigung mit dem Dokument namens '" +strDokBezeichnung + "' zu arbeiten!"
+				ASF_CheckDocumentRights2 = False
+				Exit Function
+			End If
+			Set myDoc = Nothing
+			Set myIDoc = Nothing
+		End If
+	Next
+finish:
+	Set myDoc = Nothing
+	Set myDocRef = Nothing
+	Set myIDoc = Nothing
+	Set myDescDefDocName = Nothing
+	Exit Function
+fError:
+	pErrMsg = Err.Description
+	ASF_CheckDocumentRights2 = False
+	GoTo finish
+End Function
+'Diese Fkt. erstellt aus dem einem ITA-Dokument ein Dokument der Dokumentenklasse 'Poststück'.
+'Die Beschlagwortung und der Content werden kopiert.
+'Param: pDoc: ITADocument, aus dem ein Poststück erstellt wird
+'Return: true: Es iSt kein Fehler aufgetreten
+'Return: false: Es ist ein Fehler aufgetreten
+Public Function ASF_CreatePoststück(pDoc As ItaDocument ) As Boolean
+
+	Dim newDoc As ItaDocument
+	Dim i As Integer
+	Dim XDTD As DocumentType
+	Dim XSourceDesc As Descriptor
+	Dim XTargetDesc As Descriptor
+	Dim XDescÜbernommenVon As Descriptor
+	Dim XDescDocId As Descriptor
+	Dim XDescDocArt As Descriptor
+	Dim errMsg As String
+
+	On Error GoTo fError
+
+	ASF_CreatePoststück = False
+	Set XDTD = Application.System.DocumentTypes.ItemByName("Poststück")
+	Set newDoc = Application.System.CreateDocument(SWAFRAMELib.enumDocumentType.ItaDocument)
+	newDoc.DocumentTypeGUID = XDTD.GUID
+	If Not Application.System.FilingDatabases.ItemByName("Postbuch") Is Nothing Then
+		Set newDoc.Database = Application.System.FilingDatabases.ItemByName("Postbuch")
+	Else
+		Application.ShowError "Beim Erstellen des Poststücks ist ein Fehler aufgetreten!","Global Script/ ASF CAI Globale Funktionen: ASF_CreatePoststück",,,"Die Datenbank 'Postbuch' existiert nicht im System!"
+		Exit Function
+	End If
+	newDoc.IndexOnly = True
+
+	'Deskriptoren auf das Poststück übernehmen
+	'GBA 2011-08-18 CR12 Ersteller und Abteilung auch bei dieser Fkt in Postbuch-Dokument übernehmen
+	For Each XSourceDesc In pDoc.Descriptors
+		If XSourceDesc.DescriptorDefinition.Name="ASF_Gesellschaft" Or _
+			XSourceDesc.DescriptorDefinition.Name="ASF_Anlassdatum" Or _
+			XSourceDesc.DescriptorDefinition.Name="ASF_Bezeichnung" Or _
+			XSourceDesc.DescriptorDefinition.Name="ASF_Dok_Nummer" Or _
+			XSourceDesc.DescriptorDefinition.Name="ASF_Geschaeftszahl" Or _
+			XSourceDesc.DescriptorDefinition.Name="ASF_Standort" Or _
+			XSourceDesc.DescriptorDefinition.Name="ASF_GP_GPName" Or _
+			XSourceDesc.DescriptorDefinition.Name="ASF_Ersteller" Or _
+			XSourceDesc.DescriptorDefinition.Name="ASF_Abteilung" Then
+
+			If Not	XDTD.DescriptorDefinitions.ItemByGUID(XSourceDesc.DescriptorDefinition.GUID) Is Nothing Then
+				Set XTargetDesc = newDoc.Descriptors.AddNewByGUID(XSourceDesc.DescriptorDefinition.GUID)
+				For i = 0 To XSourceDesc.ValueCount - 1
+					XTargetDesc.AddValue XSourceDesc.Value(i)
+				Next i
+			End If
+		End If
+	Next
+	If Not	XDTD.DescriptorDefinitions.ItemByName ("ASF_Dok_Art") Is Nothing Then
+		Set XDescDocArt = newDoc.Descriptors.AddNewByGUID(XDTD.DescriptorDefinitions.ItemByName ("ASF_Dok_Art").GUID)
+		XDescDocArt.AddValue "Ausgang"
+	End If
+
+'Ü013
+	If Not	XDTD.DescriptorDefinitions.ItemByName ("ASF_Verarbeitungsinfos_lang") Is Nothing Then
+		Set XDescÜbernommenVon = newDoc.Descriptors.AddNewByGUID(XDTD.DescriptorDefinitions.ItemByName ("ASF_Verarbeitungsinfos_lang").GUID)
+		XDescÜbernommenVon.AddValue "erstellt von " & Application.System.User.User & " am/um " & Format(Now, "DD.MM.YYYY HH:MM")
+	End If
+'/Ü013
+
+' Ü004
+	If Not	XDTD.DescriptorDefinitions.ItemByName ("ASF_Dok_ID") Is Nothing Then
+		Set XDescDocId = newDoc.Descriptors.AddNewByGUID(XDTD.DescriptorDefinitions.ItemByName ("ASF_Dok_ID").GUID)
+		XDescDocId.AddValue ASF_IDs_getNextDocId()
+	End If
+'
+	newDoc.Commit
+'Ü012
+	If Not SER_LinkDocuments(pDoc,newDoc, errMsg) Then
+		Application.ShowError "Es ist ein Fehler aufgetreten", "Global Script/ ASF CAI Globale Funktionen ASF_CreatePoststück",,,errMsg
+	Else
+		Application.ShowMessage "Das Poststück wurde erfolgreich erstellt!"
+		Application.OpenIndexOnlyKeyChange newDoc
+		ASF_CreatePoststück = True
+	End If
+'/Ü012
+finish:
+	Set newDoc = Nothing
+	Set XDescDocId = Nothing
+	Set XDescÜbernommenVon = Nothing
+	Set XDescDocArt = Nothing
+	Exit Function
+fError:
+	Application.ShowError "Beim Erstellen des Poststücks ist ein Fehler aufgetreten!","Global Script/ ASF CAI Globale Funktionen: ASF_CreatePoststück",,,Err.Description
+	GoTo finish
+End Function
+'Diese Fkr. liefert die letzte Version eines Dokuments zurück
+Public Function ASF_getLastVersionOfDocument(pDocumentVersionInfo As DocumentVersionInfo) As ItaDocument
+	Dim i As Integer
+	Dim myDoc As ItaDocument
+
+	Set ASF_getLastVersionOfDocument = Nothing
+
+	If pDocumentVersionInfo Is Nothing Then
+		Set ASF_getLastVersionOfDocument = Nothing
+		Exit Function
+	End If
+	If pDocumentVersionInfo.Count = 0 Then
+		Set ASF_getLastVersionOfDocument = Nothing
+		Exit Function
+	End If
+
+	i = 0
+	Set myDoc = pDocumentVersionInfo.Document (i)
+	While Not myDoc.LastVersion And i < pDocumentVersionInfo.Count
+		i = i + 1
+		Set myDoc = pDocumentVersionInfo.Document (i)
+	Wend
+	If myDoc.LastVersion Then
+		Set ASF_getLastVersionOfDocument = myDoc
+	End If
+End Function
+'Diese Fkr. liefert die letzte veröffentlchte Version eines Dokuments zurück
+Public Function ASF_getLastPublishedVersionOfDocument(pDocumentVersionInfo As DocumentVersionInfo) As ItaDocument
+	Dim i As Integer
+	Dim myDoc As ItaDocument
+
+	Set ASF_getLastPublishedVersionOfDocument = Nothing
+
+	If pDocumentVersionInfo Is Nothing Then
+		Set ASF_getLastPublishedVersionOfDocument = Nothing
+		Exit Function
+	End If
+	If pDocumentVersionInfo.Count = 0 Then
+		Set ASF_getLastPublishedVersionOfDocument = Nothing
+		Exit Function
+	End If
+
+	i = pDocumentVersionInfo.Count - 1
+	Set myDoc = pDocumentVersionInfo.Document (i)
+	While Not myDoc.Published  And i > 0
+		i = i - 1
+		Set myDoc = pDocumentVersionInfo.Document (i)
+	Wend
+	If myDoc.Published Then
+		Set ASF_getLastPublishedVersionOfDocument = myDoc
+	End If
+End Function
+
+'Ü006
+
+Public Sub mySystem_OnDocCommit(ByRef pDoc As SWAFRAMELib.IDocument)
+	Dim myDoc As ItaDocument
+	Dim myDescDef As DescriptorDefinition
+
+
+	On Error GoTo fError
+	'MsgBox("commit")
+	DoEvents
+	If pDoc.Type = enumDocumentType.ItaDocument Then
+		Set myDoc = pDoc
+
+		If myDoc.DocumentTypeGUID <>  Application.System.DocumentTypes.ItemByName ("Standard").GUID And _
+			myDoc.DocumentTypeGUID <>  Application.System.DocumentTypes.ItemByName ("BauBestandsDok").GUID Then
+			GoTo finish 	'gilt nur für Dokumentenklassen 'Standard' und 'BauBestandsDok'
+		End If
+		If myDoc.Published Then
+			Set myDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Status")
+			If Not myDoc.Descriptors.ItemByGUID(myDescDef.GUID) Is Nothing Then
+				If myDoc.Descriptors.ItemByGUID(myDescDef.GUID).ValueCount > 0 Then
+					If myDoc.Descriptors.ItemByGUID(myDescDef.GUID).Values(0) = "F" Then
+						If jSER_setConvertDescriptor(myDoc) Then						'GSC-global
+							'myDoc.Commit
+						End If
+					End If
+				End If
+			End If
+		Else				'Keine veröffentlichte Version
+			Set myDescDef = Application.System.DescriptorDefinitions.ItemByName("RS_CONVERT")
+			If Not myDoc.Descriptors.ItemByGUID(myDescDef.GUID) Is Nothing Then
+				If myDoc.Descriptors.ItemByGUID(myDescDef.GUID).ValueCount > 0 Then
+					If myDoc.Descriptors.ItemByGUID(myDescDef.GUID).Values(0) <> "" Then
+						myDoc.Descriptors.ItemByGUID(myDescDef.GUID).RemoveValues
+						'myDoc.Commit
+					End If
+				End If
+			End If
+	    End If
+	End If
+finish:
+	Set myDoc = Nothing
+	Set myDescDef = Nothing
+	Exit Sub
+fError:
+	Application.ShowError "Beim Speichern ist ein Fehler aufgetreten!","Global Script/ ASF CAI Globale Funktionen mySystem_onDocCommit",,,Err.Description
+	GoTo finish
+End Sub
+'Ermöglicht das Überspringen eines seriellen WF-Empfängers für eine Aktivität einer bestimmten Prozessdefinition
+'Param: pProcessDefinitionGUID: GUID der Prozessdefinition (s. cubeDesigner)
+'Param: pProcessStepName: Name der Aktivität
+'Return: False: Ein Fehler ist aufgetreten
+'Return: True: Es ist kein Fehler aufgetreten
+Public Function  ASF_wf_ChangeSkippingAllowed(pExtProcessDefinitionGUID As String, pProcessStepName As String) As Boolean
+	On Error GoTo ErrorHandler
+
+	'Dim importer As New SWAIMPRTLib.MetaConverter
+	Dim md As WFMDLib.IwfMetaData
+	Dim pd As BPMLINELib.IwfProcessDefinition
+	Dim pdv As BPMLINELib.IwfProcessDefinitionVersion
+	Dim ps As BPMLINELib.IwfProcessStep
+
+	ASF_wf_ChangeSkippingAllowed = False
+	'importer.Login Application.System.Token
+
+	If Application.wfMetaData Is Nothing Then
+		ASF_wf_ChangeSkippingAllowed = True
+		Exit Function
+	End If
+
+	Set md = Application.wfMetaData
+	If Not md Is Nothing Then
+		If Not md.ExtProcessDefinitions.ItemByGUID(pExtProcessDefinitionGUID) Is Nothing Then
+			Set pd = md.ExtProcessDefinitions.ItemByGUID(pExtProcessDefinitionGUID).ProcessDefinition
+			If Not pd Is Nothing Then
+				Set pdv = pd.ProcessDefinitionVersions.ActiveVersion
+				If Not pdv Is Nothing Then
+					Set ps = pdv.ProcessSteps.ItemByName(pProcessStepName)
+					If Not ps Is Nothing Then
+						If Not 	ps.SkippingAllowed Then
+    						ps.SkippingAllowed = True
+    						pd.Commit
+    					End If
+    				Else
+    					Application.ShowError "Die Aktivität '" + pProcessStepName + "' zur Prozessdefinition mit der GUID '"+ pExtProcessDefinitionGUID + "' existiert nicht!","Global Script/ ASF CAI Globale Funktionen ASF_wf_ChangeSkippingAllowed"
+    					GoTo finish
+					End If
+				Else
+					Application.ShowError "Die aktive Version der Prozessdefinition mit der GUID '"+ pExtProcessDefinitionGUID + "' konnte nicht ermittelt werden!","Global Script/ ASF CAI Globale Funktionen ASF_wf_ChangeSkippingAllowed"
+					GoTo finish
+				End If
+			Else
+				Application.ShowError "Die Prozessdefinition mit der GUID '"+ pExtProcessDefinitionGUID + "' existiert nicht!","Global Script/ ASF CAI Globale Funktionen ASF_wf_ChangeSkippingAllowed"
+				GoTo finish
+			End If
+		Else
+			Application.ShowError "Die Prozessdefinition mit der GUID '"+ pExtProcessDefinitionGUID + "' existiert nicht!","Global Script/ ASF CAI Globale Funktionen ASF_wf_ChangeSkippingAllowed"
+			GoTo finish
+		End If
+	Else
+		Application.ShowError "Die Metaddaten konnten nicht geladen werden!", "Global Script/ ASF CAI Globale Funktionen ASF_wf_ChangeSkippingAllowed"
+		GoTo finish
+	End If
+    ASF_wf_ChangeSkippingAllowed = True
+finish:
+	'Set importer = Nothing
+	Set md = Nothing
+	Set pd= Nothing
+	Set pdv = Nothing
+	Set ps= Nothing
+	Exit Function
+ErrorHandler:
+  	Application.ShowError "Beim Überspringen eines seriellen WF_Empfängers ist ein Fehler aufgetreten!", "Global Script/ ASF CAI Globale Funktionen ASF_wf_ChangeSkippingAllowed",,,Err.Description
+  	GoTo finish
+End Function
+'Ü014
+Private Sub myDocToCheckIn_OnCheckOutStateChanged()
+	Set oTimer =  New SwaTimer
+	oTimer.SetTimer (500)
+End Sub
+'/Ü014
+'Ü014
+'Diese Fkt. setzt den Deskriptor 'ASF_Dok_Status' aller Versionen eines Dokuments auf ungülitg, falls dieses Dokument den Status 'freigegeben' hat
+
+'Ü019 Guido Bachmayr 2013-07-10
+'Ticket 1009375
+'Use-Case: auschecken -> im Viewer öffnen -> Content ersetzen (löschen + importieren + speichern) -> einchecken
+'          führt zu Meldung (beim einchecken): vorherige Version hatte Basisdatum (Aufbewahrungsfrist), neue nicht
+'Ursache: Bei diesem Use-Case wird nie der Ablagedialog verwendet (wo das Setzen des Basisdatums aufgerufen wird)
+'Lösung:  Übernehmen des Basisdatums (gleich) beim auschecken (hier beim OnDocCreateNewVersion nicht setzbar - sax-Fehler)
+Private Sub mySystem_OnDocCreateNewVersion(ByVal Document As SWAFRAMELib.IDocument, ByVal NewVersion As SWAFRAMELib.IDocument)
+	Dim oldDoc As ItaDocument
+
+	SetRetentionBaseDateInNewVersion= False
+	If Document.Type = enumDocumentType.ItaDocument Then
+		Set oldDoc = Document
+		SetRetentionBaseDateInNewVersion= Not IsEmpty(oldDoc.RetentionBaseDate)
+	End If
+End Sub
+
+Private Sub mySystem_OnDocCheckOutStateChanged(ByVal pDoc As SWAFRAMELib.IDocument)
+	Dim newDoc As ItaDocument
+
+	If pDoc.Type = enumDocumentType.ItaDocument Then
+		Set newDoc= pDoc
+		If SetRetentionBaseDateInNewVersion Then newDoc.RetentionBaseDate= Now
+		SetRetentionBaseDateInNewVersion= False
+	End If
+End Sub
+'/Ü019
+
+Private Sub oTimer_OnTimer()
+
+	On Error GoTo fError
+
+	Dim descValueUngültig As String
+	Dim descValueFreigegeben As String
+	Dim myDescDef As DescriptorDefinition
+	Dim arrmatrix() As String
+
+	If SER_getKeyValueFromStringMatrixByName("ASF_Dok_Status","ungültig",arrmatrix,False )Then
+		descValueUngültig = Trim(arrmatrix(0))
+	Else
+		Application.ShowMessage("Werteliste 'ASF_Dok_Status/ungültig' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+
+	If SER_getKeyValueFromStringMatrixByName("ASF_Dok_Status","freigegeben",arrmatrix,False )Then
+		descValueFreigegeben = Trim(arrmatrix(0))
+	Else
+		Application.ShowMessage("Werteliste 'ASF_Dok_Status/freigegeben' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+
+	oTimer.StopTimer
+
+	Set myDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Status")
+	If Not myDocToCheckIn.Descriptors.ItemByGUID(myDescDef.GUID) Is Nothing Then
+		If myDocToCheckIn.Descriptors.ItemByGUID(myDescDef.GUID).ValueCount > 0 Then
+			If myDocToCheckIn.Descriptors.ItemByGUID(myDescDef.GUID).Values (0) = descValueFreigegeben Then
+				Call ASF_SetDocState4DocVersions(myDocToCheckIn, descValueUngültig)
+			End If
+		End If
+	End If
+finish:
+	Set oTimer = Nothing
+	Set myDocToCheckIn = Nothing
+	Set myDescDef = Nothing
+	Exit Sub
+fError:
+  	Application.ShowError "Beim Ungültigsetzen aller Vorgängerversionen ist ein Fehler aufgetreten!", "Global Script/ ASF CAI Globale Funktionen oTimer_OnTimer",,,Err.Description
+	GoTo finish
+End Sub
+'/Ü014
+'Ü016
+'Diese Fkt. prüft, ob die in einer Trefferliste selektierten Dokumente bearbeitet werden dürfen
+'@param: pResultList: Trefferliste, deren selektierten Dokumente geprüft werden
+'@return: true: Alle selektierten Dokumente dürfen bearbeitet werden
+'@return: false: Mindestens ein selektiertes Dokument darf nicht bearbeitet werden
+Public Function ASF_CheckDocument4Edit(pResultList As IResultList, Optional myDoc As ItaDocument) As Boolean
+	Dim i As Integer
+	Dim myDescDefDokArt As DescriptorDefinition
+	Dim myDescDefDocName As DescriptorDefinition
+	Dim myDescDefKatId As DescriptorDefinition
+	Dim dokBezeichnung As String
+	Dim strErrMsg As String
+	Dim strDokArt As String
+	Dim strKatId As String
+
+
+
+	On Error GoTo fError
+
+	ASF_CheckDocument4Edit = False
+	Set myDescDefDocName = Application.System.DescriptorDefinitions.ItemByName("ASF_Bezeichnung")
+	If  myDescDefDocName Is Nothing Then
+		Application.ShowError "Es ist ein Fehler aufgetreten!",,,,"Die Deskriptor-Definition ASF_Bezeichnung existiert nicht!"
+		Exit Function
+	End If
+
+	Set myDescDefKatId = Application.System.DescriptorDefinitions.ItemByName("ASF_Kategorie_ID")
+	If  myDescDefKatId Is Nothing Then
+		Application.ShowError "Es ist ein Fehler aufgetreten!","Global Script/ SER GBA Globale Funktionen ASF_CheckDocument4Edit",,,"Die Deskriptor-Definition ASF_Kategorie_ID existiert nicht!"
+		Exit Function
+	End If
+
+	Set myDescDefDokArt = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Art")
+	If  myDescDefDokArt Is Nothing Then
+		Application.ShowError "Es ist ein Fehler aufgetreten!","Global Script/ SER GBA Globale Funktionen ASF_CheckDocument4Edit",,,"Die Deskriptor-Definition ASF_Dok_Art existiert nicht!"
+		Exit Function
+	End If
+
+	If Not myDoc Is Nothing Then
+		GoTo CheckSingleDoc
+	End If
+
+	For i = 0 To pResultList.SelectedCount - 1
+		Set myDoc = pResultList.SelectedDocuments (i)
+		CheckSingleDoc:
+
+		If Not myDoc.Descriptors.ItemByGUID(myDescDefDocName.GUID) Is Nothing Then
+			dokBezeichnung = myDoc.Descriptors.ItemByGUID(myDescDefDocName.GUID).Values(0)
+		End If
+
+		If Not ASF_CheckDokStatus(myDoc,"P", strErrMsg) Then
+			If Not SER_getDocumentAccessForUser(myDoc) Then
+				Application.ShowMessage  "Sie haben keine Berechtigung, das Dokument mit dem Namen '" + dokBezeichnung + "' zu bearbeiten!"
+				Exit Function
+			Else
+				If Not myDoc.Descriptors.ItemByGUID(myDescDefKatId.GUID) Is Nothing Then
+					strKatId = myDoc.Descriptors.ItemByGUID(myDescDefKatId.GUID).Values(0)
+				End If
+
+				If Not myDoc.Descriptors.ItemByGUID(myDescDefDokArt.GUID) Is Nothing Then
+					strDokArt = myDoc.Descriptors.ItemByGUID(myDescDefDokArt.GUID).Values(0)
+				End If
+				If ASF_DokumentArtIstGeschützt(strKatId, strDokArt) Then
+					If Not ASF_security_isUserGroupMember("Schreibrecht allgemein") Then
+						Application.ShowError  "Sie haben nicht die Berechtigung, Dokumente mit der Dokumentart '" + strDokArt + "' auszuchecken! Bitte wenden Sie sich an den zuständigen Qualitätsmanager!", _
+											"Global Script/ SER GBA Globale Funktionen ASF_CheckDocument4Edit",,,"Recht 'ASF - Gruppenmitgliedschaften => Schreibrecht allgemein => Mitgliedschaft'"
+						Exit Function
+					End If
+				End If
+			End If
+		Else
+			Application.ShowError "Das Dokument mit dem Namen '" +dokBezeichnung + "' darf nicht bearbeitet werden, weil es im Status 'in Prüfung' ist!","Result List/ Allgemein ResultWindow_OnEditDocument",,,strErrMsg
+			Exit Function
+		End If
+		Set myDoc = Nothing
+	Next i
+	ASF_CheckDocument4Edit = True
+finish:
+	Set myDoc = Nothing
+	Set myDescDefDocName = Nothing
+	Set myDescDefDokArt = Nothing
+	Set myDescDefKatId = Nothing
+	Exit Function
+fError:
+	Application.ShowError "Beim Bearbeiten ist ein Fehler aufgetreten!","Global Script/ ASF CAI GBA Globale Funktionen ASF_CheckDocument4Edit",,,Err.Description
+	GoTo finish
+End Function
+'/Ü016
+'Ü020
+'Wenn das Dokument BAV-relevant ist, wird eine neue BAV-Akte erstellt und in das Register 'Quelldokument' verknüpft
+Public Function ASF_BAV_addDoc2BAVFolder(pDoc As ItaDocument, pErsteller As String, pAbteilung As String) As Boolean
+	Dim myBAVAkteNode As CNode
+	Dim myBAVAkteNodes As CNodes
+	Dim errMsg As String
+	Dim folderNodeID As String
+	Dim myASF_BAV_Akte As SWAFRAMELib.ItaFolder
+
+	On Error GoTo fError
+
+	ASF_BAV_addDoc2BAVFolder = False
+
+	'BAV-Akte erstellen
+	folderNodeID = "df698650-9bde-4cc9-87be-c9211c1d0ae3" 'Dokument wird in das Register Quelldokument eingefügt
+	Set myASF_BAV_Akte = SER_createFolder("BAVAkte", "BAVAKten", "ASF_BAV_Geschaeftsfall_ID", ASF_IDs_getNextBAVGeschäftsfallID(), _
+										"ASF_Ersteller", pErsteller, "ASF_Abteilung", pAbteilung, _
+										"ASF_Status", "0", "ASF_BAV_Aufgabe_ID", "0")
+	ASF_Ortsbezug_copyOrtsbezuege2(pDoc , myASF_BAV_Akte, True)
+	'loadOrtsbezug
+	Set myBAVAkteNodes = myASF_BAV_Akte.Nodes
+	Set myBAVAkteNode = myBAVAkteNodes.ItemByID(folderNodeID) 'Register befindet sich auf oberster Ebene der Akte => keine Rekursion
+	If myBAVAkteNode Is Nothing Then
+		Application.ShowError "Es ist ein Fehler beim Hinzufügen des Dokuments zur BAV-Akte aufgetreten!","Archive Dialog/BAVDok Dlg_OnExecuted",,,"Das Register mit der ID " + folderNodeID +" existiert nicht!"
+	Else
+		If Not SER_addDocumentToRecord(pDoc, myASF_BAV_Akte, myBAVAkteNode, errMsg) Then
+			Application.ShowError "Es ist ein Fehler beim Hinzufügen des Dokuments zur BAV-Akte aufgetreten!","Archive Dialog/BAVDok Dlg_OnExecuted",,,errMsg
+		ElseIf MsgBox ("Eine neue BAV-Akte wurde erstellt!" + vbCrLf + "Wollen Sie sie zum Bearbeiten öffnen?", vbYesNo, "Frage") = vbYes Then
+				Application.OpenFolder myASF_BAV_Akte
+		End If
+	End If
+	ASF_BAV_addDoc2BAVFolder = True
+finish:
+	Set myBAVAkteNode  = Nothing
+	Set myBAVAkteNodes = Nothing
+	Set myASF_BAV_Akte  = Nothing
+	Exit Function
+fError:
+	Application.ShowError "Beim Hinzufügen des Dokuments zur BAV-Akte ist ein Fehler aufgetreten!","Global Script/ ASF CAI GBA Globale Funktionen ASF_BAV_addDoc2BAVFolder",,,Err.Description
+	GoTo finish
+End Function
+'/Ü020
+'Ü025
+'Diese Fkt. liefert alle Gruppenpostkörbe als wfReceivers-Objekt zurück
+Public Function ASF_wf_getGroupWorkBasketsAsWfReceiver() As wfReceivers
+
+	Dim XWFReceivers As New wfReceivers
+	Dim XWFReceiver As wfReceiver
+	Dim myGroupWorkBaskets() As Object
+	Dim i As Integer
+
+	myGroupWorkBaskets = Application.wfSession.Workbaskets.ItemsByFilter(WF_WBTYPE.wfWB_FOREIGNWORKGROUP_WITH_ACCESS Or WF_WBTYPE.wfWB_FOREIGNWORKGROUP_WITH_NOACCESS)
+	For i = LBound(myGroupWorkBaskets) To UBound(myGroupWorkBaskets)
+		Set XWFReceiver = XWFReceivers.AddNew
+		XWFReceiver.Participant =myGroupWorkBaskets(i)
+	Next
+	Set ASF_wf_getGroupWorkBasketsAsWfReceiver = XWFReceivers
+End Function
+'/Ü025
+Public Sub ASF_GrundstückUmhängen()
+
+	Dim ASFDokNr As String
+	Dim myStandardDok As ItaDocument
+	Dim myStandardDoks() As IDocument
+	Dim strErr As String
+	Dim sql As String
+	Dim descASFOrtOrtsbezugDokId As IDescriptor
+	Dim myOrtsbezugDok As ItaDocument
+	Dim descASFDokGrundstueckDokId As IDescriptor
+	Dim i As Integer
+	Dim myDescriptor As IDescriptor
+	Dim saveStandardDok As Boolean
+	Dim fileHandle As Long
+	Dim logfileHandle As Long
+	Dim inputFile As String
+	Dim logFile As String
+	Dim docCount As Long
+	Dim docCountWithOutGrundstück As Long
+	Dim addGrundstück As Boolean
+
+	On Error GoTo fError
+
+	If Application.System.User.User  = "Supervisor" Then
+		fileHandle = FreeFile
+		logfileHandle = FreeFile + 1
+
+		docCount = 0
+		docCountWithOutGrundstück = 0
+
+		inputFile = "c:\temp\Dokumente BMG GE_BauBestand.csv"
+		logFile = Left(inputFile, Len(inputFile) - 4) + "_Out.csv"
+
+		Open inputFile For Input As #fileHandle
+		Open logFile For Output As #logfileHandle
+		Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " ***********************"
+		Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Programm wird gestartet"
+		On Error GoTo fErrorDocument
+		While Not EOF(fileHandle)
+			Line Input  #fileHandle, ASFDokNr
+			'ASFDokNr = "391255"
+			Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Verarbeite Dokument mit ASFiNAG Dokument-ID " + ASFDokNr
+			sql = "select where " + Application.System.DescriptorDefinitions.ItemByName ("ASF_Dok_ID").QueryLiteral + " = '" + ASFDokNr + "'"
+			myStandardDoks = SER_searchDocumentsOrFolders("BauBestand","20000101",sql, strErr, "ASFiNAG")
+
+			On Error Resume Next
+			If UBound(myStandardDoks) >= 0 Then
+				If Err.Number <> 0 Then
+					If strErr = "" Then
+						Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Zur ASF Dokument-ID '" + ASFDokNr + "' konnte kein Dokument gefunden werden!"
+					Else
+						Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " " + strErr
+					End If
+					Err.Clear
+				Else
+					On Error GoTo fErrorDocument
+					saveStandardDok = False
+					Set myStandardDok = myStandardDoks(0)
+					'Deskriptor ASF_Ort_Ortsbezug_DokID ermitteln
+					If Not myStandardDok.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName ("ASF_Ort_Ortsbezug_DokId").GUID) Is Nothing Then
+						Set descASFOrtOrtsbezugDokId = myStandardDok.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName ("ASF_Ort_Ortsbezug_DokId").GUID)
+						'Ortsbezugs-Dokumente auslesen
+						If descASFOrtOrtsbezugDokId.ValueCount = 0 Then
+							Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Das Dokument besitzt dkeine Werte im Deskriptor ASF_Ort_Ortsbezug_DokId!"
+							docCountWithOutGrundstück = docCountWithOutGrundstück + 1
+						End If
+						For i = descASFOrtOrtsbezugDokId.ValueCount - 1 To 0 Step -1
+								Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Prüfe IndexOnly-Dokument " + descASFOrtOrtsbezugDokId.Value(i)
+							Set myOrtsbezugDok  = Application.System.GetDocumentDirect (descASFOrtOrtsbezugDokId.Value(i))
+							If Not myOrtsbezugDok Is Nothing Then
+								'Prüfen, ob das Ortsbezugdokument eigentlich ein Grundstücks-Dokument ist
+								If myOrtsbezugDok.DocumentTypeGUID = "d4f9213c-f30d-4009-8e5c-cf22f0617ca5" Then
+									Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " IndexOnly-Dokument ist ein Grundstücksdokument!"
+									addGrundstück = True
+									If Not myStandardDok.Descriptors.ItemByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID) Is Nothing Then
+										If myStandardDok.Descriptors.ItemByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID).ValueCount > 0 Then
+											Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Das Dokument besitzt bereits ein Grundstücksdokument!"
+											addGrundstück = False
+										End If
+									End If
+									If addGrundstück Then
+										saveStandardDok = True
+										'Dok_ID in den Deskriptor ASF_Dok_Grundstueck_DokId übernehmen
+										If myStandardDok.Descriptors.ItemByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID) Is Nothing Then
+											Set descASFDokGrundstueckDokId = myStandardDok.Descriptors.AddNewByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID)
+											descASFDokGrundstueckDokId.AddValue descASFOrtOrtsbezugDokId.Value(i)
+										Else
+											Set descASFDokGrundstueckDokId = myStandardDok.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID)
+											descASFDokGrundstueckDokId.AddValue descASFOrtOrtsbezugDokId.Value(i)
+										End If
+										'Deskriptoren vom Grundstücksdokument auf die Multivalue-Deskriptoren des Standard-Dokuments übernehmen
+										'Bundesland
+										If myStandardDok.Descriptors.ItemByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Bundesland").GUID) Is Nothing Then
+											Set myDescriptor = myStandardDok.Descriptors.AddNewByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Bundesland").GUID)
+											myDescriptor.AddValue SER_getFirstDescriptorValueByName(myOrtsbezugDok.Descriptors, "ASF_Bundesland")
+										Else
+											Set myDescriptor = myStandardDok.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Bundesland").GUID)
+											myDescriptor.AddValue SER_getFirstDescriptorValueByName(myOrtsbezugDok.Descriptors, "ASF_Bundesland")
+										End If
+
+										'KGNummer
+										If myStandardDok.Descriptors.ItemByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_KG_Nummer").GUID) Is Nothing Then
+											Set myDescriptor = myStandardDok.Descriptors.AddNewByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_KG_Nummer").GUID)
+											myDescriptor.AddValue SER_getFirstDescriptorValueByName(myOrtsbezugDok.Descriptors, "ASF_KG_Nummer")
+										Else
+											Set myDescriptor = myStandardDok.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_KG_Nummer").GUID)
+											myDescriptor.AddValue SER_getFirstDescriptorValueByName(myOrtsbezugDok.Descriptors, "ASF_KG_Nummer")
+										End If
+
+										'KGName
+										If myStandardDok.Descriptors.ItemByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_KG_Name").GUID) Is Nothing Then
+											Set myDescriptor = myStandardDok.Descriptors.AddNewByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_KG_Name").GUID)
+											myDescriptor.AddValue SER_getFirstDescriptorValueByName(myOrtsbezugDok.Descriptors, "ASF_KG_Name")
+										Else
+											Set myDescriptor = myStandardDok.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_KG_Name").GUID)
+											myDescriptor.AddValue SER_getFirstDescriptorValueByName(myOrtsbezugDok.Descriptors, "ASF_KG_Name")
+										End If
+
+										'GrundstücksNr
+										If myStandardDok.Descriptors.ItemByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_Nr").GUID) Is Nothing Then
+											Set myDescriptor = myStandardDok.Descriptors.AddNewByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_Nr").GUID)
+											myDescriptor.AddValue SER_getFirstDescriptorValueByName(myOrtsbezugDok.Descriptors, "ASF_Grundstueck_Nr")
+										Else
+											Set myDescriptor = myStandardDok.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_Nr").GUID)
+											myDescriptor.AddValue SER_getFirstDescriptorValueByName(myOrtsbezugDok.Descriptors, "ASF_Grundstueck_Nr")
+										End If
+
+										'PolbezirkName
+										If myStandardDok.Descriptors.ItemByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_PolBezirk_Name").GUID) Is Nothing Then
+											Set myDescriptor = myStandardDok.Descriptors.AddNewByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_PolBezirk_Name").GUID)
+											myDescriptor.AddValue SER_getFirstDescriptorValueByName(myOrtsbezugDok.Descriptors, "ASF_PolBezirk_Name")
+										Else
+											Set myDescriptor = myStandardDok.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_PolBezirk_Name").GUID)
+											myDescriptor.AddValue SER_getFirstDescriptorValueByName(myOrtsbezugDok.Descriptors, "ASF_PolBezirk_Name")
+										End If
+
+										descASFOrtOrtsbezugDokId.RemoveValue (i)
+									End If
+								Else
+									Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Das IndexOnly-Dokument ist kein Grundstücksdokument!"
+								End If
+							End If
+						Next
+						If saveStandardDok Then
+							myStandardDok.Commit
+						End If
+						Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Dokument wurde fehlerfrei verarbeitet!"
+					Else
+						Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Das Dokument besitzt den Deskriptor ASF_Ort_Ortsbezug_DokId nicht!"
+						docCountWithOutGrundstück = docCountWithOutGrundstück + 1
+					End If
+				End If
+			End If
+fErrorDocument:
+			If Err.Number <> 0 Then
+				Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Ein Fehler ist aufgetreten: " + Err.Description
+				Err.Clear
+			End If
+			docCount = docCount + 1
+		Wend
+	End If
+finish:
+	On Error Resume Next
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Programm wurde beendet"
+	Close #fileHandle
+	Close #logfileHandle
+	Exit Sub
+fError:
+	Application.ShowMessage "Ein fataler Fehler ist aufgetreten: " + Err.Description
+	GoTo finish
+End Sub
+Private Sub exportTemplates()
+	Dim i As Integer
+	Dim fileHandle As Long
+	Dim docId As String
+	Dim myDoc As ItaDocument
+	Dim myVorlage As DocumentTemplate
+	Dim exportError As String
+	Dim asfDocId As String
+	Dim myDescriptor As Descriptor
+	Dim tmpNames() As String
+	Dim originalNames() As String
+	Dim exportResult As Long
+	Dim vorlagenDatei As String
+	Dim fs As New FileSystemObject
+	Dim destinationFile As String
+
+	On Error GoTo fError
+	fileHandle = FreeFile
+
+	Open "C:\Users\srv_ser\Documents\AsfinagVorlagen\Vorlagen.xml" For Output As #fileHandle
+	Print #fileHandle, "<Vorlagen>"
+	On Error Resume Next
+	For i = 0 To Application.MetaData.DocumentTemplates.Count -1
+		exportError = ""
+		asfDocId = ""
+		docId = ""
+		destinationFile = ""
+		vorlagenDatei =""
+		Set myVorlage = Application.MetaData.DocumentTemplates.Item(i)
+		Print #fileHandle, vbTab+"<Vorlage>"
+		Print #fileHandle, vbTab+vbTab+ "<Name>" + myVorlage.Name  + "</Name>
+
+		If myVorlage.ReferenceType = enumTemplateReferenceType.rtItaDocument Then
+			docId = myVorlage.Reference
+			Set myDoc = Application.System.GetDocumentDirect (docId)
+			If myDoc.DocumentIDLastVersion <> docId Then
+				Set myDoc = Application.System.GetDocumentDirect (myDoc.DocumentIDLastVersion)
+			End If
+			If myDoc Is Nothing Then
+				exportError = "Zur DokID " + docId +" der Vorlage "+ myVorlage.Name + " existiert kein Dokument!"
+			Else
+				Set myDescriptor =  myDoc.Descriptors.ItemByGUID("56dd9d18-fa70-4ee0-9629-7fdc7f5ac637")
+				If myDescriptor Is Nothing Then
+					exportError = "Das Dokument besitzt den Deskriptor 'ASF_Dokid' nicht!"
+				Else
+					If myDescriptor.ValueCount = 0 Then
+						exportError = "Das Dokument besitzt den Deskriptor 'ASF_Dokid' nicht!"
+					Else
+						asfDocId = myDescriptor.Value (0)
+					End If
+					exportResult = Application.ExportItaDocument(myDoc,tmpNames, originalNames)
+					If exportResult <> 1 Then
+						exportError = "Der Export der Vorlage war nicht erfolgreich!"
+					Else
+						If fs.FileExists (tmpNames(0)) Then
+							fs.CreateFolder "C:\Users\srv_ser\Documents\AsfinagVorlagen\" &  myVorlage.Name
+							If originalNames(0) <> "" Then
+								destinationFile = "C:\Users\srv_ser\Documents\AsfinagVorlagen\" &  myVorlage.Name & "\" & originalNames(0)
+							Else
+								destinationFile = "C:\Users\srv_ser\Documents\AsfinagVorlagen\" &  myVorlage.Name & "\" & fs.GetFileName (tmpNames(0))
+							End If
+							fs.MoveFile tmpNames(0), destinationFile
+						Else
+							exportError = "Die exportierte Vorlagendatei existiert nicht im Zielverzeichnis!"
+						End If
+					End If
+				End If
+			End If
+		Else
+			exportError = "Die Vorlage befindet sich auf dem Filesystem!"
+		End If
+		If Err.Number <> 0 Then
+			exportError = Err.Description
+			Err.Clear
+		End If
+		Print #fileHandle, vbTab+vbTab+ "<DocId>" + docId + "</DocId>
+		Print #fileHandle, vbTab+vbTab+ "<ASFDocId>" + asfDocId + "</ASFDocId>"
+		Print #fileHandle, vbTab+vbTab+ "<Vorlagendatei>" & fs.GetFileName(destinationFile) & "</Vorlagendatei>"
+		Print #fileHandle, vbTab+vbTab+ "<Exportfehler>" + exportError +"/<Exportfehler>"
+		Print #fileHandle, vbTab+"</Vorlage>"
+	Next
+	Print #fileHandle, "</Vorlagen>"
+finish:
+	Close #fileHandle
+	Exit Sub
+fError:
+	Application.ShowError ("Beim Export ist ein Fehler aufgetreten!",,,,Err.Description)
+	GoTo finish
+End Sub
+'Ü029
+Private Function updateS05(pDocument As ItaDocument, pLogfileHandle As Long) As Boolean
+
+	Dim XQuery As Query
+	Dim pStrInterneUUID As String
+	Dim myResultSet As IResultset
+	Dim i, j As Integer
+	Dim myOrtsbezugS05 As ItaDocument 'Straßenzug S05
+	Dim straßenZug As String
+	Dim errMsg As String
+	Dim updateOrtsbezug As Boolean
+	Dim myDescriptor As Descriptor
+	Dim kmVon As Double
+	Dim kmBis As Double
+	Dim kmVonS05Neu As Double
+	Dim kmBisS05Neu As Double
+	Dim alteKilometrierungVariantSet As New VariantSet
+	Dim alteKilometrierung As String
+	Dim richtung As String
+	Dim XDescDef As DescriptorDefinition
+	Dim xDescNames(7) As String
+	Dim descvalue As String
+	Dim searchableKmVon As New VariantSet
+	Dim searchableKmBis As New VariantSet
+
+	On Error GoTo fError
+
+	updateS05 = False
+	alteKilometrierungVariantSet.RemoveAll
+	pStrInterneUUID = pDocument.InternalDescriptors.ItemByGUID("UUID").Value(0)
+	Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Ermittle Ortsbezüge!"
+	'*	zugeordnete Ortsbezüge vom Dokument laden (UUID von dem tatsächlichen Dokument / Folder wurde bei dem Ortsbezugdokument gespeichert)
+	Set XQuery = Application.System.CreateQuery
+	With XQuery
+		.Databases.Add Application.System.QueryDatabases.ItemByName("IndexOnly")
+		.RangeStart = "20100101"
+		.RangeEnd = Format(Now, "YYYYMMDD")
+		.HitLimit = 1000
+		If pStrInterneUUID <> "" Then
+			.SQLStatement = "SELECT * WHERE " & Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID").QueryLiteral & " = '" & pStrInterneUUID & "'"
+		Else
+			.SQLStatement = "SELECT * WHERE 1=0"
+		End If
+		Set myResultSet = .Execute
+	End With
+
+	updateOrtsbezug = False
+	If Not myResultSet Is Nothing Then
+		Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Es wurden " + CStr(myResultSet.TotalCount) + " Ortsbezüge gefunden!"
+		For i = 0 To myResultSet.TotalCount - 1
+			alteKilometrierung = ""
+			straßenZug = ""
+			kmVon = 0
+			kmBis = 0
+			Set myOrtsbezugS05 = myResultSet.Document (i)
+			If myOrtsbezugS05.DocumentTypeGUID = "333727f2-6203-4e06-b64b-8f1e820de6f1" Then 'Es werden nur Ortsbezüge bearbeitet
+				If Not myOrtsbezugS05.Descriptors.ItemByGUID ("c7a1aba7-a3af-4525-914b-a72d9ad15228") Is Nothing Then ' Name des Straßenzuges  ermitteln
+					straßenZug = SER_getFirstDescriptorValueByName(myOrtsbezugS05.Descriptors, "ASF_Ort_Straße") 'myOrtsbezugS05.Descriptors.ItemByGUID ("c7a1aba7-a3af-4525-914b-a72d9ad15228").Values(0)
+					kmVon = SER_getFirstDescriptorValueByName(myOrtsbezugS05.Descriptors, "ASF_Ort_KmVon")
+					kmBis = SER_getFirstDescriptorValueByName(myOrtsbezugS05.Descriptors, "ASF_Ort_KmBis")
+
+					If UCase(straßenZug) = "S05" Then
+						updateOrtsbezug = True
+
+						Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Bearbeite Ortsbezug zu Straßenzug S05 mit DokID: " & myOrtsbezugS05.DocumentID
+
+						'Deskriptor kmVon der S05 auf die neuen Werte umrechnen
+						Set myDescriptor = myOrtsbezugS05.Descriptors.ItemByGUID ("c2f798b4-7270-4504-bd44-81a6ed4af046")
+						If Not myDescriptor Is Nothing Then
+							If myDescriptor.ValueCount > 0 Then
+								kmVonS05Neu = Format(calcKMS05Neu(kmVon), "0.000")
+								myDescriptor.RemoveValues
+								myDescriptor.AddValue kmVonS05Neu 'myDescriptor.DescriptorDefinition.FilingFormatToVariant(kmVon)
+								alteKilometrierung = alteKilometrierung & kmVon & ";"
+								Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Kilometerbezug kmVon geändert von auf: " + CStr(kmVon)  + " => "+ CStr(kmVonS05Neu)
+								kmVon = kmVonS05Neu
+							Else
+								alteKilometrierung = alteKilometrierung & ";"
+							End If
+						Else
+							alteKilometrierung = alteKilometrierung & ";"
+						End If
+
+						'Deskriptor kmBIs der S05 auf die neuen Werte umrechnen
+						Set myDescriptor = myOrtsbezugS05.Descriptors.ItemByGUID ("a8c76346-657c-4d8d-875e-cfe5c6d71e0d")
+						If Not myDescriptor Is Nothing Then
+							If myDescriptor.ValueCount > 0 Then
+								kmBisS05Neu = Format(calcKMS05Neu(kmBis), "0.000")
+								myDescriptor.RemoveValues
+								myDescriptor.AddValue kmBisS05Neu 'myDescriptor.DescriptorDefinition.FilingFormatToVariant(kmBis)
+								alteKilometrierung = alteKilometrierung & kmBis & ";"
+								Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Kilometerbezug kmBis geändert von auf: " + CStr(kmBis)  + " => "+ CStr(kmBisS05Neu)
+								kmBis = kmBisS05Neu
+							Else
+								alteKilometrierung = alteKilometrierung & ";"
+							End If
+						Else
+							alteKilometrierung = alteKilometrierung & ";"
+						End If
+
+						'Deskriptor Richtung aus dem Ortsbezug auslesen
+						Set myDescriptor = myOrtsbezugS05.Descriptors.ItemByGUID ("e2eff56e-7ff8-4e3a-8732-2dcb2a145eef")
+						If Not myDescriptor Is Nothing Then
+							If myDescriptor.ValueCount > 0 Then
+								richtung = myDescriptor.Values (0)
+								alteKilometrierung = alteKilometrierung & richtung & ";"
+							Else
+								alteKilometrierung = alteKilometrierung & ";"
+							End If
+						Else
+							alteKilometrierung = alteKilometrierung + ";"
+						End If
+						alteKilometrierungVariantSet.Add alteKilometrierung
+						myOrtsbezugS05.Commit
+					End If
+				End If
+				'Kilometerwerte von und bis aller Ortsbezüge merken. Diese müssen am Dokument aktualisiert werden, falls ein S05-Straßenzug dabei ist.
+				descvalue = ASF_Ortsbezug_getSearchableKmString(straßenZug, kmVon)
+				If descvalue <> "" Then
+					searchableKmVon.Add descvalue
+				End If
+
+				descvalue = ASF_Ortsbezug_getSearchableKmString(straßenZug, kmBis)
+				If descvalue <> "" Then
+					searchableKmBis.Add descvalue
+				End If
+			End If
+		Next
+	Else
+		Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Es wurden keine Ortsbezüge gefunden!"
+	End If
+
+	If Not updateOrtsbezug Then
+		Exit Function
+	End If
+
+	xDescNames(0)= "ASF_Stichwoerter"
+	xDescNames(1)= "ASF_Dok_StrKmVon"
+	xDescNames(2)= "ASF_Dok_StrKmBis"
+
+	'Ortsbezugs-bezogene Daten der S05Neu auf das übergeordnete Dokument übernehmen (alte Kilometrierung von S05 als Stichwörter, kmVon, kmBis)
+	Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Ortsbezugsdaten werden auf das übergeordnete Dokument aufgebracht!"
+	For j = 0 To 2
+		Set XDescDef = Application.System.DescriptorDefinitions.ItemByName (xDescNames(j))
+		If Not XDescDef Is Nothing Then
+			If pDocument.Descriptors.ItemByGUID (XDescDef.GUID) Is Nothing Then
+				Set myDescriptor = pDocument.Descriptors.AddNewByGUID (XDescDef.GUID)
+			Else
+				Set myDescriptor = pDocument.Descriptors.ItemByGUID (XDescDef.GUID)
+			End If
+			Select Case XDescDef.Name
+				Case xDescNames(0)
+					Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Alte Kilometrierung des Straßenzuges S05 als Stichwörter speichern
+					For i = 0 To alteKilometrierungVariantSet.Count - 1
+						Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": " + alteKilometrierungVariantSet.Item (i)
+						myDescriptor.AddValue alteKilometrierungVariantSet.Item (i)
+					Next
+				Case xDescNames(1)
+					If searchableKmVon.Count > 0 Then
+						myDescriptor.RemoveValues
+						Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Kilometerwerte Von aller Ortsbezüge am übergeordnetem Dokument speichern
+						For i = 0 To searchableKmVon.Count - 1
+							Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": " + searchableKmVon.Item (i)
+							myDescriptor.AddValue searchableKmVon.Item (i)
+						Next
+					End If
+				Case xDescNames(2)
+					If searchableKmBis.Count > 0 Then
+						myDescriptor.RemoveValues
+						Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Kilometerwerte Bis aller Ortsbezüge am übergeordnetem Dokument speichern
+						For i = 0 To searchableKmBis.Count - 1
+							Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": " + searchableKmBis.Item (i)
+							myDescriptor.AddValue searchableKmBis.Item (i)
+						Next
+					End If
+			End Select
+		End If
+	Next j
+	pDocument.Commit
+
+	Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + "Das Dokument wurde erfolgreich bearbeitet
+	updateS05 = True
+	Exit Function
+fError:
+	Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + "Beim Verarbeiten des Dokuments ist folgender Fehler aufgetreten: " + Err.Description
+	Err.Raise 2000, "Beim Verarbeiten des Dokuments ist folgender Fehler aufgetreten: " + Err.Description
+End Function
+
+'*	Verbindung zur Datenbank ASF_DMS_Daten
+	Public ASF_DMS_Daten As ADODB.Connection
+
+'*	Datenbank-Abfragen
+	Private MyRst As New ADODB.Recordset
+Private Sub openLocalRecordset(	ByVal pSQL As String, _
+								Optional ByVal pCallerName As String, _
+								Optional ByVal pCursorType As CursorTypeEnum = adOpenStatic, _
+								Optional ByVal pLockType As LockTypeEnum = adLockReadOnly)
+
+	On Error GoTo ErrorHandler
+	Set ASF_DMS_Daten = Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").ADOConnection
+	If MyRst.State = adStateOpen Then MyRst.Close
+	If Not ASF_DMS_Daten.State = adStateOpen Then
+		ASF_DMS_Daten.Open Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").ADOConnectionString
+	End If
+	MyRst.Open pSQL, ASF_DMS_Daten, pCursorType, pLockType
+
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler beim Abfragen von Daten aus der Datenbank ASF_DMS_Daten!", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in openLocalRecordset(" & pSQL & ")" & vbCrLf & "aufgerufen von " & pCallerName, 0
+End Sub
+'Ü036
+Public Function addA221Neu2Documents() As Boolean
+
+'Select distinct ASF_DOK_ID2 from  SEDNANEU.ASF_H inner Join sednaNeu.idxonly_0000_h
+'On SEDNANEU.asf_h.UUID_HI = sednaneu.IDXONLY_0000_H.ASF_DOK_DOKFOLDERUUID
+'where ASF_ORT_STRASSE = 'A221'
+
+'Select distinct ASF_DOK_ID2 from  SEDNANEU.BESTAND_H inner Join SEDNANEU.idxonly_0000_h
+'On SEDNANEU.BESTAND_H.UUID_HI = SEDNANEU.IDXONLY_0000_H.ASF_DOK_DOKFOLDERUUID
+'where ASF_ORT_STRASSE = 'A221'
+
+
+	Dim fileHandle As Long
+	Dim logfileHandle As Long
+	Dim inputFile As String
+	Dim logFile As String
+	Dim ASFDokNr As String
+	Dim myStandardDok As ItaDocument
+	Dim myStandardDoks() As IDocument
+	Dim docCount As Integer
+	Dim sql As String
+	Dim strErr As String
+	Dim userPath As String
+
+	On Error GoTo fError
+
+	'Exit Function
+
+	userPath = Environ("USERNAME")
+	inputFile = "C:\Users\" + userPath + "\Documents\A221.csv"
+	logFile = "C:\Users\" + userPath + "\Documents\A221neu.log"
+	fileHandle = FreeFile
+	logfileHandle = FreeFile + 1
+	Open inputFile For Input As #fileHandle
+	Open logFile For Output As #logfileHandle
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " ***********************"
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Programm wird gestartet"
+	On Error GoTo fErrorDocument
+	docCount = 0
+	While Not EOF(fileHandle)
+		Line Input  #fileHandle, ASFDokNr
+		'ASFDokNr = "1674353"
+		Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Verarbeite das " + CStr(docCount + 1) + ". Dokument mit ASFiNAG Dokument-ID " + ASFDokNr
+		sql = "select where " + Application.System.DescriptorDefinitions.ItemByName ("ASF_Dok_ID").QueryLiteral + " = '" + ASFDokNr + "'"
+		myStandardDoks = SER_searchDocumentsOrFolders("BauBestand","20000101",sql, strErr, "ASFiNAG")
+
+		On Error Resume Next
+		If UBound(myStandardDoks) >= 0 Then
+			If Err.Number <> 0 Then
+				If strErr = "" Then
+					Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Zur ASF Dokument-ID '" + ASFDokNr + "' konnte kein Dokument gefunden werden!"
+				Else
+					Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " " + strErr
+				End If
+				Err.Clear
+			Else
+				On Error GoTo fErrorDocument
+				Set myStandardDok = myStandardDoks(0)
+				Call updateA221(myStandardDok, logfileHandle)
+			End If
+		End If
+fErrorDocument:
+		If Err.Number <> 0 Then
+			Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Ein Fehler beim Verarbeiten ist aufgetreten: " + Err.Description
+			Err.Clear
+		End If
+		docCount = docCount + 1
+	Wend
+
+finish:
+	On Error Resume Next
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Programm wurde beendet und " + CStr(docCount) + " Dokumente bearbeitet!"
+	Application.ShowMessage "Programm wurde beendet und " + CStr(docCount) + " Dokumente bearbeitet!"
+	Close #fileHandle
+	Close #logfileHandle
+	Exit Function
+fError:
+	On Error Resume Next
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Ein fataler Fehler ist aufgetreten: " + Err.Description
+	Application.ShowMessage "Ein fataler Fehler ist aufgetreten: " + Err.Description
+	GoTo finish
+End Function
+Private Function updateA221(pDocument As ItaDocument, pLogfileHandle As Long) As Boolean
+
+	Dim XQuery As Query
+	Dim pStrInterneUUID As String
+	Dim myResultSet As IResultset
+	Dim i, j As Integer
+	Dim myOrtsbezugA221 As ItaDocument 'Straßenzug A221
+	Dim straßenZug As String
+	Dim errMsg As String
+	Dim updateOrtsbezug As Boolean
+	Dim myDescriptor As Descriptor
+	Dim kmVon As Double
+	Dim kmBis As Double
+	Dim kmVonA221Neu As Double
+	Dim kmBisA221Neu As Double
+	Dim alteKilometrierungVariantSet As New VariantSet
+	Dim alteKilometrierung As String
+	Dim richtung As String
+	Dim XDescDef As DescriptorDefinition
+	Dim xDescNames(7) As String
+	Dim descvalue As String
+	Dim searchableKmVon As New VariantSet
+	Dim searchableKmBis As New VariantSet
+
+	On Error GoTo fError
+
+	updateA221 = False
+	alteKilometrierungVariantSet.RemoveAll
+	pStrInterneUUID = pDocument.InternalDescriptors.ItemByGUID("UUID").Value(0)
+	Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Ermittle Ortsbezüge!"
+	'*	zugeordnete Ortsbezüge vom Dokument laden (UUID von dem tatsächlichen Dokument / Folder wurde bei dem Ortsbezugdokument gespeichert)
+	Set XQuery = Application.System.CreateQuery
+	With XQuery
+		.Databases.Add Application.System.QueryDatabases.ItemByName("IndexOnly")
+		.RangeStart = "20100101"
+		.RangeEnd = Format(Now, "YYYYMMDD")
+		.HitLimit = 0
+		If pStrInterneUUID <> "" Then
+			.SQLStatement = "SELECT * WHERE " & Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID").QueryLiteral & " = '" & pStrInterneUUID & "'"
+		Else
+			.SQLStatement = "SELECT * WHERE 1=0"
+		End If
+		Set myResultSet = .Execute
+	End With
+
+	updateOrtsbezug = False
+	If Not myResultSet Is Nothing Then
+		Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Es wurden " + CStr(myResultSet.TotalCount) + " Ortsbezüge gefunden!"
+		For i = 0 To myResultSet.TotalCount - 1
+			alteKilometrierung = ""
+			straßenZug = ""
+			kmVon = 0
+			kmBis = 0
+			Set myOrtsbezugA221 = myResultSet.Document (i)
+			If myOrtsbezugA221.DocumentTypeGUID = "333727f2-6203-4e06-b64b-8f1e820de6f1" Then 'Es werden nur Ortsbezüge bearbeitet
+				If Not myOrtsbezugA221.Descriptors.ItemByGUID ("c7a1aba7-a3af-4525-914b-a72d9ad15228") Is Nothing Then ' Name des Straßenzuges  ermitteln
+					straßenZug = SER_getFirstDescriptorValueByName(myOrtsbezugA221.Descriptors, "ASF_Ort_Straße") 'myOrtsbezugS05.Descriptors.ItemByGUID ("c7a1aba7-a3af-4525-914b-a72d9ad15228").Values(0)
+					kmVon = SER_getFirstDescriptorValueByName(myOrtsbezugA221.Descriptors, "ASF_Ort_KmVon")
+					kmBis = SER_getFirstDescriptorValueByName(myOrtsbezugA221.Descriptors, "ASF_Ort_KmBis")
+
+					If UCase(straßenZug) = "A221" Then 'Straßenzug A221
+						straßenZug = "A221"
+						updateOrtsbezug = True
+
+						Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Bearbeite Ortsbezug zu Straßenzug A221 mit DokID: " & myOrtsbezugA221.DocumentID
+
+						'Deskriptor kmVon der A221 auf die neuen Werte umrechnen
+						Set myDescriptor = myOrtsbezugA221.Descriptors.ItemByGUID ("c2f798b4-7270-4504-bd44-81a6ed4af046") 'Deskriptor ASF_Ort_KmVon
+						If Not myDescriptor Is Nothing Then
+							If myDescriptor.ValueCount > 0 Then
+								kmVonA221Neu = Format(calcKMA221Neu(kmVon), "0.000")
+								myDescriptor.RemoveValues
+								myDescriptor.AddValue kmVonA221Neu 'myDescriptor.DescriptorDefinition.FilingFormatToVariant(kmVon)
+								alteKilometrierung = alteKilometrierung & kmVon & ";"
+								Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Kilometerbezug kmVon geändert von auf: " + CStr(kmVon)  + " => "+ CStr(kmVonA221Neu)
+								kmVon = kmVonA221Neu
+							Else
+								alteKilometrierung = alteKilometrierung & ";"
+							End If
+						Else
+							alteKilometrierung = alteKilometrierung & ";"
+						End If
+
+						'Deskriptor kmBIs A221 auf die neuen Werte umrechnen
+						Set myDescriptor = myOrtsbezugA221.Descriptors.ItemByGUID ("a8c76346-657c-4d8d-875e-cfe5c6d71e0d")
+						If Not myDescriptor Is Nothing Then
+							If myDescriptor.ValueCount > 0 Then
+								kmBisA221Neu = Format(calcKMA221Neu(kmBis), "0.000")
+								myDescriptor.RemoveValues
+								myDescriptor.AddValue kmBisA221Neu 'myDescriptor.DescriptorDefinition.FilingFormatToVariant(kmBis)
+								alteKilometrierung = alteKilometrierung & kmBis & ";"
+								Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Kilometerbezug kmBis geändert von auf: " + CStr(kmBis)  + " => "+ CStr(kmBisA221Neu)
+								kmBis = kmBisA221Neu
+							Else
+								alteKilometrierung = alteKilometrierung & ";"
+							End If
+						Else
+							alteKilometrierung = alteKilometrierung & ";"
+						End If
+
+						'Deskriptor Richtung aus dem Ortsbezug auslesen
+						Set myDescriptor = myOrtsbezugA221.Descriptors.ItemByGUID ("e2eff56e-7ff8-4e3a-8732-2dcb2a145eef")
+						If Not myDescriptor Is Nothing Then
+							If myDescriptor.ValueCount > 0 Then
+								richtung = myDescriptor.Values (0)
+								alteKilometrierung = alteKilometrierung & richtung & ";"
+							Else
+								alteKilometrierung = alteKilometrierung & ";"
+							End If
+						Else
+							alteKilometrierung = alteKilometrierung + ";"
+						End If
+						alteKilometrierungVariantSet.Add alteKilometrierung
+						myOrtsbezugA221.Commit
+					End If
+				End If
+				'Kilometerwerte von und bis aller Ortsbezüge merken. Diese müssen am Dokument aktualisiert werden, falls ein A221-Straßenzug dabei ist.
+				descvalue = ASF_Ortsbezug_getSearchableKmString(straßenZug, kmVon)
+				If descvalue <> "" Then
+					searchableKmVon.Add descvalue
+				End If
+
+				descvalue = ASF_Ortsbezug_getSearchableKmString(straßenZug, kmBis)
+				If descvalue <> "" Then
+					searchableKmBis.Add descvalue
+				End If
+			End If
+		Next
+	Else
+		Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Es wurden keine Ortsbezüge gefunden!"
+	End If
+
+	If Not updateOrtsbezug Then
+		Exit Function
+	End If
+
+	xDescNames(0)= "ASF_Stichwoerter"
+	xDescNames(1)= "ASF_Dok_StrKmVon"
+	xDescNames(2)= "ASF_Dok_StrKmBis"
+
+	'Ortsbezugs-bezogene Daten der A221Neu auf das übergeordnete Dokument übernehmen (alte Kilometrierung von A221 als Stichwörter, kmVon, kmBis)
+	Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Ortsbezugsdaten werden auf das übergeordnete Dokument aufgebracht!"
+	For j = 0 To 2
+		Set XDescDef = Application.System.DescriptorDefinitions.ItemByName (xDescNames(j))
+		If Not XDescDef Is Nothing Then
+			If pDocument.Descriptors.ItemByGUID (XDescDef.GUID) Is Nothing Then
+				Set myDescriptor = pDocument.Descriptors.AddNewByGUID (XDescDef.GUID)
+			Else
+				Set myDescriptor = pDocument.Descriptors.ItemByGUID (XDescDef.GUID)
+			End If
+			Select Case XDescDef.Name
+				Case xDescNames(0)
+					Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Alte Kilometrierung des Straßenzuges A221 als Stichwörter speichern
+					For i = 0 To alteKilometrierungVariantSet.Count - 1
+						Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": " + alteKilometrierungVariantSet.Item (i)
+						myDescriptor.AddValue alteKilometrierungVariantSet.Item (i)
+					Next
+				Case xDescNames(1)
+					If searchableKmVon.Count > 0 Then
+						myDescriptor.RemoveValues
+						Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Kilometerwerte Von aller Ortsbezüge am übergeordnetem Dokument speichern
+						For i = 0 To searchableKmVon.Count - 1
+							Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": " + searchableKmVon.Item (i)
+							myDescriptor.AddValue searchableKmVon.Item (i)
+						Next
+					End If
+				Case xDescNames(2)
+					If searchableKmBis.Count > 0 Then
+						myDescriptor.RemoveValues
+						Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Kilometerwerte Bis aller Ortsbezüge am übergeordnetem Dokument speichern
+						For i = 0 To searchableKmBis.Count - 1
+							Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": " + searchableKmBis.Item (i)
+							myDescriptor.AddValue searchableKmBis.Item (i)
+						Next
+					End If
+			End Select
+		End If
+	Next j
+	pDocument.Commit
+
+	Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + "Das Dokument wurde erfolgreich bearbeitet
+	updateA221 = True
+	Exit Function
+fError:
+	Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + "Beim Verarbeiten des Dokuments ist folgender Fehler aufgetreten: " + Err.Description
+	Err.Raise 2000, "Beim Verarbeiten des Dokuments ist folgender Fehler aufgetreten: " + Err.Description
+End Function
+Private Function calcKMA221Neu(pKMA221 As Double) As Double
+	calcKMA221Neu = pKMA221 - 9.215
+End Function
+'/Ü036
+
+Private Function calcKMS05Neu(pKMS05 As Double) As Double
+	If pKMS05 < 102.88 Then
+		calcKMS05Neu = pKMS05 - 67.526
+	Else
+		calcKMS05Neu = pKMS05
+	End If
+End Function
+Public Function addS05Neu2Documents() As Boolean
+
+	'Select distinct ASF_DOK_ID2 from  sedna.ASF_H inner Join sedna.idxonly_0000_h
+'On sedna.asf_h.UUID_HI = sedna.IDXONLY_0000_H.ASF_DOK_DOKFOLDERUUID
+'where ASF_ORT_STRASSE = 'S05'
+
+'Select distinct ASF_DOK_ID2 from  sedna.BAUBESTAND_H inner Join sedna.idxonly_0000_h
+'On sedna.bAUBESTAND_H.UUID_HI = sedna.IDXONLY_0000_H.ASF_DOK_DOKFOLDERUUID
+'where ASF_ORT_STRASSE = 'S05'
+
+'Anschlussstelle Jettsdorf mit kleinerer Kilometrierung umbenennen, damit nicht davon die ObjektID verwendet wird
+
+	Dim fileHandle As Long
+	Dim logfileHandle As Long
+	Dim inputFile As String
+	Dim logFile As String
+	Dim ASFDokNr As String
+	Dim myStandardDok As ItaDocument
+	Dim myStandardDoks() As IDocument
+	Dim docCount As Integer
+	Dim sql As String
+	Dim strErr As String
+	Dim userPath As String
+
+	On Error GoTo fError
+
+	'Exit Function
+
+	userPath = Environ("USERNAME")
+	inputFile = "C:\Users\" + userPath + "\Documents\S05.csv"
+	logFile = "C:\Users\" + userPath + "\Documents\S05neu.log"
+	fileHandle = FreeFile
+	logfileHandle = FreeFile + 1
+	Open inputFile For Input As #fileHandle
+	Open logFile For Output As #logfileHandle
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " ***********************"
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Programm wird gestartet"
+	On Error GoTo fErrorDocument
+	docCount = 0
+	While Not EOF(fileHandle)
+		Line Input  #fileHandle, ASFDokNr
+		'ASFDokNr = "1674353"
+		Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Verarbeite das " + CStr(docCount + 1) + ". Dokument mit ASFiNAG Dokument-ID " + ASFDokNr
+		sql = "select where " + Application.System.DescriptorDefinitions.ItemByName ("ASF_Dok_ID").QueryLiteral + " = '" + ASFDokNr + "'"
+		myStandardDoks = SER_searchDocumentsOrFolders("BauBestand","20000101",sql, strErr, "ASFiNAG")
+
+		On Error Resume Next
+		If UBound(myStandardDoks) >= 0 Then
+			If Err.Number <> 0 Then
+				If strErr = "" Then
+					Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Zur ASF Dokument-ID '" + ASFDokNr + "' konnte kein Dokument gefunden werden!"
+				Else
+					Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " " + strErr
+				End If
+				Err.Clear
+			Else
+				On Error GoTo fErrorDocument
+				Set myStandardDok = myStandardDoks(0)
+				Call updateS05(myStandardDok, logfileHandle)
+			End If
+		End If
+fErrorDocument:
+		If Err.Number <> 0 Then
+			Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Ein Fehler beim Verarbeiten ist aufgetreten: " + Err.Description
+			Err.Clear
+		End If
+		docCount = docCount + 1
+	Wend
+
+finish:
+	On Error Resume Next
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Programm wurde beendet und " + CStr(docCount) + " Dokumente bearbeitet!"
+	Application.ShowMessage "Programm wurde beendet und " + CStr(docCount) + " Dokumente bearbeitet!"
+	Close #fileHandle
+	Close #logfileHandle
+	Exit Function
+fError:
+	On Error Resume Next
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Ein fataler Fehler ist aufgetreten: " + Err.Description
+	Application.ShowMessage "Ein fataler Fehler ist aufgetreten: " + Err.Description
+	GoTo finish
+End Function
+'/Ü029
+'Ü030
+'Diese Fkt. setzt den Status einer BAV-Aufgaben
+'@param pStatus: Status, den das Aufgaben-Dokument bekommen soll
+'@param pGeschaeftsfallId GeschäftsfallID der Aufgabe, deren Status gesetzt werden soll
+Public Sub ASF_setBAVAufgabenStatus(pStatus As String, pGeschaeftsfallId As String)
+
+	Dim myDescDef As DescriptorDefinition
+	Dim sError As String
+	Dim myDoc As ItaDocument
+	Dim aufgaben() As IDocument
+
+	On Error GoTo fError
+
+	Set myDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_BAV_Geschaeftsfall_ID")
+	If myDescDef Is Nothing Then
+		Err.Raise 100, "WorkflowItemViewDlg/ ASF_BAV_Aufgabenannahme / Prüfen / setAufgabenStatus", "Die Deskriptor-Definition 'ASF_BAV_Geschaeftsfall_ID' existiert nicht!"
+	End If
+
+	'Aufgaben-Dokument über die Geschäftsfall-ID suchen
+	aufgaben = SER_searchDocumentsOrFolders("IndexOnly", "20110101", _
+											 "select * where " + myDescDef.QueryLiteral + " = '" + pGeschaeftsfallId + "'", _
+											 sError)
+
+	If sError <> "" Then
+		Err.Raise 200, "WorkflowItemViewDlg/ ASF_BAV_Aufgabenannahme / Prüfen / setAufgabenStatus", sError
+	End If
+	On Error Resume Next
+	If UBound(aufgaben) >= 0 Then
+		If Err.Number <> 0 Then
+			On Error GoTo fError
+			Err.Raise 400, "WorkflowItemViewDlg/ ASF_BAV_Aufgabenannahme / Prüfen / setAufgabenStatus", "Zur Geschäftsfall-ID '" + pGeschaeftsfallId + "' existiert keine BAV-Aufgabe!"
+		End If
+		Set myDoc = aufgaben(0)
+		Set myDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Status")
+		If Not myDescDef Is Nothing Then
+			If Not 	myDoc.Descriptors.ItemByGUID(myDescDef.GUID) Is Nothing Then
+				myDoc.Descriptors.ItemByGUID(myDescDef.GUID).RemoveValues
+				myDoc.Descriptors.ItemByGUID(myDescDef.GUID).AddValue (pStatus)
+			Else
+				myDoc.Descriptors.AddNewByGUID(myDescDef.GUID).AddValue (pStatus)
+			End If
+			myDoc.Commit
+		Else
+			Err.Raise 300, "WorkflowItemViewDlg/ ASF_BAV_Aufgabenannahme / Prüfen / setAufgabenStatus", "Die Deskriptor-Definition 'ASF_Status' existiert nicht!
+		End If
+	End If
+	Exit Sub
+fError:
+	Err.Raise Err.Number, Err.Source, Err.Description
+End Sub
+'/Ü030
+'Ü032
+'Funktion zur Nachindizierung der Rechtsmaterie aus dem CR20/Tranche 9
+Public Function NachindizierungRechtsmaterien() As Boolean
+
+
+	Dim fileHandle As Long
+	Dim logfileHandle As Long
+	Dim inputFile As String
+	Dim logFile As String
+	Dim ASFDokNr As String
+	Dim myStandardDok As ItaDocument
+	Dim myStandardDoks() As IDocument
+	Dim docCount As Integer
+	Dim sql As String
+	Dim strErr As String
+	Dim userPath As String
+	Dim fileHandle2 As Long
+
+	On Error GoTo fError
+
+	'Exit Function
+
+	userPath = Environ("USERNAME")
+	inputFile = "C:\Users\" + userPath + "\Documents\Rechtsmaterie.csv"
+	logFile = "C:\Users\" + userPath + "\Documents\Rechtsmaterie.log"
+	fileHandle = FreeFile
+	fileHandle2 = FreeFile + 1
+	logfileHandle = FreeFile + 2
+	Open inputFile For Input As #fileHandle
+	Open logFile For Output As #logfileHandle
+	Open "C:\Users\" + userPath + "\Documents\Ausgecheckt.log" For Output As #fileHandle2
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " ***********************"
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Programm wird gestartet"
+	On Error GoTo fErrorDocument
+	docCount = 0
+	While Not EOF(fileHandle)
+		Line Input  #fileHandle, ASFDokNr
+		'ASFDokNr = "1674353"
+		Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Verarbeite das " + CStr(docCount + 1) + ". Dokument mit ASFiNAG Dokument-ID " + ASFDokNr
+		sql = "select where " + Application.System.DescriptorDefinitions.ItemByName ("ASF_Dok_ID").QueryLiteral + " = '" + ASFDokNr + "'"
+		myStandardDoks = SER_searchDocumentsOrFolders("BauBestand","20000101",sql, strErr)
+
+		On Error Resume Next
+		If UBound(myStandardDoks) >= 0 Then
+			If Err.Number <> 0 Then
+				If strErr = "" Then
+					Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Zur ASF Dokument-ID '" + ASFDokNr + "' konnte kein Dokument gefunden werden!"
+				Else
+					Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " " + strErr
+				End If
+				Err.Clear
+			Else
+				On Error GoTo fErrorDocument
+				Set myStandardDok = myStandardDoks(0)
+				Call handleRechtsmaterie(myStandardDok, logfileHandle, fileHandle2, ASFDokNr)
+			End If
+		End If
+fErrorDocument:
+		If Err.Number <> 0 Then
+			Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Ein Fehler beim Verarbeiten ist aufgetreten: " + Err.Description
+			Err.Clear
+			Exit Function
+		End If
+		docCount = docCount + 1
+	Wend
+
+finish:
+	On Error Resume Next
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Programm wurde beendet und " + CStr(docCount) + " Dokumente bearbeitet!"
+	Application.ShowMessage "Programm wurde beendet und " + CStr(docCount) + " Dokumente bearbeitet!"
+	Close #fileHandle
+	Close #logfileHandle
+	Close #fileHandle2
+	Exit Function
+fError:
+	On Error Resume Next
+	Write #logfileHandle, Format(Now, "yyyy-mm-dd hh:nn:ss") + " Ein fataler Fehler ist aufgetreten: " + Err.Description
+	Application.ShowMessage "Ein fataler Fehler ist aufgetreten: " + Err.Description
+	GoTo finish
+End Function
+Private Function handleRechtsmaterie(myStandardDok As ItaDocument, pLogfileHandle As Long, pLogfileHandle2 As Long, asfDokId As String) As Boolean
+
+	On Error GoTo fError
+
+	Dim myDescDef As DescriptorDefinition
+	Dim asfKategorie As String
+	Dim asfKategorieId As String
+	Dim catidRechtsMaterie As String
+	Dim descKatId As DescriptorDefinition
+	Dim descKat As DescriptorDefinition
+
+	catidRechtsMaterie = "{8CE5CD53-A7A5-459A-8C37-F56F10C08565}"
+	'Set myDescDef = Application.System.DescriptorDefinitions.ItemByGUID ("6061f403-3481-46ba-9e31-673f09ec0d9d") 'ASF_Startkategorie
+	'If Not myStandardDok.Descriptors.ItemByGUID (myDescDef.GUID) Is Nothing Then
+	'	If myStandardDok.Descriptors.ItemByGUID (myDescDef.GUID).ValueCount > 0 Then
+	'		If myStandardDok.Descriptors.ItemByGUID (myDescDef.GUID).Value (0) = "ASF Bescheide/Verordnungen/Zulassungen" Then
+	'			Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") & " Dokument besitzt die Kategorie 'ASF Bescheide/Verordnungen/Zulassungen!"
+				'Deskriptor ASF_Kategorie auslesen
+				Set descKat = Application.System.DescriptorDefinitions.ItemByGUID ("d0478806-a8b4-4ad0-b2da-9e2de28d35ce") 'ASF_Kategorie
+				Set descKatId = Application.System.DescriptorDefinitions.ItemByGUID ("576ba86c-fef2-4156-8af4-9256d318249d") 'ASF_Kategorie_ID
+					'Kategorie durch die ID der Rechtsmaterie tauschen
+
+						asfKategorie = myStandardDok.Descriptors.ItemByGUID (descKat.GUID).Values (0)
+						asfKategorieId = myStandardDok.Descriptors.ItemByGUID (descKatId.GUID).Values (0)
+						If asfKategorieId <> catidRechtsMaterie Then
+							If myStandardDok.CheckOutState <>  0 Then
+								Print #pLogfileHandle2, asfDokId
+								Exit Function
+							End If
+							Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") & " Kategorie 'Rechtsmaterie' wird als neue Kategorie angelegt."
+							'Dim mutab As Integer
+							'mutab = myStandardDok.Mutability
+							'myStandardDok.ChangeMutability  mutabilityVersionable
+							myStandardDok.Descriptors.ItemByGUID (descKatId.GUID).RemoveValues
+							myStandardDok.Descriptors.ItemByGUID (descKatId.GUID).AddValue catidRechtsMaterie
+							myStandardDok.Descriptors.ItemByGUID (descKat.GUID).RemoveValues
+							myStandardDok.Descriptors.ItemByGUID (descKat.GUID).AddValue "Rechtsmaterie"
+
+							Set myDescDef = Application.System.DescriptorDefinitions.ItemByGUID ("85f06d7a-19e7-4d6a-9e07-e6ef224b83ec") 'ASF_MVSubkategorie
+							Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") & " Subkategorie '" & asfKategorie & "' wird in den Deskriptor ASF_MVSubkategorie geschrieben."
+
+							If Not myStandardDok.Descriptors.ItemByGUID (myDescDef.GUID) Is Nothing Then
+								myStandardDok.Descriptors.ItemByGUID (myDescDef.GUID).RemoveValues
+								myStandardDok.Descriptors.ItemByGUID (myDescDef.GUID).AddValue asfKategorieId
+							Else
+								myStandardDok.Descriptors.AddNewByGUID (myDescDef.GUID)
+								myStandardDok.Descriptors.AddNewByGUID (myDescDef.GUID).AddValue asfKategorieId
+							End If
+							myStandardDok.Commit
+							Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") & " Dokument wurde erfolgreich verarbeitet."
+							'myStandardDok.ChangeMutability mutab
+						End If
+			'End If
+		'End If
+	'End If
+	handleRechtsmaterie = False
+finish:
+	Exit Function
+fError:
+	Print #pLogfileHandle, Format(Now, "YYYYMMDD hh:nn:ss") + "Beim Verarbeiten des Dokuments ist folgender Fehler aufgetreten: " + Err.Description
+	Err.Raise 2000, "Beim Verarbeiten des Dokuments ist folgender Fehler aufgetreten: " + Err.Description
+End Function
+'/Ü032
+'Ü034
+'Diese Fkt. ermittelt Ortsbezugsdaten und Grundstücksdaten aus einer BAV-Akte und schreibt die Daten in bestimmte Steuerelemente eine Word-Vorlage.
+'Die Steuerelemente werden der Fkt. im Parameter 'pContentControls' übergeben. Der Schlüssel der VariantMap ist das Tag des Steuerelements, der Wert
+'der VariantMap ist das Steuerelement-Objekt selbst.
+Public Function ASF_ShowDetailsBAV(pBAVakte As ItaFolder, pContentControls As VariantMap, pStatusBarText As String) As Boolean
+	Dim oContentControl As Word.ContentControl
+	Dim myResultSet As IResultset
+	Dim i As Integer
+	Dim oQuellDocument As ItaDocument
+	Dim registerQuellDocument As CNode
+	Dim tmpValue As String
+	Dim arrDescriptors(2,1) As String
+	Dim arrGrundstücksDescriptors(30,1) As String
+	Dim arrOrtsbezugsDescriptors(100,1) As String
+	Dim oOrtsbezug As ItaDocument
+	Dim oGrundstuecksBezug As ItaDocument
+	Dim strKmVon As String
+	Dim strKmBis As String
+	Dim strObjekttyp As String
+	Dim strRichtung As String
+	Dim strAstVon As String
+	Dim strAstBis As String
+	Dim strStraßenzug As String
+	Dim asfDokGrundstueckDokId() As Variant
+	Dim strKgName As String
+	Dim strKgNr As String
+	Dim strGrundstruecksNr As String
+	Dim grundstückeCount As Integer
+	Dim ortsbezugsCount As Integer
+	Dim strTypSubtyp As String
+	Dim strObjekt As String
+	Dim strDetail As String
+
+
+	On Error GoTo fError
+
+	ASF_ShowDetailsBAV = False
+	Application.StatusBarInfoText = pStatusBarText & "Ermittle das Quellregister der BAV-Akte!"
+	'Das Quelldokument aus der BAV-Akte ermitteln. Dieses ist im Register 'Quelldokument' verlinkt. Sollte es mehrerer Dokumente in
+	'diesen Register geben (was nicht sein soll), wird das erste aus der Liste genommen.
+	If Not pBAVakte Is Nothing Then
+		Set registerQuellDocument = pBAVakte.Nodes.ItemByID("df698650-9bde-4cc9-87be-c9211c1d0ae3") 'Register Quelldokument
+		If Not registerQuellDocument Is Nothing Then
+			If registerQuellDocument.Elements.Count > 0 Then
+				Application.StatusBarInfoText = pStatusBarText & "Ermittle das Quelldokument aus dem Quellregister der BAV-Akte!"
+				Set oQuellDocument = Application.System.GetDocumentDirect (registerQuellDocument.Elements.Item (0).Link)
+			End If
+		End If
+	End If
+
+	'Quelldokument-Deskriptoren auslesen
+	arrDescriptors(1,0) = "DokumentID"
+	tmpValue = ""
+	If Not oQuellDocument  Is Nothing Then
+		tmpValue = SER_getFirstDescriptorValueByID(oQuellDocument.Descriptors, DESC_ID_DOKUMENT_ID,True)
+	End If
+	arrDescriptors(1,1) = tmpValue
+	arrDescriptors(2,0) = "Dokumentname"
+	tmpValue = ""
+	If Not oQuellDocument  Is Nothing Then
+		tmpValue = SER_getFirstDescriptorValueByID(oQuellDocument.Descriptors, DESC_ID_ASF_BEZEICHNUNG,True)
+	End If
+	arrDescriptors(2,1) = tmpValue
+
+	Application.StatusBarInfoText = pStatusBarText & "Ermittle Ortsbezüge!"
+	'Ortsbezüge aus der BAV-Akte ermitteln
+	ortsbezugsCount = 0
+	If Not pBAVakte Is Nothing Then
+		Set myResultSet = ASF_Ortsbezug_loadOrtsbezuegeByInternalUUID(pBAVakte.InternalDescriptors.ItemByGUID("UUID").Value(0), "IndexOnly", "20050101")
+		For i = 0 To myResultSet.TotalCount - 1
+			If i = 10 Then Exit For   'maximal 10 Ortsbezüge werden angezeigt.
+			Set oOrtsbezug = myResultSet.Document (i)
+			strKmVon = SER_getFirstDescriptorValueByID(oOrtsbezug.Descriptors, "c2f798b4-7270-4504-bd44-81a6ed4af046", True)
+			strKmBis = SER_getFirstDescriptorValueByID(oOrtsbezug.Descriptors, "a8c76346-657c-4d8d-875e-cfe5c6d71e0d", True)
+			strRichtung = SER_getFirstDescriptorValueByID(oOrtsbezug.Descriptors, "e2eff56e-7ff8-4e3a-8732-2dcb2a145eef", True)
+			strAstVon = SER_getFirstDescriptorValueByID(oOrtsbezug.Descriptors, "3c855e65-cb4d-4424-968e-97e7d8fffd70", True)
+			strAstBis = SER_getFirstDescriptorValueByID(oOrtsbezug.Descriptors, "e36a050a-391a-4e29-aac6-49ac1a2bacd3", True)
+			strStraßenzug = SER_getFirstDescriptorValueByID(oOrtsbezug.Descriptors, "c7a1aba7-a3af-4525-914b-a72d9ad15228", True)
+			strTypSubtyp = SER_getFirstDescriptorValueByID(oOrtsbezug.Descriptors, "7803b731-932a-4697-bbd7-156f27b0d0e8", True)
+			strObjekt = SER_getFirstDescriptorValueByID(oOrtsbezug.Descriptors, "cac2b783-7feb-40a6-a659-d8a71cd1293f", True)
+			strDetail = SER_getFirstDescriptorValueByID(oOrtsbezug.Descriptors, "e4cabd99-77b9-47e2-aede-03ea0305b386", True)
+
+			arrOrtsbezugsDescriptors(1 + 9*i,0) = "kmVon" & i + 1
+			arrOrtsbezugsDescriptors(1 + 9*i,1) = strKmVon
+			arrOrtsbezugsDescriptors(2 + 9*i,0) = "kmBis" & i + 1
+			arrOrtsbezugsDescriptors(2 + 9*i,1) = strKmBis
+			arrOrtsbezugsDescriptors(3 + 9*i,0) = "AStvon" & i + 1
+			arrOrtsbezugsDescriptors(3 + 9*i,1) = strAstVon
+			arrOrtsbezugsDescriptors(4 + 9*i,0) = "AStbis" & i + 1
+			arrOrtsbezugsDescriptors(4 + 9*i,1) = strAstBis
+			arrOrtsbezugsDescriptors(5 + 9*i,0) = "Richtung" & i + 1
+			arrOrtsbezugsDescriptors(5 + 9*i,1) = strRichtung
+			arrOrtsbezugsDescriptors(6 + 9*i,0) = "Straßenzug" & i + 1
+			arrOrtsbezugsDescriptors(6 + 9*i,1) = strStraßenzug
+			arrOrtsbezugsDescriptors(7 + 9*i,0) = "TypSubtyp" & i + 1
+			arrOrtsbezugsDescriptors(7 + 9*i,1) = strTypSubtyp
+			arrOrtsbezugsDescriptors(8 + 9*i,0) = "Objekt" & i + 1
+			arrOrtsbezugsDescriptors(8 + 9*i,1) = strObjekt
+			arrOrtsbezugsDescriptors(9 + 9*i,0) = "Detail" & i + 1
+			arrOrtsbezugsDescriptors(9 + 9*i,1) = strDetail
+			ortsbezugsCount = ortsbezugsCount + 1
+		Next
+	End If
+
+	Application.StatusBarInfoText = pStatusBarText & "Ermittle Grundstücksbezüge!"
+	'Grundstücksbezüge aus der BAV-Akte ermitteln
+	grundstückeCount = 0
+	If Not pBAVakte Is Nothing Then
+		asfDokGrundstueckDokId = SER_getDescriptorValuesByID(pBAVakte.Descriptors, "d9e32b15-310b-450e-814b-a3892b976d4d")
+		If SER_IsArray(asfDokGrundstueckDokId) Then
+			For i = 0 To UBound(asfDokGrundstueckDokId)
+				If i = 10 Then Exit For   'maximal 10 Grundstücke werden angezeigt.
+				Set oGrundstuecksBezug = Application.System.GetDocumentDirect(asfDokGrundstueckDokId(i))
+				If Not oGrundstuecksBezug Is Nothing Then
+					strKgName = SER_getFirstDescriptorValueByID(oGrundstuecksBezug.Descriptors, "5d5bdd2f-4961-44aa-aed3-4ab50dc55508", True)
+					strKgNr = SER_getFirstDescriptorValueByID(oGrundstuecksBezug.Descriptors, "890ef202-0753-4da1-87bd-1d1fef139be9", True)
+					strGrundstruecksNr = SER_getFirstDescriptorValueByID(oGrundstuecksBezug.Descriptors, "f5355181-4bb7-4e06-9f1a-158945fa8483", True)
+				End If
+				arrGrundstücksDescriptors(1 + 3*i,0) = "KGName" & i + 1
+				arrGrundstücksDescriptors(1 + 3*i,1) = strKgName
+				arrGrundstücksDescriptors(2 + 3*i,0) = "KGNr" & i + 1
+				arrGrundstücksDescriptors(2 + 3*i,1) = strKgNr
+				arrGrundstücksDescriptors(3 + 3*i,0) = "Grundstücksnr" & i + 1
+				arrGrundstücksDescriptors(3 + 3*i,1) = strGrundstruecksNr
+				grundstückeCount = grundstückeCount + 1
+			Next
+		End If
+	End If
+	Application.StatusBarInfoText = pStatusBarText & "Schreibe Ortsbezüge in die Word-Vorlage!"
+	For i = 1 To ortsbezugsCount * 10 'zehn Felder je Ortsbezug
+		If arrOrtsbezugsDescriptors(i,1) <> "" Then
+			Set oContentControl = pContentControls.ItemByKey (arrOrtsbezugsDescriptors(i,0))
+			If Not oContentControl Is Nothing Then
+				oContentControl.LockContents = False
+				oContentControl.Range.Text = arrOrtsbezugsDescriptors(i,1)
+				oContentControl.LockContents = True
+			End If
+		End If
+	Next
+	Application.StatusBarInfoText = pStatusBarText & "Schreibe Grundstücksdaten in die Word-Vorlage!"
+	For i = 1 To grundstückeCount * 3  'drei Felder je Grundstücksdokument
+		If arrGrundstücksDescriptors(i,1) <> "" Then
+			Set oContentControl = pContentControls.ItemByKey (arrGrundstücksDescriptors(i,0))
+			If Not oContentControl Is Nothing Then
+				oContentControl.LockContents = False
+				oContentControl.Range.Text = arrGrundstücksDescriptors(i,1)
+				oContentControl.LockContents = True
+			End If
+		End If
+	Next
+	'Daten aus dem Quelldokument ausgeben
+	Application.StatusBarInfoText = pStatusBarText & "Schreibe Daten aus dem Quelldokument in die Word-Vorlage!"
+	For i = 1 To 2
+		If arrDescriptors(i,1) <> "" Then
+			Set oContentControl = pContentControls.ItemByKey (arrDescriptors(i,0))
+			If Not oContentControl Is Nothing Then
+				oContentControl.LockContents = False
+				oContentControl.Range.Text = arrDescriptors(i,1)
+				oContentControl.LockContents = True
+			End If
+		End If
+	Next
+	ASF_ShowDetailsBAV = True
+finish:
+	Set oContentControl = Nothing
+	Set myResultSet = Nothing
+	Set oQuellDocument = Nothing
+	Set registerQuellDocument = Nothing
+	Set oOrtsbezug = Nothing
+	Set oGrundstuecksBezug = Nothing
+	Exit Function
+fError:
+	Application.ShowError "Beim Drucken der BAV-Aufgabe/BAV-Arbeitsauftrag ist ein Fehler aufgetreten!", "ASF CAI globale Funktionen / ASF_ShowDetailsBAV",,,Err.Description
+	GoTo finish
+End Function
+'/Ü034
+

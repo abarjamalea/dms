@@ -1,0 +1,223 @@
+Default
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	Query Dialog/ Postbuch
+'*	erstellt am / von	:	20.09.2010/ Christian Aigner, SER
+'*	Überarbeitung Ü001	:	01.11.2010/ Markus D. Hartbauer, SER
+'*  Überarbeitung Ü002  :   02.02.2011/ Christian Aigner, SER: Dlg_OnClose hinzugefügt als Workarounf für SER internen Mantis-Call 23133
+'*  Überarbeitung Ü003  :   11.02.2011/ Günther F. Schinko, SER: "Poststück ohne Dokumente" erweitert
+'*  Überarbeitung Ü004  :   12.04.2011/ Guido J. Bachmayr, SER: CR12: Ersteller & Abteilung (auch in Suchdialog) initialisieren
+'*  Überarbeitung Ü005  :   24.11.2011/ Günther F.Schinko, SER: CR67: GP Ähnlichkeitssuche
+'*	Überarbeitung Ü006	:	16.11.2012/ Guido Bachmayr, SER: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+'*	Überarbeitung Ü007	:	30.10.2012/ Günther F. Schinko, SER: Umbennenung Poststück
+'*
+'************************************************************************
+
+Option Explicit
+
+
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+Private Sub Dlg_OnClose()
+	'Ü002: Workaround wg. SER internen Mantis-Call 23133
+	SbASFDokArt.SetFocus
+End Sub
+
+Private Sub Dlg_OnExecuted(ByVal Results As SWAFRAMELib.IResultset, ByVal Succeeded As Boolean)
+	'Ü002: Workaround wg. SER internen Mantis-Call 23133
+	If Results Is Nothing Then
+		SbASFDokArt.SetFocus
+		Exit Sub
+	End If
+	If Results.AvailableCount = 0 Then
+		SbASFDokArt.SetFocus
+	End If
+End Sub
+Private Sub Dlg_OnDebugResume()
+	initControls
+	initValues
+End Sub
+
+
+Private Sub Dlg_OnExecuteQueryObject(ByVal Query As SWAFRAMELib.Query)
+	Dim myUnitsString As String
+	Dim myUnits() As String
+	myUnits = getUnitsFromUser(ASFErsteller.Data)
+
+If Not myUnits(0) = "" Then
+	Dim i As Integer
+	For i = 0 To UBound(myUnits) - 1
+		nextOne:
+		If myUnits(i) = "" And i <> UBound(myUnits) - 1 Then
+			i = i + 1
+			GoTo nextOne
+		End If
+		If i = UBound(myUnits) - 1 Then
+			myUnitsString = myUnitsString + myUnits(i)
+		Else
+			myUnitsString = myUnitsString + myUnits(i) + ","
+		End If
+	Next
+End If
+
+	writeTelemetrieData(Dlg.DialogDefinition.Name, Application.System.User.Unit, SbASFGesellschaft.Data,SbASFStandort.Data,ASFAbteilung.Data,myUnitsString)
+End Sub
+
+Private Sub Dlg_OnInit()
+	initControls
+	initValues
+End Sub
+
+Private Sub Dlg_OnClearedContent()
+	initValues
+	initControls
+End Sub
+
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+'Ü006: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+Private Sub btnAbleger_OnClicked()
+	ASF_AblegerOpenDlg(dbrsAbleger, Ableger)
+End Sub
+
+Private Sub dbrsAbleger_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsAbleger.DataCount > 0 Then
+			Ableger.Data= dbrsAbleger.Data(0)
+		End If
+	End If
+End Sub
+'/Ü006
+
+'**********************************
+'*	FRAME 'Geschäftspartner'
+
+Private Sub DbrsGeschaeftspartner_OnDialogOpen(ByRef Continue As Boolean)
+
+	ASF_db_initDbrsWithRecordsetDefinition(DbrsGeschaeftspartner, "Geschäftspartner",,False)
+	With DbrsGeschaeftspartner
+		.SQLQuery = getGPSqlSelect
+		.RetrieveData
+	End With
+
+End Sub
+
+Private Sub DbrsGeschaeftspartner_OnDialogClosed(ByVal OKButton As Boolean)
+
+	If OKButton And DbrsGeschaeftspartner.DataCount > 0 Then
+		With DbrsGeschaeftspartner.Recordset
+			ASFGPGPName.Data = SER_getDBFieldSafe(.Fields("Firma"))
+			ASFGPAPName.Data = SER_getDBFieldSafe(.Fields("Ansprechpartner"))
+			ASFGPStrasse.Data = SER_getDBFieldSafe(.Fields("Strasse"))
+			ASF_db_initDbrsWithRecordsetDefinition(DbrsGeschaeftspartner, "Länder")
+			DbrsASFGPLand.ResetContent
+			DbrsASFGPLand.AddData SER_getDBFieldSafe(.Fields("Land"))
+			ASFGPPLZ.Data = SER_getDBFieldSafe(.Fields("PLZ"))
+			ASFGPOrt.Data = SER_getDBFieldSafe(.Fields("Ort"))
+		End With
+	End If
+
+End Sub
+
+Private Sub DbrsASFGPLand_OnDialogOpen(ByRef Continue As Boolean)
+
+	ASF_db_initDbrsWithRecordsetDefinition(DbrsGeschaeftspartner, "Länder")
+
+End Sub
+
+Private Sub cmdClearGeschaeftspartner_OnClicked()
+	initControls
+	initValues
+	'Ü*005
+	DbrsGeschaeftspartner.ResetContent
+	'/Ü*005
+	DbrsGeschaeftspartner.ResetContent
+	ASFGPGPName.Clear
+	ASFGPAPName.Clear
+	ASFGPOrt.Clear
+	ASFGPPLZ.Clear
+	ASFGPStrasse.Clear
+	DbrsASFGPLand.ResetContent
+	'DbrsASFGPLand.AddData "AT"
+End Sub
+'**********************************
+'*	FRAME 'Herkunft'
+
+Private Sub btnASFErsteller_OnClicked()
+	ASF_ErstellerOpenDlg(dbrsASFErsteller, ASFErsteller)
+End Sub
+
+Private Sub dbrsASFErsteller_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsASFErsteller.DataCount > 0 Then
+			ASFErsteller.Data= dbrsASFErsteller.Data(0)
+		End If
+	End If
+End Sub
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub initControls()
+
+'*	Datenbankverbindung
+	DbrsGeschaeftspartner.ConnectionString = ASF_DMS_Daten.ConnectionString
+	DbrsASFGPLand.ConnectionString = ASF_DMS_Daten.ConnectionString
+
+	ASF_InitErsteller(dbrsASFErsteller, dbrsAbleger)     'Ü006
+
+	'DMS-361
+	If Not Application.System.User.Role = "admins" Then
+		SbASFGesellschaft.ReadOnly = True
+		SbASFGesellschaft.Data = Left(Application.System.User.Unit,InStr(1,Application.System.User.Unit," ") - 1)
+	End If
+End Sub
+
+Private Sub initValues()
+
+'*	Dokumentklassen einschränken
+	With MvKlasseID
+		.ResetContent
+		.AddData Application.System.DocumentTypes.ItemByName("Poststück").GUID
+		'Ü003
+		'
+		'Ü007
+		.AddData Application.System.DocumentTypes.ItemByName("Poststück/Scan").GUID
+	End With
+
+End Sub
+
+Private Function getGPSqlSelect() As String
+
+	Dim xt As String
+	xt =	"SELECT GPName as Firma,APName as Ansprechpartner,[Straße],PLZ,Ort,Land,ID " & _
+			"FROM Geschäftspartner " & _
+			"WHERE 1=1 "
+			'Ü*005
+			If ASFGPGPName.Data <> "" Then xt = xt & "AND GPName LIKE '%" & ASFGPGPName.Data & "%' "
+			If ASFGPAPName.Data <> "" Then xt = xt & "AND APNAme LIKE '%" & ASFGPAPName.Data & "%' "
+			If ASFGPStrasse.Data <> "" Then xt = xt & "AND [Straße] LIKE '%" & ASFGPStrasse.Data & "%' "
+			If DbrsASFGPLand.DataCount > 0 Then xt = xt & "AND Land LIKE '%" & DbrsASFGPLand.Data(0) & "%' "
+			If ASFGPPLZ.Data <> "" Then xt = xt & "AND PLZ LIKE '%" & ASFGPPLZ.Data & "%' "
+			If ASFGPOrt.Data <> "" Then xt = xt & "AND Ort LIKE '%" & ASFGPOrt.Data & "%' "
+			'/Ü*005
+
+
+	xt = xt & "ORDER BY GPName,APName"
+	getGPSqlSelect = xt
+
+End Function
+
+Private Sub CmdHilfe_OnClicked()
+
+	ASF_global_doHilfeAnzeigen("https://intranet.asfinag.at/index.aspx#Module/Wiki/Wiki.html?ID=3")
+
+End Sub
+

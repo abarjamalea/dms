@@ -1,0 +1,1220 @@
+'#Reference {E9CA9A4F-B294-4C38-9805-BC27F7E3CB39}#1.0#0#C:\PROGRA~2\SER\COMPON~1\Swa\SWASOF~2.DLL#SwaSoftPrint 1.0 Type Library#SWASOFTPRINTLib
+'#Reference {5C02496B-FC6B-4CC4-86D8-7C61F0570185}#1.0#0#C:\PROGRA~2\SER\COMPON~1\Swa\SwaGMCSB.dll#SwaGMCSB 1.0-Typbibliothek#SwaGMCSBLib
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Global Script/ SER PDF Producer
+'*	Autor	:	SERD
+'*	Datum	:	15.09.2010
+'*
+'*  Überarbeitung Ü001:	03.03.2011, Günther F.Schinko, SER - Nichtoffizielle Teile überspringen!!!!
+'*  Überarbeitung Ü002:	22.10.2012, Günther F.Schinko, SER - iecm-Link Problematik von JBA behoben
+'*	Überarbeitung Ü003: 22.01.2014, Christian Aigner, SER  - OTRS-Ticket: 1011073: iecm-Link für Schnittstelle: Benutzerberechtigung nur prüfen, wenn im Link keine Trefferliste angegeben ist
+'*	Überarbeitung Ü004: 13.05.2014, Christian Aigner, SER  - OTRS-Ticket: 1011591: bei DWG-Dateien (auch PDF, Visio, CoreelDraw) wird kein PDF erstellt
+'*	Überarbeitung Ü005: 21.05.2014, Christian Aigner, SER  - OTRS-Ticket: 1011110: Aufruf GIS-Schnittstelle: Prüfung Flag 'Suchzeitraum Start offen' der Suchklasse 'Alle Dokumente'
+'*  DMS-416           : 20.04.2017, Stephan Wagner, SER - Suchfunktion über GIS Erweiterung auf Akten
+'************************************************************************
+
+Option Explicit
+
+Const cGISVon = "ASF_Dok_StrKmVon"
+Const cGISBis = "ASF_Dok_StrKmBis"
+Const cDB = "TEST"
+Const cDelimiter = "~"
+
+Dim WithEvents oRW As ResultWindow
+
+Private Sub Application_OnBasicCommand(ByVal Para1 As Variant, ByVal Para2 As Variant, ByVal Para3 As Variant, Ret As Variant)
+
+	Dim oDlgDef As QueryDlgDefinition
+	Dim sSearchRangeFrom As String
+	Dim sSearchRangeTo As String
+	Dim sSearchDays As Integer
+
+'Ü001
+	If UCase(Para1)="SMARTOFFICE" Then Exit Sub
+	If Para1="dmsDoxis.dmsDoxisDoc.AfterSaveAs" Then Exit Sub
+	If Para1="dmsDoxis.dmsDoxisDoc.GetCurrentFilingEnvironment" Then Exit Sub
+	If Para1="dmsDoxis.dmsDoxisDoc.BeforeSave" Then Exit Sub
+	If Para1="dmsDoxis.dmsDoxisDoc.AfterSave" Then Exit Sub
+	If Para1="dmsDoxis.dmsDoxisDoc.BeforeCloseDoc" Then Exit Sub
+	If Para1="dmsDoxis.dmsDoxisDoc.AfterCloseDoc" Then Exit Sub
+'Ü002
+	If Para1= "App" Then
+		If Para2 = "Start" Then
+			Application.StatusBarInfoText = "DOXiS4 winCube startet from iecm Link ..."
+		End If
+	End If
+'
+
+	Set oDlgDef = Application.MetaData.QueryDocClasses.ItemByName("Alle Dokumente").QueryDlgDefinitions.ItemByType("default")
+
+	sSearchRangeTo = Format(Date,"YYYYMMDD")
+
+	If oDlgDef.SearchRangeUnit = "day" Then
+		sSearchRangeFrom = Format((DateAdd("d",-Val(oDlgDef.SearchRange),Date)),"YYYYMMDD")
+	ElseIf oDlgDef.SearchRangeUnit = "month" Then
+		sSearchRangeFrom = Format((DateAdd("m",-Val(oDlgDef.SearchRange),Date)),"YYYYMMDD")
+	ElseIf oDlgDef.SearchRangeUnit = "year" Then
+		sSearchRangeFrom = Format((DateAdd("yyyy",-Val(oDlgDef.SearchRange),Date)),"YYYYMMDD")
+	Else
+		sSearchRangeFrom = Format((DateAdd("m",-3,Date)),"YYYYMMDD")
+	End If
+'Ü005
+	If oDlgDef.StartRangeOpen Then
+		sSearchRangeFrom = "19900101"
+	End If
+'/Ü005
+	If Para1 = "dmsDoxis.dmsDoxisDoc.BeforeSaveAs" Then
+		Dim bOpenEnv As Boolean
+		bOpenEnv = True
+		If Not Application.Workspace Is Nothing Then
+			If Application.Workspace.Type = "FilingEnvironmentWindow" Then
+				' we print in the active environment
+				bOpenEnv = False
+			End If
+		End If
+
+		If bOpenEnv Then
+			' let the user choose one
+			Ret = ChooseEnvironment()
+		End If
+	Else
+
+		Dim sElement As String
+		Dim sType As String
+		Dim sID As String
+
+		Dim sDatabase As String
+		Dim sDescriptor As String
+		Dim sSearchFrom As String
+		Dim sSearchTo As String
+		Dim sSearchType As String
+		Dim vTypeValues As Variant
+		Dim vIDValues As Variant
+		Dim iCount As Integer
+		Dim sSearchValueFrom As String
+		Dim sSearchValueTo As String
+		Dim sSearchValue As String
+		Dim vSearchValues As Variant
+		Dim sStrecke As String
+
+		Dim oQuery As SWAFRAMELib.Query
+		Dim oResultset As SWAFRAMELib.IResultset
+		Dim oDescDef As DescriptorDefinition
+
+		sElement = Para1
+		sType = Para2
+		sID = Para3
+
+		If UCase(sElement) = "DOCUMENT" Or UCase(sElement) = "FOLDER" Or UCase(sElement) = "WORKITEM" Then
+			' Einfache Konfiguration
+			If UCase(sElement) = "DOCUMENT" Or UCase(sElement) = "FOLDER" Then
+				' Suche normal
+				If GetInterfaceValuesFromStringMatrix("ASF_Generische_Schnittstelle",sElement,sType,sDescriptor,sDatabase,sSearchFrom,sSearchTo) Then
+					Set oQuery = Nothing
+					Set oQuery = Application.System.CreateQuery
+					If Not oQuery Is Nothing Then
+						oQuery.Databases.Add Application.System.QueryDatabases.ItemByName(sDatabase)
+						oQuery.RangeStart = sSearchFrom
+						oQuery.RangeEnd = sSearchTo
+						oQuery.HitLimit = 999
+						oQuery.TimeOut = 999
+						If Application.System.DescriptorDefinitions.ItemByName(sDescriptor).DescriptorType = dt_string Or Application.System.DescriptorDefinitions.ItemByName(sDescriptor).DescriptorType = dt_text Then
+							If InStr(sID, "*") > 0 Then
+								oQuery.SQLStatement = "select * where " + Application.System.DescriptorDefinitions.ItemByName(sDescriptor).QueryLiteral + " like '" + sID + "'"
+							Else
+								oQuery.SQLStatement = "select * where " + Application.System.DescriptorDefinitions.ItemByName(sDescriptor).QueryLiteral + " = '" + sID + "'"
+							End If
+						Else
+							oQuery.SQLStatement = "select * where " + Application.System.DescriptorDefinitions.ItemByName(sDescriptor).QueryLiteral + " = " + sID
+						End If
+
+						Set oResultset = Nothing
+						Set oResultset = oQuery.Execute
+
+						If Not oResultset Is Nothing Then
+							' Ergebnisse verarbeiten (BerechtigungsCheck nicht vergessen!)
+							If oResultset.AvailableCount = 0 Then
+								Application.ShowMessage "Es konnte kein Dokument gefunden werden!"
+							ElseIf oResultset.AvailableCount = 1 Then
+								If SER_getDocumentAccessForUser(oResultset.Document(0)) Then
+
+									If oResultset.Document(0).Type = 0 Then
+										Application.OpenDocument(oResultset.Document(0))
+									ElseIf oResultset.Document(0).Type = 6 Then
+										Application.OpenFolder(oResultset.Document(0))
+									Else
+										Application.ShowMessage "Kein unterstützter Typ!"
+									End If
+								Else
+									Application.ShowMessage "Sie sind nicht berechtigt dieses Dokument zu öffnen!"
+								End If
+							Else
+									Set oRW = Application.OpenResultset(oResultset,"")
+							End If
+						Else
+							Application.ShowMessage "Fehler beim Ausführen der Suche!"
+						End If
+
+					Else
+						Application.ShowMessage "Es konnte kein Suchobjekt erzeugt werden!"
+					End If
+				Else
+					Application.ShowMessage "Die Suche konnte nicht durchgeführt werden da die Kombination aus " + sElement + " und " + sType + " nicht konfiguriert ist!"
+				End If
+			Else
+				' Suche Workflow
+				Application.ShowMessage "Die Suche nach Geschäftsfällen und Aufgaben ist noch nicht implementiert!"
+			End If
+
+		Else
+			' Erweiterte Konfiguration
+			If Left(sElement,3) = "GIS" Then ' Implementierung der  GIS Schnittstelle
+				If sElement = "GIS001" Then
+					'Const cGISVon = "ASF_Dok_StrKmVon"
+					'Const cGISBis = "ASF_Dok_StrKmBis"
+					'Const cDB = "TEST"
+					'Const cDelimiter = "~"
+					'A 01  |008936
+
+					vTypeValues = Split(sType,cDelimiter)
+					vIDValues = Split(sID,cDelimiter)
+
+					If UBound(vTypeValues) < 2 Then
+						Application.ShowMessage "Zu wenige Parameter für Zeitraum und Datenbanken"
+						Exit All
+					End If
+
+					Set oQuery = Nothing
+					Set oQuery = Application.System.CreateQuery
+					If Not oQuery Is Nothing Then
+						For iCount = 2 To UBound(vTypeValues)
+							oQuery.Databases.Add Application.System.QueryDatabases.ItemByName(vTypeValues(iCount))
+						Next iCount
+						oQuery.RangeStart = sSearchRangeFrom
+						oQuery.RangeEnd = sSearchRangeTo
+						oQuery.HitLimit = 999
+						oQuery.TimeOut = 999
+						oQuery.SQLStatement = "select * where " + Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Art").QueryLiteral + " = '" + Trim(vTypeValues(1)) + "'"
+
+						Set oDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID")
+						If oDescDef Is Nothing Then
+							Application.ShowError("Der Deskriptor ASF_Dok_DokFolderUUID existiert nicht!","Global Script/SER_PDF_Producer",194)
+							Exit Sub
+						End If
+
+						oQuery.ExtendedFrom = ""
+						oQuery.ExtendedWhere = "EXISTS(SELECT " + oDescDef.QueryLiteral + " from IDXONLY_0000_H I WHERE A.UUID = " + "I." + oDescDef.QueryLiteral + " AND ("
+
+						For iCount = 0 To UBound(vIDValues)
+							' Variante vom Testsystem zur Produktivsetzung, die dann aber nicht mehr funktionierte
+							'sSearchValueFrom = Left(vIDValues(iCount),1) + "" + Mid(vIDValues(iCount),2,2) + "  |" + Mid(vIDValues(iCount),4,6)
+							'sSearchValueTo = Left(vIDValues(iCount),1) + "" + Mid(vIDValues(iCount),2,2) + "  |" + Right(vIDValues(iCount),6)
+
+							If Len(Trim(vIDValues(iCount))) = 15 Then
+								sSearchValueFrom = Mid(vIDValues(iCount),4,3) + "," + Mid(vIDValues(iCount),7,3)
+								sSearchValueTo = Mid(vIDValues(iCount),10,3) + "," + Mid(vIDValues(iCount),13,3)
+								sStrecke = Left(vIDValues(iCount),3)
+							ElseIf Len(Trim(vIDValues(iCount))) = 16 Then
+								sSearchValueFrom = Mid(vIDValues(iCount),5,3) + "," + Mid(vIDValues(iCount),8,3)
+								sSearchValueTo = Mid(vIDValues(iCount),11,3) + "," + Mid(vIDValues(iCount),14,3)
+								sStrecke = Left(vIDValues(iCount),4)
+							End If
+
+							If iCount = 0 Then
+								oQuery.ExtendedWhere = oQuery.ExtendedWhere & "(" & Mid(ASF_Ortsbezug_getStreckenAbschnittSql(sStrecke,sSearchValueFrom,sSearchValueTo,asfStrAbSuchUeberschneidend,"I"),6) & ")"
+							Else
+								oQuery.ExtendedWhere = oQuery.ExtendedWhere & " OR (" & Mid(ASF_Ortsbezug_getStreckenAbschnittSql(sStrecke,sSearchValueFrom,sSearchValueTo,asfStrAbSuchUeberschneidend,"I"),6) & ")"
+							End If
+
+						Next iCount
+
+						oQuery.ExtendedWhere = oQuery.ExtendedWhere + "))"
+
+						Set oResultset = Nothing
+						Set oResultset = oQuery.Execute
+
+						If Not oResultset Is Nothing Then
+							' Ergebnisse verarbeiten (BerechtigungsCheck nicht vergessen!)
+							If oResultset.AvailableCount = 0 Then
+								Application.ShowMessage "Es konnte kein Dokument gefunden werden!"
+							ElseIf oResultset.AvailableCount = 1 Then
+								If SER_getDocumentAccessForUser(oResultset.Document(0)) Then
+
+									If oResultset.Document(0).Type = 0 Then
+										Application.OpenDocument(oResultset.Document(0))
+									ElseIf oResultset.Document(0).Type = 6 Then
+										Application.OpenFolder(oResultset.Document(0))
+									Else
+										Application.ShowMessage "Kein unterstützter Typ!"
+									End If
+
+								Else
+									Application.ShowMessage "Sie sind nicht berechtigt dieses Dokument zu öffnen!"
+								End If
+							Else
+									If Trim(vTypeValues(0)) <> "" Then
+'Ü003
+										Application.OpenResultset(oResultset,Application.MetaData.ResultDlgDefinitions.ItemByName(vTypeValues(0)).GUID)
+'/Ü003
+									Else
+										Set oRW = Application.OpenResultset(oResultset,"")
+									End If
+							End If
+						Else
+							Application.ShowMessage "Fehler beim Ausführen der Suche!"
+						End If
+					End If
+
+				'DMS-416, SWA
+				ElseIf sElement = "GIS002" Then
+					GIS_Search_GS002 Para1,Para2,Para3,  sSearchRangeFrom, sSearchRangeTo
+				'/DMS-416
+
+				End If
+
+			End If
+
+			If Left(sElement,3) = "GEN" Then ' Implementierung der generischen Schnittstelle
+				If sElement = "GEN001" Then
+
+					vTypeValues = Split(sType,cDelimiter)
+					vIDValues = Split(sID,cDelimiter)
+
+					If UBound(vTypeValues) < 4 Then
+						Application.ShowMessage "Zu wenige Parameter für Zeitraum und Datenbanken"
+						Exit All
+					End If
+
+					Set oQuery = Nothing
+					Set oQuery = Application.System.CreateQuery
+					If Not oQuery Is Nothing Then
+						For iCount = 4 To UBound(vTypeValues)
+							oQuery.Databases.Add Application.System.QueryDatabases.ItemByName(vTypeValues(iCount))
+						Next iCount
+						oQuery.RangeStart = vTypeValues(0)
+						oQuery.RangeEnd = vTypeValues(1)
+						oQuery.HitLimit = 999
+						oQuery.TimeOut = 999
+						oQuery.SQLStatement = "select * where "
+
+						For iCount = 0 To UBound(vIDValues)
+							sSearchValue = vIDValues(iCount)
+							vSearchValues = Split(sSearchValue,"=")
+
+							If UBound(vSearchValues) <> 1 Then
+								Application.ShowMessage "Falsches Deskriptor=Werte Paar: " + sSearchValue
+								Exit All
+							End If
+							If Len(oQuery.SQLStatement) > 20 Then
+								oQuery.SQLStatement = oQuery.SQLStatement + " " + vTypeValues(3) + " "
+							End If
+
+							If Application.System.DescriptorDefinitions.ItemByName(vSearchValues(0)).DescriptorType = dt_string Or Application.System.DescriptorDefinitions.ItemByName(vSearchValues(0)).DescriptorType = dt_text Then
+
+								If InStr(vSearchValues(1),"*") > 0 Then
+									oQuery.SQLStatement =  oQuery.SQLStatement + "(" + Application.System.DescriptorDefinitions.ItemByName(vSearchValues(0)).QueryLiteral + " like '" + vSearchValues(1) + "')"
+								Else
+									oQuery.SQLStatement =  oQuery.SQLStatement + "(" + Application.System.DescriptorDefinitions.ItemByName(vSearchValues(0)).QueryLiteral + " = '" + vSearchValues(1) + "')"
+								End If
+							Else
+								oQuery.SQLStatement =  oQuery.SQLStatement + "(" + Application.System.DescriptorDefinitions.ItemByName(vSearchValues(0)).QueryLiteral + " = " + vSearchValues(1) + ")"
+							End If
+						Next iCount
+
+						Set oResultset = Nothing
+						Set oResultset = oQuery.Execute
+
+						If Not oResultset Is Nothing Then
+							' Ergebnisse verarbeiten (BerechtigungsCheck nicht vergessen!)
+							If oResultset.AvailableCount = 0 Then
+								Application.ShowMessage "Es konnte kein Dokument gefunden werden!"
+							ElseIf oResultset.AvailableCount = 1 Then
+								If SER_getDocumentAccessForUser(oResultset.Document(0)) Then
+									Application.OpenDocument(oResultset.Document(0))
+								Else
+									Application.ShowMessage "Sie sind nicht berechtigt dieses Dokument zu öffnen!"
+								End If
+							Else
+								If Trim(vTypeValues(0)) <> "" Then
+									Set oRW = Application.OpenResultset(oResultset,Application.MetaData.ResultDlgDefinitions.ItemByName(vTypeValues(2)).GUID)
+								Else
+									Set oRW = Application.OpenResultset(oResultset,"")
+								End If
+							End If
+						Else
+							Application.ShowMessage "Fehler beim Ausführen der Suche!"
+						End If
+					End If
+
+				End If
+
+			End If
+		End If
+
+
+
+
+'				Application.ShowWindow(csShowMinimized)
+'				If cResultset.AvailableCount = 0 Then
+'					MsgBox "Dokument nicht gefunden, kontaktieren Sie Ihren Administrator und geben Sie ihm folgende Informationen: " + Chr(10) + "Element: " + sElement + Chr(10) + "Type: " + sType + Chr(10) + "ID: " + sID
+'				ElseIf cResultset.AvailableCount = 1 Then
+'					Application.OpenDocument(cResultset.Document(0))
+'				Else
+'					' Mehrere Dokumente gefunden, Trefferliste anzeigen
+'					Application.OpenResultset(cResultset,"")
+'				End If
+
+	End If
+End Sub
+
+
+'DMS-416, SWA
+' Suchfunktion über GIS Akten, Aufruf von Application_OnBasicCommand
+'
+Public Sub GIS_Search_GS002a(ByVal Para1 As Variant, ByVal Para2 As Variant, ByVal Para3 As Variant, _
+								 ByVal SearchRangeFrom As String, _
+								 ByVal SearchRangeTo As String)
+
+	Const cGISVon = "ASF_Dok_StrKmVon"
+	Const cGISBis = "ASF_Dok_StrKmBis"
+	Const cDelimiter = "~"
+
+	Dim oQuery As SWAFRAMELib.Query
+	Dim oResultset As SWAFRAMELib.IResultset
+	Dim oDescDef As DescriptorDefinition
+
+	Dim iCount As Integer
+	Dim sSearchValueFrom As String
+	Dim sSearchValueTo As String
+	Dim sSearchValue As String
+	Dim vSearchValues As Variant
+	Dim sStrecke As String
+
+	Dim vTypeValues As Variant
+	Dim vIDValues As Variant
+
+	vTypeValues = Split(Para2,cDelimiter)
+	vIDValues = Split(Para3,cDelimiter)
+
+	If UBound(vTypeValues) < 1 Then
+		Application.ShowMessage "Zu wenige Parameter für Zeitraum und Datenbanken"
+		Exit All
+	End If
+
+	Set oQuery = Nothing
+	Set oQuery = Application.System.CreateQuery
+	If Not oQuery Is Nothing Then
+
+		'SWA ab der zweiten Stelle im Parameter2 stehen die Datenbanken
+		For iCount = 1 To UBound(vTypeValues)
+			oQuery.Databases.Add Application.System.QueryDatabases.ItemByName(vTypeValues(iCount))
+		Next iCount
+
+		oQuery.RangeStart = SearchRangeFrom
+		oQuery.RangeEnd = SearchRangeTo
+		oQuery.HitLimit = 999
+		oQuery.TimeOut = 999
+		oQuery.SQLStatement = "select * where type = '" & Application.MetaData.ArchiveFolderClasses.ItemByName("BAVAkte").GUID & "'"
+
+		'SWA den Ortsbezug in die WHERE Bedingung einbauen
+		Set oDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID")
+		If oDescDef Is Nothing Then
+			Application.ShowError("Der Deskriptor ASF_Dok_DokFolderUUID existiert nicht!","Global Script/SER_PDF_Producer",194)
+			Exit Sub
+		End If
+
+		oQuery.ExtendedFrom = ""
+		oQuery.ExtendedWhere = "EXISTS(SELECT " + oDescDef.QueryLiteral + " from IDXONLY_0000_H I WHERE A.UUID = " + "I." + oDescDef.QueryLiteral + " AND ("
+
+		For iCount = 0 To UBound(vIDValues)
+			' Variante vom Testsystem zur Produktivsetzung, die dann aber nicht mehr funktionierte
+			'sSearchValueFrom = Left(vIDValues(iCount),1) + "" + Mid(vIDValues(iCount),2,2) + "  |" + Mid(vIDValues(iCount),4,6)
+			'sSearchValueTo = Left(vIDValues(iCount),1) + "" + Mid(vIDValues(iCount),2,2) + "  |" + Right(vIDValues(iCount),6)
+
+			If Len(Trim(vIDValues(iCount))) = 15 Then
+				sSearchValueFrom = Mid(vIDValues(iCount),4,3) + "," + Mid(vIDValues(iCount),7,3)
+				sSearchValueTo = Mid(vIDValues(iCount),10,3) + "," + Mid(vIDValues(iCount),13,3)
+				sStrecke = Left(vIDValues(iCount),3)
+			ElseIf Len(Trim(vIDValues(iCount))) = 16 Then
+				sSearchValueFrom = Mid(vIDValues(iCount),5,3) + "," + Mid(vIDValues(iCount),8,3)
+				sSearchValueTo = Mid(vIDValues(iCount),11,3) + "," + Mid(vIDValues(iCount),14,3)
+				sStrecke = Left(vIDValues(iCount),4)
+			End If
+
+			'SWA Redesign KGR
+			'sStrecke = getIdOfStreetName(sStrecke)
+
+			If iCount = 0 Then
+				oQuery.ExtendedWhere = oQuery.ExtendedWhere & "(" & Mid(ASF_Ortsbezug_getStreckenAbschnittSql(sStrecke,sSearchValueFrom,sSearchValueTo,asfStrAbSuchUeberschneidend,"I"),6) & ")"
+			Else
+				oQuery.ExtendedWhere = oQuery.ExtendedWhere & " OR (" & Mid(ASF_Ortsbezug_getStreckenAbschnittSql(sStrecke,sSearchValueFrom,sSearchValueTo,asfStrAbSuchUeberschneidend,"I"),6) & ")"
+			End If
+
+		Next iCount
+
+		oQuery.ExtendedWhere = oQuery.ExtendedWhere + "))"
+
+		Set oResultset = Nothing
+		Set oResultset = oQuery.Execute
+
+		If Not oResultset Is Nothing Then
+			' Ergebnisse verarbeiten (BerechtigungsCheck nicht vergessen!)
+			If oResultset.AvailableCount = 0 Then
+				Application.ShowMessage "Es konnte keine Akte gefunden werden!"
+			ElseIf oResultset.AvailableCount = 1 Then
+				If SER_getDocumentAccessForUser(oResultset.Document(0)) Then
+
+					If oResultset.Document(0).Type = 0 Then
+						Application.OpenDocument(oResultset.Document(0))
+					ElseIf oResultset.Document(0).Type = enumDocumentType.ItaFolder Then
+						Application.OpenFolder(oResultset.Document(0))
+					Else
+						Application.ShowMessage "Kein unterstützter Typ!"
+					End If
+
+				Else
+					Application.ShowMessage "Sie sind nicht berechtigt dieses Dokument zu öffnen!"
+				End If
+			Else
+				If Trim(vTypeValues(0)) <> "" Then
+					Application.OpenResultset(oResultset,Application.MetaData.ResultDlgDefinitions.ItemByName(vTypeValues(0)).GUID)
+				Else
+					Set oRW = Application.OpenResultset(oResultset,"")
+				End If
+			End If
+		Else
+			Application.ShowMessage "Fehler beim Ausführen der Suche!"
+		End If
+	End If
+
+End Sub
+
+'DMS-416, SWA
+' Suchfunktion über GIS Akten, Aufruf von Application_OnBasicCommand
+Public Sub GIS_Search_GS002(ByVal Para1 As Variant, ByVal Para2 As Variant, ByVal Para3 As Variant, _
+								 ByVal SearchRangeFrom As String, _
+								 ByVal SearchRangeTo As String)
+
+	Const cGISVon = "ASF_Dok_StrKmVon"
+	Const cGISBis = "ASF_Dok_StrKmBis"
+	Const cDelimiter = "~"
+
+	Dim oQuery As SWAFRAMELib.Query
+	Dim oResultset As SWAFRAMELib.IResultset
+	Dim oDescDef As DescriptorDefinition
+
+	Dim iCount As Integer
+	Dim sSearchValueFrom As String
+	Dim sSearchValueTo As String
+	Dim sSearchValue As String
+	Dim vSearchValues As Variant
+	Dim sStrecke As String
+
+	Dim vTypeValues As Variant
+	Dim vIDValues As Variant
+
+	vTypeValues = Split(Para2,cDelimiter)
+	vIDValues = Split(Para3,cDelimiter)
+
+	If UBound(vTypeValues) < 2 Then
+		Application.ShowMessage "Zu wenige Parameter für Aktenklasse, Trefferliste und Datenbanken"
+		Exit All
+	End If
+
+	Set oQuery = Nothing
+	Set oQuery = Application.System.CreateQuery
+	If Not oQuery Is Nothing Then
+
+		'SWA ab der zweiten Stelle im Parameter2 stehen die Datenbanken
+		For iCount = 2 To UBound(vTypeValues)
+			oQuery.Databases.Add Application.System.QueryDatabases.ItemByName(vTypeValues(iCount))
+		Next iCount
+
+		oQuery.RangeStart = SearchRangeFrom
+		oQuery.RangeEnd = SearchRangeTo
+		oQuery.HitLimit = 999
+		oQuery.TimeOut = 999
+		oQuery.SQLStatement = "select * where type = '" & Application.MetaData.ArchiveFolderClasses.ItemByName(vTypeValues(0)).GUID & "'"
+
+		'SWA den Ortsbezug in die WHERE Bedingung einbauen
+		Set oDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID")
+		If oDescDef Is Nothing Then
+			Application.ShowError("Der Deskriptor ASF_Dok_DokFolderUUID existiert nicht!","Global Script/SER_PDF_Producer",194)
+			Exit Sub
+		End If
+
+		oQuery.ExtendedFrom = ""
+		oQuery.ExtendedWhere = "EXISTS(SELECT " + oDescDef.QueryLiteral + " from IDXONLY_0000_H I WHERE A.UUID = " + "I." + oDescDef.QueryLiteral + " AND ("
+
+		For iCount = 0 To UBound(vIDValues)
+			' Variante vom Testsystem zur Produktivsetzung, die dann aber nicht mehr funktionierte
+			'sSearchValueFrom = Left(vIDValues(iCount),1) + "" + Mid(vIDValues(iCount),2,2) + "  |" + Mid(vIDValues(iCount),4,6)
+			'sSearchValueTo = Left(vIDValues(iCount),1) + "" + Mid(vIDValues(iCount),2,2) + "  |" + Right(vIDValues(iCount),6)
+
+			If Len(Trim(vIDValues(iCount))) = 15 Then
+				sSearchValueFrom = Mid(vIDValues(iCount),4,3) + "," + Mid(vIDValues(iCount),7,3)
+				sSearchValueTo = Mid(vIDValues(iCount),10,3) + "," + Mid(vIDValues(iCount),13,3)
+				sStrecke = Left(vIDValues(iCount),3)
+			ElseIf Len(Trim(vIDValues(iCount))) = 16 Then
+				sSearchValueFrom = Mid(vIDValues(iCount),5,3) + "," + Mid(vIDValues(iCount),8,3)
+				sSearchValueTo = Mid(vIDValues(iCount),11,3) + "," + Mid(vIDValues(iCount),14,3)
+				sStrecke = Left(vIDValues(iCount),4)
+			End If
+
+			'SWA Redesign KGR
+			'sStrecke = getIdOfStreetName(sStrecke)
+
+			If iCount = 0 Then
+				oQuery.ExtendedWhere = oQuery.ExtendedWhere & "(" & Mid(ASF_Ortsbezug_getStreckenAbschnittSql(sStrecke,sSearchValueFrom,sSearchValueTo,asfStrAbSuchUeberschneidend,"I"),6) & ")"
+			Else
+				oQuery.ExtendedWhere = oQuery.ExtendedWhere & " OR (" & Mid(ASF_Ortsbezug_getStreckenAbschnittSql(sStrecke,sSearchValueFrom,sSearchValueTo,asfStrAbSuchUeberschneidend,"I"),6) & ")"
+			End If
+
+		Next iCount
+
+		oQuery.ExtendedWhere = oQuery.ExtendedWhere + "))"
+
+		Set oResultset = Nothing
+		Set oResultset = oQuery.Execute
+
+		If Not oResultset Is Nothing Then
+			' Ergebnisse verarbeiten (BerechtigungsCheck nicht vergessen!)
+			If oResultset.AvailableCount = 0 Then
+				Application.ShowMessage "Es konnte keine Akte gefunden werden!"
+			ElseIf oResultset.AvailableCount = 1 Then
+				If SER_getDocumentAccessForUser(oResultset.Document(0)) Then
+
+					If oResultset.Document(0).Type = 0 Then
+						Application.OpenDocument(oResultset.Document(0))
+					ElseIf oResultset.Document(0).Type = enumDocumentType.ItaFolder Then
+						Application.OpenFolder(oResultset.Document(0))
+					Else
+						Application.ShowMessage "Kein unterstützter Typ!"
+					End If
+
+				Else
+					Application.ShowMessage "Sie sind nicht berechtigt dieses Dokument zu öffnen!"
+				End If
+			Else
+				If Trim(vTypeValues(0)) <> "" Then
+					Application.OpenResultset(oResultset,Application.MetaData.ResultDlgDefinitions.ItemByName(vTypeValues(1)).GUID)
+				Else
+					Set oRW = Application.OpenResultset(oResultset,"")
+				End If
+			End If
+		Else
+			Application.ShowMessage "Fehler beim Ausführen der Suche!"
+		End If
+	End If
+
+End Sub
+
+'########################################################
+'### Function GetStringMatrixValue()
+'### Parameter: Name (String), Wert (String), Suchspalte (Integer) und Ergebnisspalte (Integer)
+'### Returnwert: Matrixeintrag in String Format
+'### Funktionsweise:  Funktion zur Abfrage, ob die Abfrage einer bestimmten StringMatrix ohne Fehler möglich ist und wenn ja Zuweisung der Werte
+'########################################################
+
+Public Function GetStringMatrixValue(pStringMatrixName As String, pSearchValue As String, pSearchColumn As Integer, pResultColumn As Integer) As String
+
+	On Error GoTo Fehlerbehandlung
+
+	GetStringMatrixValue = ""
+
+	Dim i As Integer
+	Dim smStringMatrix As StringMatrix
+	Set smStringMatrix = Application.MetaData.StringMatrices.ItemByName(pStringMatrixName)
+
+	If Not smStringMatrix Is Nothing Then
+		If pSearchColumn > smStringMatrix.ColumnCount Then
+			Application.ShowMessage "Die Suchspalte ist größer als die vorhandenen Spalten!"
+			Exit Function
+		End If
+		If pResultColumn > smStringMatrix.ColumnCount Then
+			Application.ShowMessage "Die Ergebnisspalte ist größer als die vorhandenen Spalten!"
+			Exit Function
+		End If
+
+		For i = 0 To smStringMatrix.RowCount - 1
+			If Trim(smStringMatrix(i,pSearchColumn)) = Trim(pSearchValue) Then
+				GetStringMatrixValue = smStringMatrix(i,pResultColumn)
+			End If
+		Next i
+	Else
+		Application.ShowMessage "String Matrix '" + pStringMatrixName + "' nicht vorhanden!"
+	End If
+
+	Exit Function
+Fehlerbehandlung:
+	Application.ShowMessage "Fehler bei GetStringMatrixValue: " + Str(Err.Number) + " ==> " + Err.Description
+
+End Function
+
+'########################################################
+'### Function GetInterfaceValuesFromMatrixString()
+'### Parameter: Name, Element, Typ
+'### Returnwert: DeskriptorID, Datenbank, SucheVon, SucheBis
+'### Funktionsweise:  Liefert True wenn der Eintrag gefunden wurde, False wenn er nicht gefunden wurde.
+'########################################################
+
+Public Function GetInterfaceValuesFromStringMatrix(p_s_StringMatrixName As String, p_s_Element As String, p_s_Typ As String, ByRef p_s_Deskriptor As String, ByRef p_s_Datenbank As String, ByRef p_s_SucheVon As String, ByRef p_s_SucheBis As String) As Boolean
+
+	On Error GoTo Fehlerbehandlung
+
+	GetInterfaceValuesFromStringMatrix = False
+
+	Dim i As Integer
+	Dim iElementRow As Integer
+	Dim iTypRow As Integer
+	Dim iDeskriptorRow As Integer
+	Dim iDatabaseRow As Integer
+	Dim iSearchFromRow As Integer
+	Dim iSearchToRow As Integer
+	Dim bError As Boolean
+
+	bError = False
+
+	Dim smStringMatrix As StringMatrix
+	Set smStringMatrix = Application.MetaData.StringMatrices.ItemByName(p_s_StringMatrixName)
+
+	If Not smStringMatrix Is Nothing Then
+
+		iElementRow = -1
+		iTypRow = -1
+		iDeskriptorRow = -1
+		iDatabaseRow = -1
+		iSearchFromRow = -1
+		iSearchToRow = -1
+
+		For i = 0 To smStringMatrix.ColumnCount - 1
+			If smStringMatrix.ColumnName(i) = "Element" Then
+				iElementRow = i
+			ElseIf smStringMatrix.ColumnName(i) = "Typ" Then
+				iTypRow = i
+			ElseIf smStringMatrix.ColumnName(i) = "DeskriptorID" Then
+				iDeskriptorRow = i
+			ElseIf smStringMatrix.ColumnName(i) = "Datenbank" Then
+				iDatabaseRow = i
+			ElseIf smStringMatrix.ColumnName(i) = "SuchzeitraumVon" Then
+				iSearchFromRow = i
+			ElseIf smStringMatrix.ColumnName(i) = "SuchzeitraumBis" Then
+				iSearchToRow = i
+			End If
+		Next i
+
+		If iElementRow = -1 Then
+			Application.ShowMessage "Die Spalte 'Element' konnte nicht in der StringMatrix '" + p_s_StringMatrixName + "' gefunden werden! Benachrichtigen Sie Ihren Administrator!"
+			bError = True
+		End If
+		If iTypRow = -1 Then
+			Application.ShowMessage "Die Spalte 'Typ' konnte nicht in der StringMatrix '" + p_s_StringMatrixName + "' gefunden werden! Benachrichtigen Sie Ihren Administrator!"
+			bError = True
+		End If
+		If iDeskriptorRow = -1 Then
+			Application.ShowMessage "Die Spalte 'DeskriptorID' konnte nicht in der StringMatrix '" + p_s_StringMatrixName + "' gefunden werden! Benachrichtigen Sie Ihren Administrator!"
+			bError = True
+		End If
+		If iDatabaseRow = -1 Then
+			Application.ShowMessage "Die Spalte 'Datenbank' konnte nicht in der StringMatrix '" + p_s_StringMatrixName + "' gefunden werden! Benachrichtigen Sie Ihren Administrator!"
+			bError = True
+		End If
+		If iSearchFromRow = -1 Then
+			Application.ShowMessage "Die Spalte 'SuchzeitraumVon' konnte nicht in der StringMatrix '" + p_s_StringMatrixName + "' gefunden werden! Benachrichtigen Sie Ihren Administrator!"
+			bError = True
+		End If
+		If iSearchToRow = -1 Then
+			Application.ShowMessage "Die Spalte 'SuchzeitraumBis' konnte nicht in der StringMatrix '" + p_s_StringMatrixName + "' gefunden werden! Benachrichtigen Sie Ihren Administrator!"
+			bError = True
+		End If
+
+		If Not bError Then
+			For i = 0 To smStringMatrix.RowCount - 1
+
+				If Trim(smStringMatrix(i,iElementRow)) = Trim(p_s_Element) And Trim(smStringMatrix(i,iTypRow)) = Trim(p_s_Typ) Then
+					' Richtiger Eintrag gefunden!
+					p_s_Deskriptor = smStringMatrix(i,iDeskriptorRow)
+					p_s_Datenbank = smStringMatrix(i,iDatabaseRow)
+					p_s_SucheVon = smStringMatrix(i,iSearchFromRow)
+					p_s_SucheBis = smStringMatrix(i,iSearchToRow)
+					GetInterfaceValuesFromStringMatrix = True
+				End If
+			Next i
+		End If
+	Else
+		Application.ShowMessage "String Matrix '" + p_s_StringMatrixName + "' nicht vorhanden!"
+	End If
+
+	Exit Function
+Fehlerbehandlung:
+	GetInterfaceValuesFromStringMatrix = False
+	Application.ShowMessage "Fehler bei GetStringMatrixValue: " + Str(Err.Number) + " ==> " + Err.Description
+
+End Function
+
+
+Private Function ChooseEnvironment() As Boolean
+	Dim FilingEnvs() As String
+	Dim FilingEnv As SWAMDLib.FilingEnvironment
+
+	Begin Dialog UserDialog 350,168,"Ablageumgebung wählen" ' %GRID:10,7,1,1
+		OKButton 90,140,90,21
+		ListBox 20,14,320,119,FilingEnvs(),.ListBox1
+		CancelButton 190,140,90,21
+	End Dialog
+	Dim dlg As UserDialog
+
+	ChooseEnvironment = False
+
+	Dim i As Long
+	Dim bHasFilingEvns As Boolean
+
+	' find my filing environments
+	For i = 0 To Application.MetaData.FilingEnvironments.Count - 1
+		Set FilingEnv = Application.MetaData.FilingEnvironments(i)
+
+		If FilingEnv.CheckRights(rtFilingEnvironment_Use) Then
+			On Error GoTo FirstElement
+			ReDim Preserve FilingEnvs(UBound(FilingEnvs) + 1)
+			On Error GoTo 0
+			FilingEnvs(UBound(FilingEnvs)) = FilingEnv.Name
+			bHasFilingEvns = True
+		End If
+	Next i
+
+	If Not bHasFilingEvns Then
+		MsgBox "Es steht keine Ablageumgebung zur Verfügung."
+		Exit Function
+	End If
+
+	' activate evITA before showing of dialog
+	Application.ShowWindow csActivate
+
+	MinSortStringBounds FilingEnvs
+
+	If Dialog(dlg) = -1 Then
+		Set FilingEnv = Application.MetaData.FilingEnvironments.ItemByName(FilingEnvs(dlg.ListBox1))
+		Application.OpenEnvironment2 FilingEnv.GUID, False
+		ChooseEnvironment = True
+	End If
+Exit Function
+
+FirstElement:
+	ReDim FilingEnvs(0)
+	Resume Next
+End Function
+
+Private Sub MinSortStringBounds(ByRef Strings() As String)
+
+  Dim MinIndex As Long
+  Dim MinBound As Long
+  Dim MaxBound As Long
+
+  MinBound = LBound(Strings())
+  MaxBound = UBound(Strings())
+
+  Dim Index As Long
+
+  For MinBound = MinBound To MaxBound - 1
+
+	'Mimimum suchen:
+	MinIndex = MinBound
+	For Index = MinBound + 1 To MaxBound
+	  If Strings(Index) < Strings(MinIndex) Then MinIndex = Index
+	Next Index
+
+	'Ggf. nach vorne tauschen:
+	If MinIndex <> MinBound Then
+		Dim tmp As String
+		tmp = Strings(MinIndex)
+		Strings(MinIndex) = Strings(MinBound)
+		Strings(MinBound) = tmp
+	End If
+
+  Next MinBound
+
+End Sub
+
+Private Sub oRW_OnChangeDocumentKeys(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnCheckOutDocument(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+
+End Sub
+
+Private Sub oRW_OnDeleteDocument(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnEditDocument(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnFreezeDocument(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnFreezeDocumentVersion(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnPrintDocument(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnPrintDocumentWithCoverSheet(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnRemoveDocument(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnShowDocument(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnShowDocumentVersions(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnShowDocumentWithKeys(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnShowLockedDocument(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnShowOverview(ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnShowSimilarDocuments(ByRef RangeStart As String, ByRef RangeEnd As String, ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Sub oRW_OnSignDocument(ByVal Signer As CAPICOM.ISigner, ByRef Handled As Boolean)
+
+	If oRW.ResultList.SelectedCount <> 1 Then
+		Application.ShowMessage "Es darf nur ein Dokument markiert sein!"
+		Handled = True
+	End If
+	If Not getDocumentAccessForUser(oRW.ResultList.SelectedDocument(0)) Then
+		Application.ShowMessage "Sie sind nicht für dieses Dokument berechtigt!"
+		Handled = True
+	End If
+
+End Sub
+
+Private Function getDocumentAccessForUser(ByRef pDoc As IDocument) As Boolean
+
+	Dim userGr() As String
+	Dim i As Integer
+	Dim j As Integer
+	Dim asfZugr As IDescriptor
+	Dim asfZugrGUID As String
+	Dim apUser As String
+	Dim myDoc As IDocument
+
+	On Error GoTo GetDocAcc_ERR
+
+	getDocumentAccessForUser= False
+
+	Set myDoc = pDoc
+	'Abfrage für Gruppen:
+	asfZugrGUID= Application.System.DescriptorDefinitions.ItemByName("ASF_Zugriff").GUID
+	Set asfZugr= myDoc.Descriptors.ItemByGUID(asfZugrGUID)
+	If Not asfZugr Is Nothing Then
+		getGroupMemberArray(userGr)
+		If IsArray(userGr) Then
+			For i= 0 To asfZugr.ValueCount -1
+				For j = LBound(userGr) To UBound(userGr)
+					If asfZugr.Value(i) = userGr(j) Then
+						getDocumentAccessForUser= True
+						Exit Function
+					End If
+				Next j
+			Next i
+		End If
+	End If
+
+	asfZugrGUID= Application.System.DescriptorDefinitions.ItemByName("ASF_Zugriff_Temp").GUID
+	Set asfZugr= myDoc.Descriptors.ItemByGUID(asfZugrGUID)
+	If asfZugr Is Nothing Then Exit Function
+	apUser= Application.System.User.User
+	For i= 0 To asfZugr.ValueCount -1
+		If asfZugr.Value(i) = apUser Then
+			getDocumentAccessForUser= True
+			Exit Function
+		End If
+	Next i
+
+	getDocumentAccessForUser= False
+	Exit Function
+getDocAcc_ERR:
+	Application.ShowError "Fehler bei der Zugriffsschutz-Prüfung (glob Skript)!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+	getDocumentAccessForUser= False
+End Function
+
+Public Sub getGroupMemberArray(ByRef pGroups() As String)
+
+   Dim gm As SwaGMCSBLib.GroupManager
+   Dim g As SwaGMCSBLib.Group
+   Dim i As Integer, j As Integer
+   Dim g_guid As String, g_type As String, g_name As String
+
+   ReDim pGroups(0)
+
+   Set gm = Application.System.GroupManager
+   For i = 0 To gm.Groups.Count - 1
+      Set g = gm.Groups.Item(i)
+      For j = 0 To g.IdentifierCount - 1
+         g.GetIdentifier j, g_guid, g_type, g_name
+         If (g_type = "Person" And g_guid = Application.System.User.UserGUID) Or _
+            (g_type = "Role" And g_guid = Application.System.User.RoleGUID) Or _
+            (g_type = "Unit" And g_guid = Application.System.User.UnitGUID) Then
+	            pGroups(UBound(pGroups)) = g.Name
+	            ReDim Preserve pGroups(UBound(pGroups)+1)
+         End If
+      Next j
+   Next i
+
+End Sub
+Public Function createPDFRepresentation(pDoc As ItaDocument, Optional pBezeichnung As String) As Boolean
+
+	Dim mySoftPrinter  As SWASOFTPRINTLib.SoftPrinter
+	Dim myDocdata As DocData
+	Dim myRep As Representation
+	Dim myPartDoc As PartDocument
+	Dim myDescDef As DescriptorDefinition
+	Dim fileName As String
+	Dim fileNameExtension As String
+	Dim fileExtensionsNot2BeHandled As String
+
+	On Error GoTo ErrorHandler
+
+	createPDFRepresentation = False
+
+'Ü004
+	fileExtensionsNot2BeHandled = "DWG PDF CDR VSD" 'Liste aller Dateiendungen, die nicht in PDF gewandelt werden
+	Dim i As Integer
+	For i = 0 To pDoc.Representations.Item(0).PartDocuments.Count - 1
+		Set myDocdata = pDoc.Representations.Item(0).PartDocuments(i).DataObject
+			If Not myDocdata Is Nothing Then
+				If InStr(1, fileExtensionsNot2BeHandled, UCase(Right(myDocdata.Alias, 3))) > 0 Or _
+					InStr(1, fileExtensionsNot2BeHandled, UCase(Right(myDocdata.fileName, 3))) > 0 Then
+						GoTo finish
+				End If
+			End If
+			Set myDocdata = Nothing
+	Next
+
+'/Ü004
+	Set mySoftPrinter = New SWASOFTPRINTLib.SoftPrinter
+	If mySoftPrinter.PrinterAvailable Then
+		mySoftPrinter.OutputType = OutputTypePDF
+		Application.StatusBarInfoText = "Erstelle PDF-Representation"
+		Set myDocdata = mySoftPrinter.PrintDocument(pDoc,0,0, pDoc.Representations.Item(0).PartDocuments.Count - 1)
+		If Not myDocdata Is Nothing Then
+			Set myRep = pDoc.Representations.AddNew
+			myRep.Type = "PDF"
+			Set myPartDoc = myRep.PartDocuments.AddNew
+			Set myPartDoc.DataObject = myDocdata
+			Set myDescDef = Application.System.DescriptorDefinitions.ItemByName ("ASF_Bezeichnung")
+			If Not myDescDef Is Nothing Then
+				If Not pDoc.Descriptors.ItemByGUID (myDescDef.GUID) Is Nothing Then
+					fileName = pDoc.Descriptors.ItemByGUID (myDescDef.GUID).Value (0)
+				Else
+					fileName = pBezeichnung
+				End If
+				If fileName <> "" Then
+					fileNameExtension = Right (myDocdata.Alias, 4)
+					If Right(fileName, 4) <> fileNameExtension Then
+						myDocdata.Alias = fileName + fileNameExtension
+					Else
+						myDocdata.Alias = fileName
+					End If
+				End If
+			End If
+		End If
+	End If
+finish:
+	createPDFRepresentation = True
+	Set myDescDef = Nothing
+	Set mySoftPrinter  = Nothing
+	Set myDocdata = Nothing
+	Set myRep = Nothing
+	Set myPartDoc = Nothing
+		Application.StatusBarInfoText = ""
+	Exit Function
+ErrorHandler:
+	If Err.Number <> -2147220504& Then
+		Application.ShowError "Beim Erstellen der PDF-Representation ist ein Fehler aufgetreten!", 	"Global Script/ SER PDF Producer Fkt. createPDFRepresentation", 0, Err.Number, Err.Description, 0
+	Else
+		Application.ShowMessage "Das Dokument wird  aufgrund eines Fehlers ohne PDF-Representation abgelegt!"
+	End If
+	GoTo finish:
+End Function
+
+	' DMS-416, SWA
+Public Function getIdOfShortStreetName(ByVal ShortName As String) As String
+
+	Dim pSM As StringMatrix
+	Dim lRow As Long
+
+	'Werte aus der Werteliste in eine VariantMap übernehmen (höhere Performance beim lesen!)
+	Set pSM = Application.MetaData.StringMatrices.ItemByName("ASF_Straßenzüge")
+	For lRow = 0 To pSM.RowCount-1
+
+		If LCase(ShortName) = LCase(pSM(lRow,0)) Then
+			getIdOfShortStreetName =  pSM(lRow,4)
+			Exit Function
+		End If
+
+	Next lRow
+
+	getIdOfShortStreetName = ""
+
+End Function
+

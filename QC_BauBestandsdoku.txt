@@ -1,0 +1,496 @@
+Default
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	Query Dialog/ Alle Dokumente mG
+'*	erstellt am / von	:	13.04.2014/ Barbara Bruckberger, ASF:	Kopie von Query Dialog/BauBestand erstellt
+'*
+'************************************************************************
+
+	Option Explicit
+
+
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+Private Sub Dlg_OnClose()
+	'‹002: Workaround wg. SER internen Mantis-Call 23133
+	TabBasisinfo_ASFKategorie.SetFocus
+End Sub
+
+Private Sub Dlg_OnExecuted(ByVal Results As SWAFRAMELib.IResultset, ByVal Succeeded As Boolean)
+	'‹002: Workaround wg. SER internen Mantis-Call 23133
+	If Results Is Nothing Then
+		TabBasisinfo_ASFKategorie.SetFocus
+		Exit Sub
+	End If
+	If Results.AvailableCount = 0 Then
+		TabBasisinfo_ASFKategorie.SetFocus
+	End If
+End Sub
+Private Sub Dlg_OnDebugResume()
+	initControls
+	initValues
+
+End Sub
+'‹006
+Private Sub Dlg_OnExecuteQueryObject(ByVal Query As SWAFRAMELib.Query)
+'‹008
+		Call SER_DlgOnExecuteQueryObject(Query, TabOrtsbezug_DbrsASFOrtStrasse, TabOrtsbezug_ASFDokStrKmVon, TabOrtsbezug_ASFDokStrKmBis, _
+										TabOrtsbezug_SbKmSuchart)
+'/‹008
+End Sub
+'/‹006
+Private Sub Dlg_OnInit()
+	initControls
+	initValues
+End Sub
+
+Private Sub Dlg_OnClearedContent()
+	initValues
+End Sub
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+'‹007: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+Private Sub TabBasisinfo_btnAbleger_OnClicked()
+	ASF_AblegerOpenDlg(TabBasisinfo_dbrsAbleger, TabBasisinfo_Ableger)
+End Sub
+
+Private Sub TabBasisinfo_dbrsAbleger_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If TabBasisinfo_dbrsAbleger.DataCount > 0 Then
+			TabBasisinfo_Ableger.Data= TabBasisinfo_dbrsAbleger.Data(0)
+		End If
+	End If
+End Sub
+'/‹007
+
+Private Sub TabBasisinfo_btnASFErsteller_OnClicked()
+	ASF_ErstellerOpenDlg(TabBasisinfo_dbrsASFErsteller, TabBasisinfo_ASFErsteller)
+End Sub
+
+
+Private Sub TabBasisinfo_dbrsASFErsteller_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If TabBasisinfo_dbrsASFErsteller.DataCount > 0 Then
+			TabBasisinfo_ASFErsteller.Data= TabBasisinfo_dbrsASFErsteller.Data(0)
+		End If
+	End If
+End Sub
+
+'*********************************
+'*	TAB EINORDNUNG
+'*********************************
+
+Private Sub TabBasisinfo_CtcASFKategorie_OnDialogClosed(ByVal OKButton As Boolean)
+
+'*	Business Logic
+	If TabBasisinfo_CtcASFKategorie.DataCount > 0 And OKButton Then
+		TabBasisinfo_ASFKategorie.Data = ASF_getCategoryNameByCategoryId(TabBasisinfo_CtcASFKategorie.Data(0))
+
+		If TabBasisinfo_CtcASFKategorie.Data(0) = "{8CE5CD53-A7A5-459A-8C37-F56F10C08565}" Then
+			TabBasisinfo_CtcASFMVKategorie.OpenDialog
+		Else
+			TabBasisinfo_CtcASFMVKategorie.ResetContent
+			TabBasisinfo_CtcASFMVKategorie.Visible = False
+		End If
+
+		ASF_loadDokumentartenToSelectionBox(TabBasisinfo_CtcASFKategorie.StartId, TabBasisinfo_SbASFDokArt, TabBasisinfo_CtcASFKategorie.Data(0), True)
+	End If
+
+End Sub
+
+
+Private Sub TabBasisinfo_cmdDelPSP_OnClicked()
+	TabBasisinfo_ASFProjektNummer.Clear
+	TabBasisinfo_ASFProjektBezeichnung.Clear
+End Sub
+
+Private Sub TabBasisinfo_ASFProjektNummer_OnValueChanged()
+
+	With TabBasisinfo_DbrsProjektNummer
+		.SQLQuery = ASF_Projekt_getSqlSelectPSPElement(TabBasisinfo_ASFProjektNummer, TabBasisinfo_ASFProjektBezeichnung)
+		.RetrieveData
+	End With
+
+End Sub
+
+
+Private Sub TabBasisinfo_ASFProjektBezeichnung_OnValueChanged()
+
+	With TabBasisinfo_DbrsProjektNummer
+		.SQLQuery = ASF_Projekt_getSqlSelectPSPElement(TabBasisinfo_ASFProjektNummer, TabBasisinfo_ASFProjektBezeichnung)
+		.RetrieveData
+	End With
+
+End Sub
+
+Private Sub TabBasisinfo_DbrsProjektnummer_OnDialogOpen(ByRef Continue As Boolean)
+
+	ASF_db_initDbrsWithRecordsetDefinition(TabBasisinfo_DbrsProjektNummer, "ProjektPSPElemente",,False)
+	With TabBasisinfo_DbrsProjektNummer
+		.SQLQuery = ASF_Projekt_getSqlSelectPSPElement(TabBasisinfo_ASFProjektNummer, TabBasisinfo_ASFProjektBezeichnung)
+		.RetrieveData
+	End With
+
+End Sub
+
+Private Sub TabBasisinfo_DbrsProjektNummer_OnDialogClosed(ByVal OKButton As Boolean)
+
+	With TabBasisinfo_DbrsProjektNummer
+		If OKButton And .DataCount = 1 Then
+			TabBasisinfo_ASFProjektNummer.Data = .Recordset.Fields("PSP/Kostenstelle")
+			TabBasisinfo_ASFProjektBezeichnung.Data = .Recordset.Fields("Name")
+		End If
+	End With
+
+End Sub
+
+
+'*********************************
+'*	TAB ORTSBEZUG
+
+
+Private Sub TabOrtsbezug_DbrsASFDokObjekt_OnDialogOpen(ByRef Continue As Boolean)
+If TabOrtsbezug_CtcASFDokObjekttyp.DataCount = 0 Then
+	Application.ShowMessageBox(QueryResultWindow.hWnd,"Bitte w‰hlen Sie zuerst einen Typ/Subtyp aus!","Fehlende Information!")
+	TabOrtsbezug_CtcASFDokObjekttyp.OpenDialog
+	Continue = False
+End If
+End Sub
+
+Private Sub TabOrtsbezug_DbrsASFOrtStrasse_OnDialogOpen(ByRef Continue As Boolean)
+
+	ASF_db_initDbrsWithRecordsetDefinition(TabOrtsbezug_DbrsASFOrtStrasse, "OrtsbezugStraﬂenz¸ge")
+
+End Sub
+
+Private Sub TabOrtsbezug_DbrsASFOrtStrasse_OnDialogClosed(ByVal OKButton As Boolean)
+
+'*	Checks
+	If Not OKButton Then Exit Sub
+	If TabOrtsbezug_DbrsASFOrtStrasse.DataCount <> 1 Then Exit Sub
+
+'*	Business Logik
+'	Anschlussstellen einschr‰nken auf Straﬂenzug
+	With TabOrtsbezug_DbrsASFOrtAStVon
+		If .DBRecordsetDefinition.Name = "(leer)" Then .DBRecordsetDefinition = Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").DBRecordsetDefinitions.ItemByName("OrtsbezugAnschlussstellen")
+		.SQLQuery = ASF_Ortsbezug_getSqlSelectAnschlussstellen(TabOrtsbezug_DbrsASFOrtStrasse)
+		.RetrieveData
+	End With
+	With TabOrtsbezug_DbrsASFOrtAStBis
+		If .DBRecordsetDefinition.Name = "(leer)" Then .DBRecordsetDefinition = Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").DBRecordsetDefinitions.ItemByName("OrtsbezugAnschlussstellen")
+		.SQLQuery = ASF_Ortsbezug_getSqlSelectAnschlussstellen(TabOrtsbezug_DbrsASFOrtStrasse)
+		.RetrieveData
+	End With
+'	km-von und km-bis laden
+	TabOrtsbezug_ASFDokStrKmVon.Data = TabOrtsbezug_DbrsASFOrtStrasse.Recordset.Fields("kmvon")
+	TabOrtsbezug_ASFDokStrKmBis.Data = TabOrtsbezug_DbrsASFOrtStrasse.Recordset.Fields("kmbis")
+'	ASt leeren
+	TabOrtsbezug_DbrsASFOrtAStVon.ResetContent
+	TabOrtsbezug_DbrsASFOrtAStBis.ResetContent
+'	Objektbezug leeren
+	TabOrtsbezug_ASFDokObjekttyp.Data = ""
+	TabOrtsbezug_CtcASFDokObjekttyp.ResetContent
+	TabOrtsbezug_ASFDokObjekt.Data = ""
+	TabOrtsbezug_DbrsASFDokObjekt.ResetContent
+	TabOrtsbezug_ASFDokObjektdetail.Data = ""
+
+End Sub
+
+
+Private Sub TabOrtsbezug_DbrsASFOrtAStBis_OnDialogOpen(ByRef Continue As Boolean)
+	If TabOrtsbezug_DbrsASFOrtStrasse.DataCount = 0 Then
+		Application.ShowMessageBox(QueryResultWindow.hWnd,"Bitte w‰hlen Sie zuerst einen Straﬂenzug aus!","Fehlende Information!")
+		TabOrtsbezug_DbrsASFOrtStrasse.OpenDialog
+		Continue = False
+	End If
+End Sub
+
+Private Sub TabOrtsbezug_DbrsASFOrtAStVon_OnDialogOpen(ByRef Continue As Boolean)
+If TabOrtsbezug_DbrsASFOrtStrasse.DataCount = 0 Then
+		Application.ShowMessageBox(QueryResultWindow.hWnd,"Bitte w‰hlen Sie zuerst einen Straﬂenzug aus!","Fehlende Information!")
+		TabOrtsbezug_DbrsASFOrtStrasse.OpenDialog
+		Continue = False
+End If
+End Sub
+
+
+Private Sub TabOrtsbezug_DbrsASFOrtAStVon_OnDialogClosed(ByVal OKButton As Boolean)
+
+'*	Checks
+	If Not OKButton Then Exit Sub
+
+'*	Business Logic
+	'Text ¸bernehmen
+	TabOrtsbezug_ASFOrtAStVon.Data = TabOrtsbezug_DbrsASFOrtAStVon.Recordset.Fields("Name")
+'	kmvon ¸bernehmen
+	TabOrtsbezug_ASFDokStrKmVon.Data = TabOrtsbezug_DbrsASFOrtAStVon.Recordset.Fields("km")
+	TabOrtsbezug_ASFDokStrKmVon.FireOnValueChanged
+
+End Sub
+
+Private Sub TabOrtsbezug_DbrsASFOrtAStBis_OnDialogClosed(ByVal OKButton As Boolean)
+
+'*	Checks
+	If Not OKButton Then Exit Sub
+
+'*	Business Logic
+	'Text ¸bernehmen
+	TabOrtsbezug_ASFOrtAStBis.Data = TabOrtsbezug_DbrsASFOrtAStBis.Recordset.Fields("Name")
+'	kmbis ¸bernehmen
+	TabOrtsbezug_ASFDokStrKmBis.Data = TabOrtsbezug_DbrsASFOrtAStBis.Recordset.Fields("km")
+	TabOrtsbezug_ASFDokStrKmBis.FireOnValueChanged
+
+End Sub
+
+Private Sub TabOrtsbezug_ASFDokStrKmVon_OnValueChanged()
+
+	ASF_Ortsbezug_checkKm_Query TabOrtsbezug_DbrsASFOrtStrasse, _
+								TabOrtsbezug_ASFDokStrKmVon, _
+								TabOrtsbezug_ASFDokStrKmBis, _
+								TabOrtsbezug_DbrsASFOrtAStVon, _
+								TabOrtsbezug_DbrsASFOrtAStBis
+
+	'Text ¸bernehmen
+	If Not TabOrtsbezug_DbrsASFOrtAStBis.DataCount = 0 Then
+		TabOrtsbezug_DbrsASFOrtAStBis.Recordset.MoveFirst
+		TabOrtsbezug_DbrsASFOrtAStBis.Recordset.Find("ID = '" & TabOrtsbezug_DbrsASFOrtAStBis.Data(0) & "'")
+		TabOrtsbezug_ASFOrtAStBis.Data = TabOrtsbezug_DbrsASFOrtAStBis.Recordset.Fields("Name")
+	End If
+
+	If Not TabOrtsbezug_DbrsASFOrtAStVon.DataCount = 0 Then
+		TabOrtsbezug_DbrsASFOrtAStVon.Recordset.MoveFirst
+		TabOrtsbezug_DbrsASFOrtAStVon.Recordset.Find("ID = '" & TabOrtsbezug_DbrsASFOrtAStVon.Data(0) & "'")
+		TabOrtsbezug_ASFOrtAStVon.Data = TabOrtsbezug_DbrsASFOrtAStVon.Recordset.Fields("Name")
+	End If
+
+End Sub
+
+Private Sub TabOrtsbezug_ASFDokStrKmBis_OnValueChanged()
+
+	ASF_Ortsbezug_checkKm_Query TabOrtsbezug_DbrsASFOrtStrasse, _
+								TabOrtsbezug_ASFDokStrKmVon, _
+								TabOrtsbezug_ASFDokStrKmBis, _
+								TabOrtsbezug_DbrsASFOrtAStVon, _
+								TabOrtsbezug_DbrsASFOrtAStBis
+
+	'Text ¸bernehmen
+	If Not TabOrtsbezug_DbrsASFOrtAStBis.DataCount = 0 Then
+		TabOrtsbezug_DbrsASFOrtAStBis.Recordset.MoveFirst
+		TabOrtsbezug_DbrsASFOrtAStBis.Recordset.Find("ID = '" & TabOrtsbezug_DbrsASFOrtAStBis.Data(0) & "'")
+		TabOrtsbezug_ASFOrtAStBis.Data = TabOrtsbezug_DbrsASFOrtAStBis.Recordset.Fields("Name")
+	End If
+
+	If Not TabOrtsbezug_DbrsASFOrtAStVon.DataCount = 0 Then
+		TabOrtsbezug_DbrsASFOrtAStVon.Recordset.MoveFirst
+		TabOrtsbezug_DbrsASFOrtAStVon.Recordset.Find("ID = '" & TabOrtsbezug_DbrsASFOrtAStVon.Data(0) & "'")
+		TabOrtsbezug_ASFOrtAStVon.Data = TabOrtsbezug_DbrsASFOrtAStVon.Recordset.Fields("Name")
+	End If
+
+End Sub
+
+Private Sub TabOrtsbezug_CtcASFDokObjekttyp_OnDialogClosed(ByVal OKButton As Boolean)
+
+'*	Lokale Objekte
+	Dim xt As String
+
+'*	Business Logik
+'	nichts gew‰hlt/Auswahl abgew‰hlt
+	If TabOrtsbezug_CtcASFDokObjekttyp.DataCount = 0 And OKButton Then
+		TabOrtsbezug_ASFDokObjekttyp.Data = ""
+		TabOrtsbezug_ASFDokObjekt.Data = ""
+		TabOrtsbezug_DbrsASFDokObjekt.ResetContent
+		TabOrtsbezug_ASFDokObjektdetail.Data = ""
+	End If
+'	etwas gew‰hlt
+	If TabOrtsbezug_CtcASFDokObjekttyp.DataCount > 0 And OKButton Then
+		TabOrtsbezug_ASFDokObjekttyp.Data = ASF_getCategoryNamePathFromCategoryIdPath(TabOrtsbezug_CtcASFDokObjekttyp.Data(0), TabOrtsbezug_CtcASFDokObjekttyp.PathSeparator)
+		TabOrtsbezug_ASFDokObjekt.Data = ""
+		With TabOrtsbezug_DbrsASFDokObjekt
+			.SQLQuery = ASF_Ortsbezug_getSqlSelectObjekte(TabOrtsbezug_CtcASFDokObjekttyp, TabOrtsbezug_DbrsASFOrtStrasse, TabOrtsbezug_ASFDokObjekt)
+			.KeyField = "ID"
+			.RetrieveData
+		End With
+		TabOrtsbezug_ASFDokObjektdetail.Clear
+	End If
+
+End Sub
+
+Private Sub TabOrtsbezug_ASFDokObjekt_OnValueChanged()
+
+	With TabOrtsbezug_DbrsASFDokObjekt
+		.SQLQuery = ASF_Ortsbezug_getSqlSelectObjekte(	TabOrtsbezug_CtcASFDokObjekttyp, _
+														TabOrtsbezug_DbrsASFOrtStrasse, _
+														TabOrtsbezug_ASFDokObjekt)
+		.KeyField = "ID"
+		.RetrieveData
+	End With
+	TabOrtsbezug_ASFDokObjektdetail.Clear
+
+End Sub
+
+Private Sub TabOrtsbezug_DbrsASFDokObjekt_OnDialogClosed(ByVal OKButton As Boolean)
+
+	If OKButton And TabOrtsbezug_DbrsASFDokObjekt.DataCount = 1 Then
+		With TabOrtsbezug_DbrsASFDokObjekt.Recordset
+			If Not .EOF Then
+				'ObjektName
+				TabOrtsbezug_ASFDokObjekt.Data = .Fields("Name")
+				'Straﬂenzug
+				If Not IsNull(.Fields("Straﬂenzug")) Then
+					ASF_db_initDbrsWithRecordsetDefinition(TabOrtsbezug_DbrsASFOrtStrasse, "OrtsbezugStraﬂenz¸ge")
+					TabOrtsbezug_DbrsASFOrtStrasse.ResetContent
+					TabOrtsbezug_DbrsASFOrtStrasse.AddData .Fields("Straﬂenzug")
+				End If
+				'km von, ASt von
+				If Not IsNull(.Fields("km von")) Then
+					TabOrtsbezug_ASFDokStrKmVon.Data = .Fields("km von")
+					TabOrtsbezug_DbrsASFOrtAStVon.ResetContent
+				End If
+				'km bis, ASt bis
+				If Not IsNull(.Fields("km bis")) Then
+					TabOrtsbezug_ASFDokStrKmBis.Data = .Fields("km bis")
+					TabOrtsbezug_DbrsASFOrtAStBis.ResetContent
+				End If
+			End If
+		End With
+	End If
+
+End Sub
+
+'*********************************
+'*	TAB GRUNDST‹CK
+
+Private Sub TabGrundstueck_DbrsKatastralgemeinde_OnDialogOpen(ByRef Continue As Boolean)
+
+	ASF_db_initDbrsWithRecordsetDefinition(TabGrundstueck_DbrsKatastralgemeinde, "OrtsbezugKatastralgemeinden",,False)
+	With TabGrundstueck_DbrsKatastralgemeinde
+		'‹005
+		.SQLQuery = ASF_Immo_getSqlSelectKatastralgemeinde(	TabGrundstueck_SbASFBundesland, _
+															TabGrundstueck_ASFKGNummer, _
+															TabGrundstueck_ASFKGName, _
+															TabGrundstueck_ASFOrtPolBezirkName)
+		'/‹005
+		.RetrieveData
+	End With
+
+End Sub
+
+Private Sub TabGrundstueck_DbrsKatastralgemeinde_OnDialogClosed(ByVal OKButton As Boolean)
+
+	With TabGrundstueck_DbrsKatastralgemeinde
+		If OKButton And .DataCount = 1 Then
+			TabGrundstueck_ASFKGNummer.Data = .Recordset.Fields("KGNummer")
+			TabGrundstueck_ASFBezeichnung.Data = .Recordset.Fields("KGNummer") & "_"
+			TabGrundstueck_SbASFBundesland.Data = .Recordset.Fields("Bundesland")
+			TabGrundstueck_ASFKGName.Data = .Recordset.Fields("KGName")
+			TabGrundstueck_ASFOrtPolBezirkName.Data = .Recordset.Fields("PGName")
+		End If
+	End With
+
+End Sub
+
+
+Private Sub TabGrundstueck_cmdDelKatastralgemeinde_OnClicked()
+	TabGrundstueck_ASFKGNummer.Clear
+	TabGrundstueck_ASFBezeichnung.Clear
+	TabGrundstueck_SbASFBundesland.Data=""
+	TabGrundstueck_ASFKGName.Clear
+	TabGrundstueck_ASFOrtPolBezirkName.Clear
+
+End Sub
+
+
+
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub initControls()
+
+'*	km-Controls vorbereiten
+	SetKmControl(TabOrtsbezug_ASFDokStrKmVon)
+	SetKmControl(TabOrtsbezug_ASFDokStrKmBis)
+
+'*	Datenbankverbindung
+	TabGrundstueck_DbrsKatastralgemeinde.ConnectionString = ASF_DMS_Daten.ConnectionString
+	TabBasisinfo_CtcASFKategorie.ConnectionString = ASF_DMS_Daten.ConnectionString
+
+
+'*	Datenbankverbindung
+
+	TabBasisinfo_DbrsProjektNummer.ConnectionString = ASF_DMS_Daten.ConnectionString
+	TabOrtsbezug_DbrsASFOrtStrasse.ConnectionString = ASF_DMS_Daten.ConnectionString
+	TabOrtsbezug_DbrsASFOrtAStVon.ConnectionString = ASF_DMS_Daten.ConnectionString
+	TabOrtsbezug_DbrsASFOrtAStBis.ConnectionString = ASF_DMS_Daten.ConnectionString
+	TabOrtsbezug_CtcASFDokObjekttyp.ConnectionString = ASF_DMS_Daten.ConnectionString
+	TabOrtsbezug_DbrsASFDokObjekt.ConnectionString = ASF_DMS_Daten.ConnectionString
+
+'* Mehrfachkategorie
+	TabBasisinfo_CtcASFMVKategorie.ConnectionString = ASF_DMS_Daten.ConnectionString
+	TabBasisinfo_CtcASFMVKategorie.StartId = "{30D353DE-E0B1-44DB-9132-68D44712182D}"
+	TabBasisinfo_CtcASFMVKategorie.MultiSelect = True
+	TabBasisinfo_CtcASFMVKategorie.RelationshipOperator =ropAND
+	TabBasisinfo_CtcASFMVKategorie.RetrieveData
+
+
+	ASF_InitErsteller(TabBasisinfo_dbrsASFErsteller, TabBasisinfo_dbrsAbleger)     '‹007
+End Sub
+
+Private Sub initValues()
+
+'*	Dokumentklassen einschr‰nken
+	With MvKlasseID
+		.ResetContent
+		.AddData Application.System.DocumentTypes.ItemByName("BauBestandsDok").GUID
+	End With
+
+End Sub
+
+'************************************************************************
+' CAD Module
+'************************************************************************
+' Interface to DOXiS CAD Manager
+' End DOXiS Manager when evITA ends.
+
+' Change History
+' 10/25/2006 First Version
+
+
+Dim DOXiSCad As Object
+Dim sAppTitle As String
+Dim Rsp As Long
+Dim buf As String
+
+Private Function Initialize(lMode As Long) As Long
+	sAppTitle = "DOXiS CAD Manager"
+	On Error Resume Next
+	Initialize = 0
+	buf = DOXiSCad.Version
+	If Err.Number  = 0 Then
+		Exit Function
+	End If
+	Err.Clear
+	Set DOXiSCad = CreateObject("DOXiSCad.Support")
+	If Err Then
+		MsgBox "Can't initialize DOXiSCad.Support!",vbExclamation , sAppTitle
+		Initialize = -1
+	End If
+End Function
+
+Private Sub Application_OnClose()
+	If Initialize(0) <> 0 Then Exit Sub
+	If Not DOXiSCad Is Nothing Then
+		DOXiSCad.Quit
+		Set DOXiSCad = Nothing
+	End If
+End Sub
+
+
+

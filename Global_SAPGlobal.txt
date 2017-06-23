@@ -1,0 +1,202 @@
+Option Explicit
+
+'*******************************************************
+'SEKTION MIT KONFIGURIERBAREN KONSTANTEN
+
+
+'*******************************************************
+
+Private Sub Application_OnBasicCommand(ByVal Para1 As Variant, ByVal Para2 As Variant, ByVal Para3 As Variant, Ret As Variant)
+	'SER/GSC	20101117	sonst gibt es Probleme mit Smartoffice
+	If UCase(Para1)="SMARTOFFICE" Then Exit Sub
+	If Len(Para1) > 2 Then Exit Sub ' Eingefügt von JMB am 27.1.2011 um 15:25 wegen Fehler des d3 Link Forwarders !!!
+
+	If Para1 = Para2 Then
+		'Bzgl Para1=Para2 siehe Applikationspflege Ablage vom Frontend
+		Call SAP_Archival(Para1, Para3)
+	Else
+		'Retrieval
+		If Len(Para1) > 4 Then
+			If Left(Para1, 4) = "http" Then
+				'Die Zeichenfolge "http" zeigt an, dass im ersten Parameter eine URL übergeben wurde.
+				'Siehe Applikationspflege Anzeigen abgelegtes Dokument
+				Call SAP_RepositoryWithCSSearch(Para1, Para2)
+			Else
+				'Siehe Applikationspflege Anzeigen abgelegtes Dokument
+				Call SAP_Repository(Para1, Para2, Para3)
+			End If
+		Else
+			'Siehe Applikationspflege Anzeigen abgelegtes Dokument
+			Call SAP_Repository(Para1, Para2, Para3)
+		End If
+	End If
+
+End Sub
+
+Private Sub SAP_Archival(contRep As String, docType As String)
+
+    Dim ardlg As ArchiveDlgLanguageExtension
+    Dim crctl As Object
+
+    On Error GoTo Fehler
+
+	Application.UserData1 = ""
+	Application.UserData2 = "150"
+
+    If Application.Globals.Exists("SAPFilingDlg") Then
+        Set ardlg = Application.Globals("SAPFilingDlg")
+        If contRep <> "" Then
+            Set crctl = ardlg.ControlByName("contRep")
+            If Not crctl Is Nothing Then
+                crctl.Data = contRep
+            End If
+        End If
+        ardlg.Execute
+    End If
+
+    Exit Sub
+Fehler:
+	MsgBox "Ein Fehler bei der Archivierung ist aufgetreten: " & Err.Description
+	Application.UserData1 = ""
+    Application.UserData2 = "150"
+End Sub
+
+Private Sub SAP_Repository(ContentRepository As String, docId As String, WindowTitle As String)
+
+	Dim que As Query
+	Dim dbs As QueryDatabases
+	Dim wnd As ViewerWindow
+	Dim sql As String
+
+	Dim i As Long
+
+	If docId = "" Then
+		Application.Windows.CloseAll
+		Exit Sub
+	End If
+
+  	sql = "select * where "
+	sql = sql & Application.System.DescriptorDefinitions.ItemByName("SAP_DOCID").QueryLiteral
+	sql = sql & " = '" & docId & "'"
+
+	Set que = Application.System.CreateQuery
+
+	que.Databases.Add GetDatabaseFromContentRep(ContentRepository)
+
+	If Left(docId, 2) = "Y1" Then 			' Vereinbarte neue Mimik für Content Server
+		que.RangeStart	= Mid(docId,3,8)
+		que.RangeEnd	= Mid(docId,3,8)
+	ElseIf Right(docId,7) = "I000000" Then	' IS/3 für Intuitiv mit KEY_IDENT
+		que.RangeStart	= Mid(docId,14,8)
+		que.RangeEnd	= Mid(docId,14,8)
+	Else									' Passendes Startdatum wählen
+		que.RangeStart	= GetStartDateFromContentRep(ContentRepository)
+		que.RangeEnd    = Format(Now, "yyyymmdd")
+		sql=sql & " AND (" & Application.System.DescriptorDefinitions.ItemByName("SAP_COMPID").QueryLiteral
+		sql=sql & " Like 'data*'"
+		sql=sql & " OR " & Application.System.DescriptorDefinitions.ItemByName("SAP_COMPID").QueryLiteral
+		sql=sql & " IS NULL)"
+	End If
+
+	que.SQLStatement = sql
+	que.HitLimit	 = 100
+	que.TimeOut		 = 10
+	que.Execute
+
+	If que.AvailableCount > 0 Then
+		Set wnd = Application.OpenDocument(que.Document(0))
+		If Len(WindowTitle) > 0 Then
+			wnd.Caption = WindowTitle
+		End If
+		wnd.ShowWindow csActivate
+	End If
+
+End Sub
+
+Public Function GetDatabaseFromContentRep(ContentRepository As String) As SWAFRAMELib.QueryDatabase
+	Dim CRs As SWAMDLib.StringMatrix
+	Set CRs = Application.MetaData.StringMatrices.ItemByName("ContentRepositories")
+
+	If CRs Is Nothing Then
+		MsgBox "Es sind keine Datenbanken für die Content Repositories definiert!"
+		Exit Function
+	End If
+
+	If ContentRepository = "" Then
+		MsgBox "Es wurde kein Content Repository von SAP übergeben!"
+		Exit Function
+	End If
+	Dim i As Long
+	For i = 0 To CRs.RowCount - 1
+		If CRs(i, 0) = ContentRepository Then
+			Set GetDatabaseFromContentRep = Application.System.QueryDatabases.ItemByName(CRs(i, 1))
+			Exit Function
+		End If
+	Next i
+
+	MsgBox "Es ist keine Datenbank für das Content Repository " & ContentRepository & " definiert!"
+End Function
+
+Public Function GetFilingDatabaseFromContentRep(ContentRepository As String) As SWAFRAMELib.FilingDatabase
+	Dim CRs As SWAMDLib.StringMatrix
+	Set CRs = Application.MetaData.StringMatrices.ItemByName("ContentRepositories")
+
+	If CRs Is Nothing Then
+		MsgBox "Es sind keine Datenbanken für die Content Repositories definiert!"
+		Exit Function
+	End If
+
+	If ContentRepository = "" Then
+		MsgBox "Es wurde kein Content Repository von SAP übergeben!"
+		Exit Function
+	End If
+	Dim i As Long
+	For i = 0 To CRs.RowCount - 1
+		If CRs(i, 0) = ContentRepository Then
+			Set GetFilingDatabaseFromContentRep = Application.System.FilingDatabases.ItemByName(CRs(i, 1))
+			Exit Function
+		End If
+	Next i
+
+	MsgBox "Es ist keine Datenbank für das Content Repository " & ContentRepository & " definiert!"
+End Function
+
+Private Function GetStartDateFromContentRep(ContentRepository As String) As String
+	Dim CRs As SWAMDLib.StringMatrix
+	Set CRs = Application.MetaData.StringMatrices.ItemByName("ContentRepositories")
+
+	If CRs Is Nothing Then
+		MsgBox "Es sind keine Datenbanken für die Content Repositories definiert!"
+		Exit Function
+	End If
+
+	If ContentRepository = "" Then
+		MsgBox "Es wurde kein Content Repository von SAP übergeben!"
+		Exit Function
+	End If
+	Dim i As Long
+	For i = 0 To CRs.RowCount - 1
+		If CRs(i, 0) = ContentRepository Then
+			GetStartDateFromContentRep = CRs(i, 2)
+			Exit Function
+		End If
+	Next i
+
+	MsgBox "Es ist keine Datenbank für das Content Repository " & ContentRepository & " definiert!"
+End Function
+
+Private Sub SAP_RepositoryWithCSSearch(CSURL As String, WindowTitle As String)
+	Dim CSSearch As New SWATOOLSLib.ContentServerSearch
+	Dim wnd As winCube.ViewerWindow
+
+	Set wnd = Application.OpenDocument(CSSearch.FindDocument(Application.System, CSURL))
+	If Len(WindowTitle) > 0 Then
+		wnd.Caption = WindowTitle
+	End If
+	wnd.ShowWindow csActivate
+End Sub
+
+Private Sub Application_OnDebugResume()
+
+End Sub
+

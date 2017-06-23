@@ -1,0 +1,106 @@
+'#Reference {2A75196C-D9EB-4129-B803-931327F72D5C}#2.8#0#C:\Program Files\Common Files\System\ado\msado28.tlb#Microsoft ActiveX Data Objects 2.8 Library#ADODB
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Filing Environment / Akte
+'*	Autor	: 	Markus D. Hartbauer, SER Solutions Österreich GmbH
+'*	Datum	:	26.08.2010
+'*	Überarbeitung Ü001	:	28.03.2011/	Barbara Bruckberger, ASFINAG: Übernahme von Werten aus MyASF_Aktuelle_Akte analog zu FE Dokument
+'*
+'************************************************************************
+
+
+	Option Explicit
+
+'************************************************************************
+'*	Globale Objekte
+'************************************************************************
+
+'*	aktuelle Objekte für diese Instanz
+'Ü001
+	Dim				MyASF_aktuelle_Akte		As SWAFRAMELib.ItaFolder
+'/Ü001
+
+	Dim WithEvents MyQRW As ResultWindow
+	Dim WithEvents MyFTV As SWAFVIEWLib.FolderTreeViewLanguageExtension
+	Dim WithEvents MyADlg As ArchiveDlg
+
+'*	SST Mantis #19790 Workaround
+	Declare Function ShowWindow Lib "user32" Alias "ShowWindow" (ByVal hwnd As Long, ByVal nCmdShow As Long) As Long
+	Const SW_HIDE = 0
+	Const SW_SHOWNORMAL = 1
+	Const SW_NORMAL = 1
+	Const SW_SHOWMINIMIZED = 2
+	Const SW_SHOWMAXIMIZED = 3
+	Const SW_MAXIMIZE = 3
+	Const SW_SHOWNOACTIVATE = 4
+	Const SW_SHOW = 5
+	Const SW_MINIMIZE = 6
+	Const SW_SHOWMINNOACTIVE = 7
+	Const SW_SHOWNA = 8
+	Const SW_RESTORE = 9
+	Const SW_SHOWDEFAULT = 10
+	Const SW_MAX = 10
+'*/	SST Mantis #19790
+
+
+
+'************************************************************************
+'*	ENVIRONMENT LEBENSZYKLUS
+'************************************************************************
+Private Sub FilingEnvironmentWindow_OnInit()
+
+'*	aktuelle Akte beim Start
+	'Ü001
+	Set MyASF_aktuelle_Akte = ASF_aktuelle_Akte
+	Set ASF_aktuelle_Akte = Nothing
+	'/Ü001
+
+End Sub
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+Private Sub FilingEnvironmentWindow_OnChangeArchiveDocClass(ByVal DocClass As SWAMDLib.ArchiveDocClass, ByRef Handled As Boolean)
+
+	ShowWindow FilingEnvironmentWindow.ArchiveViewWindow.hWnd, SW_HIDE
+'*	aktuelle Akte wiederbeleben für Übergabe an Dokument(Ablagedialog-Script)
+	'Ü001
+	Set ASF_aktuelle_Akte = MyASF_aktuelle_Akte
+	'/Ü001
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnChangeArchiveFolderClass(ByVal FolderClass As SWAMDLib.ArchiveFolderClass, ByRef Handled As Boolean)
+
+'*	aktuelle Akte wiederbeleben für Übergabe an Dokument(Ablagedialog-Script)
+	'Ü001
+	Set ASF_aktuelle_Akte = MyASF_aktuelle_Akte
+	'/Ü001
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnArchiveDocClassChanged(ByVal DocClass As SWAMDLib.ArchiveDocClass, ByRef Handled As Boolean)
+
+	ShowWindow FilingEnvironmentWindow.ArchiveViewWindow.hWnd, SW_SHOW
+'*	aktuelle Akte wieder leeren
+	'Ü001
+	Set ASF_aktuelle_Akte = Nothing
+	'/Ü001
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnArchiveFolderClassChanged(ByVal FolderClass As SWAMDLib.ArchiveFolderClass, ByRef Handled As Boolean)
+
+'*	aktuelle Akte wieder leeren
+	'Ü001
+	Set ASF_aktuelle_Akte = Nothing
+	'/Ü001
+
+End Sub
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+

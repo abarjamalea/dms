@@ -1,0 +1,22 @@
+Option Explicit
+' -------------------------------------------------------------------------------
+' Maskentyp:	Filing Environment Skript für DOXiS4-BCC
+' Maskenname:	DOXiS4 Batchcontent Control
+' Erstellung:	16.12.2008 / SER, QS
+' Version:	V04.02
+' Bemerkung:    ---
+' --------------------------------------------------------------------------------
+Private Sub FilingEnvironmentWindow_OnClose()
+	Call DOXiS4BCC_Terminate
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnDebugResume()
+	Call FilingEnvironmentWindow_OnInit
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnInit()
+	Application.Globals("FilingEnvWindow") = FilingEnvironmentWindow
+	Application.Globals("ScanTool") = ScanTool
+	Call DOXiS4BCC_InitFiling
+End Sub
+

@@ -1,0 +1,267 @@
+'#Reference {19DA34E1-8A57-41B4-847C-AA86EA6834BF}#1.0#0#C:\PROGRA~2\SER\COMPON~1\Swa\wfWBList.dll#wfWBList 1.0 Type Library#WFWBLISTLib
+'#Reference {EAB22AC0-30C1-11CF-A7EB-0000C05BAE0B}#1.1#0#C:\Windows\SysWOW64\ieframe.dll#Microsoft Internet Controls#SHDocVw
+Option Explicit
+
+Dim AXC As ActiveXControl
+Dim XDlgI As IQueryDlgInternal
+Dim WithEvents myQueryDlg As QueryDlg
+Dim WithEvents mySearchEdit As Edit
+Dim WithEvents myDocAddBtn As Button
+Dim WithEvents myRecAddBtn As Button
+Dim WithEvents myPostkorbBtn As Button
+Dim WithEvents btnOpenRL20 As Button
+Dim WithEvents btnOpenRL34 As Button
+Dim WithEvents btnOpenRL35 As Button
+Dim WithEvents btnOpeneLearning As Button
+
+Dim myPostkorblbl As Label
+Dim myResult As IResultset
+Dim myResultWindow As IResultWindow
+Dim WithEvents m_InternetExplorer As SHDocVw.InternetExplorer
+Dim mywb As wfWorkBasket
+
+Declare Function ShellExecute Lib "shell32.dll" _
+  Alias "ShellExecuteA" ( _
+  ByVal hwnd As Long, _
+  ByVal lpOperation As String, _
+  ByVal lpFile As String, _
+  ByVal lpParameters As String, _
+  ByVal lpDirectory As String, _
+  ByVal nShowCmd As Long) As Long
+
+
+Private Sub Application_OnKeyDown(ByRef Key As Integer, ByVal Shift As Boolean, ByVal Ctrl As Boolean, ByVal Alt As Boolean)
+
+	If Key = 13 And Dlg.ActiveTab Then
+		Set myResult = myQueryDlg.Execute
+		Set myResultWindow = Application.OpenResultset(myResult,Application.MetaData.ResultDlgDefinitions.ItemByName("Suche_Alle Dokumente").GUID)
+		myResultWindow.Caption = "'" + mySearchEdit.Data + "'"
+	End If
+
+End Sub
+
+Private Sub btnOpeneLearning_OnClicked()
+	ShellExecute Application.hWnd,"open","http://elearning.asbnet.at/goto.php?target=cat_1937&client_id=ASFINAG","","",0
+End Sub
+
+Private Sub btnOpenRL20_OnClicked()
+
+	Dim i As Integer
+	Dim DocID As String
+	DocID = ""
+
+	Dim AnzeigeDoc As String
+	AnzeigeDoc = "Richtlinie 020"
+
+	Dim sm As StringMatrix
+	Set sm = Application.MetaData.StringMatrices.ItemByName("ASF_Startseite_Links")
+
+	For i = 0 To sm.RowCount -1
+		If sm.Value(i,1) = AnzeigeDoc Then
+			DocID = sm.Value(i,0)
+			Exit For
+		End If
+	Next
+
+	If DocID = "" Then
+		MsgBox "Dokument für Button ist nicht konfiguriert!", vbInformation, "Information"
+	Else
+		openDocExtern(DocID,"Richtlinie20")
+		'Application.OpenDocument(Application.System.GetDocumentDirect(DocID))
+	End If
+
+	'Prod.system
+	'Application.OpenDocument(Application.System.GetDocumentDirect("SD03ASF247428ab87-dc89-4e2d-8b0c-c8963d51a00d182016-07-19T09:51:04.015Z0214"))
+End Sub
+
+Private Sub btnOpenRL34_OnClicked()
+
+	Dim i As Integer
+	Dim DocID As String
+	DocID = ""
+
+	Dim AnzeigeDoc As String
+	AnzeigeDoc = "Richtlinie 034"
+
+	Dim sm As StringMatrix
+	Set sm = Application.MetaData.StringMatrices.ItemByName("ASF_Startseite_Links")
+
+	For i = 0 To sm.RowCount -1
+		If sm.Value(i,1) = AnzeigeDoc Then
+			DocID = sm.Value(i,0)
+			Exit For
+		End If
+	Next
+
+	If DocID = "" Then
+		MsgBox "Dokument für Button ist nicht konfiguriert!", vbInformation, "Information"
+	Else
+		openDocExtern(DocID,"Richtlinie34")
+		'Application.OpenDocument(Application.System.GetDocumentDirect(DocID))
+	End If
+
+	'Prod. System
+	'Application.OpenDocument(Application.System.GetDocumentDirect("SD03ASF245135be7f-d1b2-4a3d-90e3-640422edf19b182015-10-20T11:41:05.600Z016"))
+
+End Sub
+
+Private Sub btnOpenRL35_OnClicked()
+
+	Dim i As Integer
+	Dim DocID As String
+	DocID = ""
+
+	Dim AnzeigeDoc As String
+	AnzeigeDoc = "Richtlinie 035"
+
+	Dim sm As StringMatrix
+	Set sm = Application.MetaData.StringMatrices.ItemByName("ASF_Startseite_Links")
+
+	For i = 0 To sm.RowCount -1
+		If sm.Value(i,1) = AnzeigeDoc Then
+			DocID = sm.Value(i,0)
+			Exit For
+		End If
+	Next
+
+	If DocID = "" Then
+		MsgBox "Dokument für Button ist nicht konfiguriert!", vbInformation, "Information"
+	Else
+		openDocExtern(DocID,"Richtlinie35")
+		'Application.OpenDocument(Application.System.GetDocumentDirect(DocID))
+	End If
+
+	'Prod.System
+	'Application.OpenDocument(Application.System.GetDocumentDirect("SD03ASF241b1d3fd6-c6a0-4290-be25-fb884a0b65b1182012-07-17T13:15:18.770Z013"))
+End Sub
+
+Private Sub openDocExtern(ByVal DocID As String, ByVal fileName As String)
+
+	Dim TempDir As String
+	TempDir = Environ("TEMP")
+    If Right(TempDir, 1) <> "\" Then
+        TempDir = TempDir & "\"
+    End If
+
+	Dim oDoc As ItaDocument
+	Set oDoc = Application.System.GetDocumentDirect(DocID)
+
+	Dim rep As Representation
+	Set rep = oDoc.Representations.Item( oDoc.Representations.DefaultRepresentation)
+
+	If rep.PartDocuments.Count = 0 Then
+		MsgBox "Kein Datei zum Öffnen vorhanden!", vbInformation, "Information"
+		Exit Sub
+	End If
+
+	Dim DocData As DocData
+	Set DocData = rep.PartDocuments.Item(0).DataObject
+
+	Dim docFileExtension As String
+	docFileExtension = Mid(DocData.fileName, (Len(DocData.fileName) - 3),4)
+
+    On Error Resume Next
+
+    DocData.SaveData(TempDir & fileName & docFileExtension)
+
+	ShellExecute 0,"open", TempDir & fileName & docFileExtension,"","",1
+
+End Sub
+
+
+Private Sub Dlg_OnDebugResume()
+	Set AXC = Dlg.Control(0)
+	Set XDlgI = AXC.Control
+	Set myQueryDlg = XDlgI
+
+	Set mySearchEdit = myQueryDlg.ControlByName("srcEdit")
+	Set myDocAddBtn = myQueryDlg.ControlByName("btnDocAdd")
+	Set myRecAddBtn = myQueryDlg.ControlByName("btnRecAdd")
+	Set myPostkorbBtn = myQueryDlg.ControlByName("btnPostkorb")
+	Set myPostkorblbl =  myQueryDlg.ControlByName("lblPostkorb")
+	Set btnOpenRL20 = myQueryDlg.ControlByName("btnOpenRL20")
+	Set btnOpenRL34 = myQueryDlg.ControlByName("btnOpenRL34")
+	Set btnOpenRL35 = myQueryDlg.ControlByName("btnOpenRL35")
+	Set btnOpeneLearning = myQueryDlg.ControlByName("btnOpeneLearning")
+End Sub
+
+Private Sub initWindow()
+
+	On Error Resume Next
+
+	'init Windows
+	Set AXC = Dlg.CreateControl("SwaQyDlg.QueryDlg")
+	AXC.Height = Dlg.Height
+	AXC.Width = Dlg.Width
+	AXC.Left = 0
+	AXC.Top = 0
+	AXC.Visible = True
+	Set XDlgI = AXC.Control
+	XDlgI.Init(Application.System,Application.MetaData.QueryDocClasses.ItemByName("_Startseite").QueryDlgDefinitions.ItemByType("default"))
+	XDlgI.BackColor= vbWhite
+
+	Set myQueryDlg = XDlgI
+
+	'init controls
+	Set mySearchEdit = myQueryDlg.ControlByName("srcEdit")
+	Set myDocAddBtn = myQueryDlg.ControlByName("btnDocAdd")
+	Set myRecAddBtn = myQueryDlg.ControlByName("btnRecAdd")
+	Set myPostkorbBtn = myQueryDlg.ControlByName("btnPostkorb")
+	Set myPostkorblbl =  myQueryDlg.ControlByName("lblPostkorb")
+	Set btnOpenRL20 = myQueryDlg.ControlByName("btnOpenRL20")
+	Set btnOpenRL34 = myQueryDlg.ControlByName("btnOpenRL34")
+	Set btnOpenRL35 = myQueryDlg.ControlByName("btnOpenRL35")
+	Set btnOpeneLearning = myQueryDlg.ControlByName("btnOpeneLearning")
+
+	Set mywb = Application.wfSession.Workbaskets.ItemByName(Application.System.User.User)
+	myPostkorblbl.Caption = "Neu: " + CStr(mywb.WorkBasketContent.NewWorkItemCount) + " / Total: " + CStr(mywb.WorkBasketContent.WorkItemTotalCount)
+
+	Set m_InternetExplorer = myQueryDlg.ControlByName("iFrameNews").Control
+
+	'Testing
+	'm_InternetExplorer.Navigate("www.orf.at")
+
+	m_InternetExplorer.Navigate("I:\_Alle\DOXiS\DOXiS.htm")
+
+End Sub
+
+Private Sub Dlg_OnInit()
+	initWindow
+End Sub
+
+Private Sub myPostkorbBtn_OnClicked()
+
+	If Not mywb Is Nothing Then
+		Application.OpenWFWorkBasket(mywb,False)
+	End If
+
+End Sub
+
+Private Sub myQueryDlg_OnExecuteSQL(ByRef pStatement As String)
+
+	Dim mySelectedDesc As String
+	Dim descToSearch As DescriptorDefinition
+
+	If Not myQueryDlg.ControlByName("sbSrcType").Data = "" Then
+		mySelectedDesc = myQueryDlg.ControlByName("sbSrcType").Data
+	Set	descToSearch = Application.System.DescriptorDefinitions.ItemByName(mySelectedDesc)
+
+		If Not descToSearch Is Nothing Then
+		pStatement = "SELECT * WHERE " + descToSearch.QueryLiteral + " LIKE '" + mySearchEdit.Data + "'"
+		Else
+			Application.ShowMessage("Der Deskriptor wurde nicht gefunden!")
+		End If
+	End If
+
+End Sub
+
+Private Sub myDocAddBtn_OnClicked()
+	On Error Resume Next
+	Application.OpenEnvironment("b867c0b4-7da2-432c-bcd5-6d134eb82686",False)
+End Sub
+
+Private Sub myRecAddBtn_OnClicked()
+	On Error Resume Next
+	Application.OpenEnvironment("d07509b6-2755-45e4-ad53-61eedf99aa86",False)
+End Sub
+

@@ -1,0 +1,1309 @@
+'#Reference {AB5376C3-CA0C-11D6-BC39-0001020E6173}#1.0#0#C:\Programme\SER\Components\Swa\swaOrga.dll#SwaOrga 1.0 Type Library
+'#Reference {DC752F70-69D7-49F3-8756-9F765D0CE953}#1.0#0#C:\Programme\SER\Components\Swa\SwaGM.dll#SwaGM 1.0 Type Library
+'**************************************************************************
+'* DOXiS4/evITA
+'*
+'* Script   :	_ AutoDokuSOE/GlobalScript/de.ser.doxis4.doku
+'* Version  : 	02.00.00
+'* Date     : 	22.08.2011
+'* Copyright: 	SER Beteiligung Solutions Deutschland GmbH
+'*		SER Solutions Österreich GmbH
+'**************************************************************************
+Option Explicit
+'=======================================================================================
+' Copyright 2007 SER Solutions Deutschland GmbH
+' Beschreibung: Globales Script - Admin
+' Versionshistorie:
+' V01.00, 		18.08.2008, FP: 	Erstellung
+' V01.01, 		03.06.2008, FP: 	Erweiterung PK-Scripte
+' V01.02, 		25.06.2009, FP: 	Speicherstruktur = .\Servername\System\Datum (z.B. mns27\SYSTEM1\20090625)
+' V01.03, 		26.08.2009, FP: 	Erweiterung um <MultiOut> und <Ausgabe WF-WL + WF_Proz-Def> + <Ausgabe Globale Wertelisten>
+' V02.00, 		29.11.2011, SOE/GSC	Anpassungen auch für evITA geeignet
+' V02.00.01,		29.11.2011, SOE/GSC	Fehler bei WFL-Deskriptoren bereinigt (Wenn nicht mit WFL verbunden)
+' V02.00.02, 		12.12.2011, SOE/GSC	Fehler bei ORG bereinigt
+' V02.00.03, 		12.01.2012, SOE/GSC	Bei CSB wird nun application.system.getserver2 verwendet
+
+'=======================================================================================
+Private Const VERSION="02.00.03"
+Private Const PATH As String = "c:\SER\_Auto-Doku\"
+Private Const TXT As String = ".txt"
+Private outPath As String
+Private conSystem As Integer		'1=ITAServer, 2 = CSB
+Private iOut As Integer
+'**********************************************************************
+Private Type EH_Role
+	EH_ID As String
+	EH_Name As String
+	RO_ID As String
+	RO_Name As String
+End Type
+Private Type User_Group
+	US_ID As String
+	US_Name As String
+	GR_ID As String
+	GR_Name As String
+End Type
+Private Type Security
+	Object_ID As String                'ID User, Rolle, Einheit oder Gruppe
+	Object_Type As String
+	Masken_ID As String
+	Masken_Name As String
+	RechteType As String        '0 verweigert, 1 gewährt
+	RechteIS As String
+End Type
+Dim aArray() As String
+Dim aWFArray() As String
+Private Sub Application_OnDebugResume()
+	Application_OnInit
+End Sub
+
+Private Sub Application_OnInit()
+	Call InstallUserMenus
+End Sub
+
+Private Sub Application_OnClose()
+	Application.StatusBarInfoText = ""
+End Sub
+
+Private Sub InstallUserMenus
+
+	Dim isCSB As Boolean
+	Dim isITA As Boolean
+	isITA = (Application.System.ConnectionType And 1) > 0
+	isCSB = (Application.System.ConnectionType And 16) > 0
+	If isITA Then conSystem=1
+	If isCSB Then conSystem=2
+	'Erweiterung der Menuleiste um selbst definierte Menüs
+
+	On Error Resume Next
+	Application.Menu.AddMenu("SOE","SOE",0,"")
+	Application.Menu.AddMenu("AutoDoku","Dokumentation",73,"SOE")
+
+	On Error GoTo 0
+End Sub
+Private Sub Application_OnUserMenuClick(ByVal MenuID As String, Handled As Boolean)
+	Dim sServer As String
+	Dim sDummy1 As String
+	Dim sDummy2 As String
+	Dim sDummy3 As String
+	Dim sdummy4 As String
+	Dim sPaths As String
+	Dim sSubFolder As String
+	Dim sSubFolder1 As String
+	Dim sFile As String
+	Dim sarrcsburl() As String
+	Dim sarrcsburlport() As String
+	Dim soutputpath As String
+	Select Case conSystem
+		Case 1
+			Application.GetServer  sServer,sDummy1,sDummy2,sDummy3
+		Case 2
+			'sarrcsburl=Split(Application.System.ServerUrl,"/")
+			sarrcsburl=Split(Application.System.GetServer2,"/")
+			sdummy4=Application.System.GetServer2
+			If UBound(sarrcsburl) > 3 Then
+				sarrcsburlport=Split(sarrcsburl(2),":")
+			End If
+			If UBound(sarrcsburlport) = 1 Then
+				sServer=sarrcsburlport(0)
+			End If
+	End Select
+	Select Case MenuID
+		Case "AutoDoku"
+			outPath = InputBox("Verzeichniseingabe","Verzeichnis",PATH)
+			If outPath="" Then
+				'MsgBox("Abbruch durch Benutzer",vbInformation,"Abbruch")
+				Call showmessage("Abbruch durch Benutzer",True,False)
+				Exit Sub
+			End If
+			If sServer <> "" Then
+				If Right(outPath,1) = "\" Then
+					outPath=outPath & sServer & "\"
+				Else
+					outPath=outPath & "\" & sServer & "\"
+				End If
+			End If
+			outPath = outPath & Application.System.Name  & "\"
+			Call do_create_dirs(outPath,False)
+			iOut = FreeFile
+			sFile = outPath & "_" & VERSION & "_"
+			Select Case conSystem
+				Case 1
+					sFile = sFile & "ITA"
+				Case 2
+					sFile = sFile & "CSB"
+				Case Else
+					sFile = sFile & "UNKNOWN"
+			End Select
+			Open sFile For Output As #iOut
+			Close #iOut
+			Call Scripte(True)
+			Call MaskenControls("Detail",True)
+			Call MakeOutput("All",True)					'Orgmodell
+			Call MakeOutput("RoleMembers",True)
+			Call MakeOutput("GroupMembers",True)
+			Call getGlobalMatrixes(True)
+			Call getNamespaces(True)
+			Call getdbdefs(True)
+			Application.StatusBarInfoText = ""
+			sSubFolder = Format(Now,"yyyymmdd") & "\"
+			If Dir(outPath & sSubFolder & "\") = "" Then
+				'MkDir(myPath & sSubFolder & "\")
+				Call do_create_dirs(outPath & sSubFolder,False)
+			End If
+			sSubFolder1 = Format(Now,"yyyymmdd_hh.mm.ss")
+			If Dir(outPath & sSubFolder & "\" & sSubFolder1 & "\") = "" Then
+				Call do_create_dirs(outPath & sSubFolder & "\" & sSubFolder1 & "\",False)
+			End If
+			If Dir(outPath, vbDirectory) = "" Then
+			'        MkDir(myPath)
+			Else
+				If Dir(outPath,vbNormal) <> "" Then
+					'Verzeichnis nicht leer
+					'-> Unterverzeichnis anlegen und hinein verschieben:
+					sFile = Dir(outPath,vbNormal)
+						Do Until sFile = ""
+						On Error Resume Next
+						Name outPath & sFile As outPath & sSubFolder & "\" & sSubFolder1 & "\" & sFile
+						If Err.Number <> 0 Then
+						Application.StatusBarInfoText =  sFile & ": Datei im Zugriff, verschieben daher nicht möglich"
+						End If
+						sFile = Dir
+					Loop
+					soutputpath=Replace(outPath & sSubFolder & "\" & sSubFolder1,"\\","\")
+					Call showmessage("Ausgabe beendet." & vbCrLf & "Ausgabedirectory: '" & vbCrLf & soutputpath & "'",False,False)
+				End If
+			End If
+	End Select
+End Sub
+Private Sub MakeOutput(pFromWhere As String, pSilent As Boolean)
+	Dim myFileName As String
+	Dim PrintString As String
+	Dim iOut As Integer
+	iOut = FreeFile
+	PrintString = "Objektklasse" & vbTab & "GUID" & vbTab & "Name" & vbTab & "Vorname" & vbTab & "Nachname" & vbTab & "Beschreibung" & vbTab & "übergeordnete Einheit" & vbTab & "Email"
+	Select Case pFromWhere
+		Case "All"
+			myFileName = outPath & "Organisation.xls"
+			Open myFileName For Output As #iOut
+			Print #iOut, PrintString
+			Call GetUsers(pSilent)
+			Call GetRoles(pSilent)
+			Call GetUnits(pSilent)
+			Call GetGroups(pSilent)
+		Case "Users"
+			myFileName = outPath & "User.xls"
+			Open myFileName For Output As #iOut
+			Print #iOut, PrintString
+			Call GetUsers(pSilent)
+		Case "Roles"
+			myFileName = outPath & "Roles.xls"
+			Open myFileName For Output As #iOut
+			Print #iOut, PrintString
+			Call GetRoles(pSilent)
+		Case "Units"
+			myFileName = outPath & "Units.xls"
+			Open myFileName For Output As #iOut
+			Print #iOut, PrintString
+			Call GetUnits(pSilent)
+		Case "Groups"
+			myFileName = outPath & "Groups.xls"
+			Open myFileName For Output As #iOut
+			Print #iOut, PrintString
+			Call GetGroups(pSilent)
+		Case "RoleMembers"
+			PrintString = "Rolle" & vbTab & "RoleID" & vbTab & "GUID" & vbTab & "Name" & vbTab & "Vorname" & vbTab & "Nachname" & vbTab & "Beschreibung" & vbTab & "übergeordnete Einheit"
+			myFileName = outPath & "RoleMembers.xls"
+			Open myFileName For Output As #iOut
+			Print #iOut, PrintString
+			Call GetRoleMembers(pSilent)
+		Case "GroupMembers"
+			PrintString = "Gruppe" & vbTab & "ID" & vbTab & "Typ" & vbTab & "GUID" & vbTab & "Name" & vbTab & "Vorname" & vbTab & "Nachname" _
+				& vbTab & "Beschreibung" & vbTab & "übergeordnete Einheit"
+			myFileName = outPath & "GroupMembers.xls"
+			Open myFileName For Output As #iOut
+			Print #iOut, PrintString
+			Call GetGroupMembers
+	End Select
+	Close #iOut
+	If pSilent = False Then
+		Application.ShowMessage("Die Ausgabe erfolgte nach " & myFileName)
+	End If
+End Sub
+Private Sub GetGroupMembers
+	Dim myGM As SWAGMLib.GroupManager
+	Dim myGroup As SWAGMLib.Group
+	Dim myUser As SWAORGALib.Person
+	Dim myorga As SWAORGALib.Organisation
+	Dim I As Long
+	Dim ii As Long
+	Dim GUID As String
+	Dim nType As String
+	Dim nName As String
+	Dim sName As String
+	Dim P2 As String
+	Dim PrintString As String
+	Set myorga = Application.System.Organisation
+	Set myGM = Application.System.GroupManager
+	For I = 0 To myGM.Groups.Count-1
+	Set myGroup = myGM.Groups.Item(I)
+		For ii = 0 To myGroup.IdentifierCount-1
+			myGroup.GetIdentifier(ii,GUID,nType,nName)
+			Select Case nType
+				Case "Unit"
+					If myorga.Units.ItemByGUID(GUID).ParentUnit Is Nothing Then
+						P2 = myorga.Units.ItemByGUID(GUID).Name & vbTab & vbTab & vbTab & myorga.Units.ItemByGUID(GUID).Description
+					Else
+						P2 = myorga.Units.ItemByGUID(GUID).Name & vbTab & vbTab & vbTab & myorga.Units.ItemByGUID(GUID).Description _
+							& vbTab & "in " & myorga.Units.ItemByGUID(GUID).ParentUnit.Name
+					End If
+				Case "Role"
+					If myorga.Roles.ItemByGUID(GUID).ParentUnit Is Nothing Then
+						sName = ""
+					Else
+						sName = myorga.Roles.ItemByGUID(GUID).ParentUnit.Name
+					End If
+					'P2 = myorga.Roles.ItemByGUID(GUID).Name & vbTab & vbTab & vbTab & myorga.Roles.ItemByGUID(GUID).Description _
+					'	& vbTab & "in " & myorga.Roles.ItemByGUID(GUID).ParentUnit.Name
+					P2 = myorga.Roles.ItemByGUID(GUID).Name & vbTab & vbTab & vbTab & myorga.Roles.ItemByGUID(GUID).Description _
+						& vbTab & "in " & sName
+				Case "Person"
+					P2 = myorga.Persons.ItemByGUID(GUID).Name & vbTab &myorga.Persons.ItemByGUID(GUID).Forename & vbTab _
+						& myorga.Persons.ItemByGUID(GUID).Lastname & vbTab & myorga.Persons.ItemByGUID(GUID).Description
+			End Select
+			Application.StatusBarInfoText = "Gruppe/Members: " & myGroup.Name & " - " & P2
+			PrintString = myGroup.Name & vbTab & myGroup.GUID & vbTab & nType & vbTab & GUID & vbTab & P2
+			Print #iOut, PrintString
+			PrintString = ""
+		Next ii
+	Next I
+End Sub
+Private Function GetRoleMembers (pSilent As Boolean)
+	Dim myorga As SWAORGALib.Organisation
+	Dim myRole As SWAORGALib.Role
+	Dim myUser As SWAORGALib.Person
+	Dim I As Long
+	Dim ii As Long
+	Dim PrintString As String
+	Set myorga = Application.System.Organisation
+	For I = 0 To myorga.Roles.Count-1
+		Set myRole = myorga.Roles(I)
+		For ii = 0 To myRole.Persons.Count-1
+			Set myUser = myRole.Persons(ii)
+			If Not myRole.ParentUnit Is Nothing Then
+				PrintString = myRole.Name & vbTab & myRole.ID & vbTab & myUser.ID & vbTab & myUser.Name & vbTab & myUser.Forename _
+					&vbTab & myUser.Lastname & vbTab & myUser.Description & vbTab & "in " & myRole.ParentUnit.Name
+			Else
+				PrintString = myRole.Name & vbTab & myRole.ID & vbTab & myUser.ID & vbTab & myUser.Name & vbTab & myUser.Forename _
+					&vbTab & myUser.Lastname & vbTab & myUser.Description & vbTab & "in <Wert nicht gefüllt>"
+			End If
+			Application.StatusBarInfoText = "Role/Members: " & myRole.Name & " - " & myUser.Name
+			Print #iOut, PrintString
+			PrintString = ""
+		Next ii
+	Next I
+End Function
+Private Function GetUsers (pSilent As Boolean)
+	Dim myorga As SWAORGALib.Organisation
+	Dim myUser As SWAORGALib.Person
+	Dim I As Long
+	Dim PrintString As String
+	Set myorga = Application.System.Organisation
+	For I = 0 To myorga.Persons.Count-1
+		Set myUser = myorga.Persons(I)
+		PrintString = "User" & vbTab & myUser.ID & vbTab & myUser.Name & vbTab & myUser.Forename & vbTab & myUser.Lastname & vbTab & myUser.Description & vbTab & vbTab & myUser.MailAddress
+		Print #iOut, PrintString
+		PrintString = ""
+		Application.StatusBarInfoText = "User: " & myUser.Name
+	Next I
+End Function
+Private Function GetRoles (pSilent As Boolean)
+	Dim myorga As SWAORGALib.Organisation
+	Dim myRole As SWAORGALib.Role
+	Dim I As Long
+	Dim PrintString As String
+	Set myorga = Application.System.Organisation
+	For I = 0 To myorga.Roles.Count-1
+		Set myRole = myorga.Roles(I)
+		If Not myRole.ParentUnit Is Nothing Then
+			PrintString = "Rolle" & vbTab & myRole.ID & vbTab & myRole.Name & vbTab & vbTab & vbTab & myRole.Description & vbTab & "in " & myRole.ParentUnit.Name
+		Else
+			PrintString = "Rolle" & vbTab & myRole.ID & vbTab & myRole.Name & vbTab & vbTab & vbTab & myRole.Description & vbTab & "in <nicht gefüllt>"
+		End If
+		Application.StatusBarInfoText = "Rollen: " & myRole.Name
+		Print #iOut, PrintString
+		PrintString = ""
+	Next I
+End Function
+Private Function GetUnits (pSilent As Boolean)
+	Dim myorga As SWAORGALib.Organisation
+	Dim myUnit As SWAORGALib.Unit
+	Dim I As Long
+	Dim PrintString As String
+	Set myorga = Application.System.Organisation
+	For I = 0 To myorga.Units.Count-1
+		Set myUnit = myorga.Units(I)
+		If Not myUnit.ParentUnit Is Nothing Then
+			PrintString = "Einheit" & vbTab & myUnit.ID & vbTab & myUnit.Name & vbTab & vbTab & vbTab & myUnit.Description & vbTab & "in " & myUnit.ParentUnit.Name
+		Else
+			PrintString = "Einheit" & vbTab & myUnit.ID & vbTab & myUnit.Name & vbTab & vbTab & vbTab & myUnit.Description & vbTab
+		End If
+		Application.StatusBarInfoText = "Einhelten: " & myUnit.Name
+		Print #iOut, PrintString
+		PrintString = ""
+	Next I
+End Function
+Private Function GetGroups (pSilent As Boolean)
+	Dim myGroup As SWAGMLib.Group
+	Dim myGM As SWAGMLib.GroupManager
+	Dim I As Long
+	Dim PrintString As String
+	Set myGM = Application.System.GroupManager
+	For I = 0 To myGM.Groups.Count -1
+		Set myGroup = myGM.Groups.Item(I)
+		PrintString = "Gruppe" & vbTab & myGroup.GUID & vbTab & myGroup.Name & vbTab & vbTab & vbTab & myGroup.Description
+		Print #iOut, PrintString
+		PrintString = ""
+		Application.StatusBarInfoText = "Gruppen: " & myGroup.Name
+	Next I
+End Function
+Private Function MaskenControls(pModus As String, pSilent As Boolean)
+	Dim X As Long
+	Dim fn As Integer
+	Dim myGUID As String
+	Dim MyName As String
+	Dim MyClassName As String
+	Dim myType As String
+	Dim myFileName As String
+	Dim I As Long
+	Dim MyClass As IDlgDefinition
+	Dim K As Long
+	Dim sType As String
+	Dim oAMDlg As ArchiveDlgDefinitions
+	Dim oAM As ArchiveDlgDefinition
+	Dim oSMDlg As QueryDlgDefinitions
+	Dim oSM As QueryDlgDefinition
+	Dim oWFDlg As wfWorkflowItemQueryDlgDefinitions
+	Dim oWFWI As wfWorkflowItemQueryDlgDefinition
+	Dim oWFPIS As wfProcessDefinitions
+	Dim oWFPI As wfProcessDefinition
+	Dim oWFPISteps As wfProcessSteps
+	Dim oWFPIStep As wfProcessStep
+	Dim oProcessDefinition As wfProcessDefinition
+	Dim oProcessDefinitionVersion As wfProcessDefinitionVersion
+	fn = FreeFile
+	If pModus = "Detail" Then
+		'myFileName = outPath & "Controls_Detail.xls"
+		myFileName = outPath & "Controls.xls"
+	Else
+		myFileName = outPath & "Controls.xls"
+	End If
+	Open myFileName For Output As #fn
+	'Kopfzeile Drucken
+	If pModus = "einfach" Then
+		Print #fn, "MaskenID" & vbTab & "Name" & vbTab & "Klasse" & vbTab & "Typ" & vbTab & "DeskID" & vbTab _
+			& "ControlName" & vbTab & "ControlType" & vbTab
+		ReDim aArray(0)
+		ReDim aWFArray(0)
+	Else
+		If pModus = "Detail" Then
+			Print #fn, "MaskenID" & vbTab & "Name" & vbTab & "Klasse" & vbTab & "Typ" & vbTab & "DeskID" & vbTab _
+				& "ControlName" & vbTab & "ControlType" & vbTab & "DescName" & vbTab & "Desc-Type" & vbTab & "Index" & vbTab & "Desc-Länge" & vbTab
+			DescDefs("Detail",pSilent)
+			DescWFDefs("Detail",pSilent)
+		Else
+			If pSilent = False Then
+				Application.ShowError("falscher Wert für Modus...")
+			End If
+			Exit Function
+		End If
+	End If
+	'Dokumentenklassen
+	With Application.MetaData.ArchiveDocClasses
+		MyClassName = "DocClass"
+		For I = 1 To .Count -1
+			myGUID = .Item(I).GUID
+			MyName = .Item(I).Name
+			Application.StatusBarInfoText = "Controls: " & MyClassName & " - " & MyName
+			Set oAMDlg = .Item(I).ArchiveDlgDefinitions
+			For K = 0 To oAMDlg.Count -1
+				oAMDlg.Item(K,  sType, oAM)
+				Set MyClass = .Item(I).ArchiveDlgDefinitions.ItemByType(sType)
+				Call PrintMyClassControls(sType,MyClass,myGUID,MyClassName,MyName,fn, pModus)
+			Next K
+		Next I
+	End With
+	'Suchklassen
+	With Application.MetaData.QueryDocClasses
+		MyClassName = "QueryClass"
+		For I = 0 To .Count -1
+			myGUID = .Item(I).GUID
+			MyName = .Item(I).Name
+			Application.StatusBarInfoText = "Controls: " & MyClassName & " - " & MyName
+			Set oSMDlg = .Item(I).QueryDlgDefinitions
+			For K = 0 To oSMDlg.Count -1
+				oSMDlg.Item(K,  sType, oSM)
+				Set MyClass = .Item(I).QueryDlgDefinitions.ItemByType(sType)
+				Call PrintMyClassControls(sType,MyClass,myGUID,MyClassName,MyName,fn, pModus)
+			Next K
+		Next I
+	End With
+	'ResultLists
+	With Application.MetaData.ResultDlgDefinitions
+		Dim myDesc As String
+		Dim ii As Long
+		Dim DescName As String
+		Dim PrintString As String
+		For I = 0 To .Count -1
+			MyClassName = "Resultlist"
+			MyName = .Item(I).Name
+			myGUID = .Item(I).GUID
+			Application.StatusBarInfoText = "Controls: " & MyClassName & " - " & MyName
+			myType = "-"
+			For ii = 0 To .Item(I).GetResultCount-1
+				myDesc  = .Item(I).GetResultDefinition(ii).UserData
+				If IsNumeric(myDesc) = True Then
+					DescName = Application.System.DescriptorDefinitions.ItemByGUID(myDesc).Name
+				Else
+					DescName = ""
+				End If
+				PrintString = myGUID & vbTab & MyName & vbTab & MyClassName & vbTab & vbTab & myDesc & vbTab & DescName & vbTab & "Spalte" & vbTab & GetDescDetail(myDesc)
+				Print #fn, PrintString
+			Next ii
+		Next I
+	End With
+	'FolderClasses
+	With Application.MetaData.ArchiveFolderClasses
+		MyClassName = "FolderClass"
+		For I = 1 To .Count-1
+			myGUID = .Item(I).GUID
+			MyName = .Item(I).Name
+			Application.StatusBarInfoText = "Controls: " & MyClassName & " - " & MyName
+			Set oAMDlg = .Item(I).ArchiveDlgDefinitions
+			For K = 0 To oAMDlg.Count -1
+				oAMDlg.Item(K,  sType, oAM)
+				Set MyClass = .Item(I).ArchiveDlgDefinitions.ItemByType(sType)
+				Call PrintMyClassControls(sType,MyClass,myGUID,MyClassName,MyName,fn, pModus)
+			Next K
+		Next I
+	End With
+	'WF:
+	If Not Application.wfMetaData Is Nothing Then
+		Dim odef As wfDocRefListDefinition
+		Dim odefs As wfDocRefListDefinitions
+		Dim oColDef As IwfColumnDefinition    'odef.ColumnDefinitions lwfcolumndefinition
+		With Application.wfMetaData.DocRefListDefinitions
+			For I = 0 To .Count -1
+				'Set odef = .Item(i)
+				'Set oColDef = .Item(i).ColumnDefinitions(0)
+				MyClassName = "WFL_RL_"
+				MyName = .Item(I).Name
+				myGUID = .Item(I).GUID
+				Application.StatusBarInfoText = "Controls: " & MyClassName & " - " & MyName
+				myType = "default"
+				For ii = 0 To .Item(I).ColumnDefinitions.Count-1
+					myDesc  = .Item(I).ColumnDefinitions(ii).UserData
+					If IsNumeric(myDesc) = True Then
+						DescName = .Item(I).ColumnDefinitions(ii).Title
+					Else
+						DescName = ""
+					End If
+						'Call PrintMyClassControls(myType,MyClass,MyGUID,MyClassName,MyName,fn)
+						PrintString = myGUID & vbTab & MyName & vbTab & MyClassName & vbTab & vbTab & myDesc & vbTab & DescName & vbTab & GetWFDescDetail(myDesc)
+						Print #fn, PrintString
+				Next ii
+			Next I
+		End With
+		'WF-SuchmaskeClasses
+			With Application.wfMetaData.QueryClasses
+			For I = 0 To .Count -1
+				MyClassName = "WFL_QC
+				MyName = .Item(I).Name
+				myGUID = .Item(I).GUID
+				Application.StatusBarInfoText = "Controls: " & MyClassName & " - " & MyName
+				'Set oWFDlg = Application.wfMetaData.QueryClasses.Item(i).WorkflowItemQueryDlgDefinitions.
+				'Application.wfMetaData.QueryClasses.Item(i).WorkflowItemQueryDlgDefinition
+				'Application.wfMetaData.QueryClasses.Item(i).WorkflowItemQueryDlgDefinitions.
+				Dim test As wfWorkflowItemQueryDlgDefinition
+				Dim test1 As IDlgDefinition
+				Set oWFDlg = Application.wfMetaData.QueryClasses.Item(I).WorkflowItemQueryDlgDefinitions
+				For K = 0 To oWFDlg.Count -1
+					oWFDlg.Item(K,  sType, oWFWI)
+					If Not Application.wfMetaData.QueryClasses.Item(I).WorkflowItemQueryDlgDefinitions(sType) Is Nothing Then
+					End If
+				Next K
+			Next I
+		End With
+		'Ausgabe aller WF-Prozessdefinitionen:
+		Dim oIDlgDef As IDlgDefinition
+		With Application.wfMetaData.ExtProcessDefinitions
+			For I = 0 To .Count -1
+				For K = 0 To Application.wfMetaData.ExtProcessDefinitions.Item(I).WorkflowItemViewDlgDefinitions.Count -1
+					sType = ""
+					MyClassName = "WF_Proz-Def"
+					MyName = Application.wfMetaData.ExtProcessDefinitions.Item(I).ProcessDefinition.Name
+					Application.StatusBarInfoText = "Controls: " & MyClassName & " - " & MyName
+					On Error Resume Next
+					myGUID = Application.wfMetaData.ExtProcessDefinitions.Item(I).WorkflowItemViewDlgDefinitions.Item(K,sType).GUID
+					Set oIDlgDef = Application.wfMetaData.ExtProcessDefinitions.Item(I).WorkflowItemViewDlgDefinitions.Item(K,sType)
+					For X = 0 To oIDlgDef.GetControlCount -1
+						myDesc  = oIDlgDef.GetControlDefinition(X).GUID
+						DescName = oIDlgDef.GetControlDefinition(X).Name
+						PrintString = myGUID & vbTab & MyName & vbTab & MyClassName & vbTab & sType & vbTab & oIDlgDef.GetControlDefinition(X).UserData & vbTab & DescName & vbTab & oIDlgDef.GetControlDefinition(X).ControlType & vbTab & GetWFDescDetail(oIDlgDef.GetControlDefinition(X).UserData)
+						Print #fn, PrintString
+					Next X
+				Next K
+			Next I
+		End With
+	End If
+	Close #fn
+	If pSilent = False Then
+		Application.ShowMessage("Die Maskencontrols wurden in die Datei " & myFileName & " geschrieben")
+	End If
+End Function
+Private Sub PrintMyClassControls(pmyType As String, pMyClass As IDlgDefinition,pmyGUID As String,pMyClassName As String, pMyName As String,pfn As Integer, Optional pModus As String)
+	Dim I As Integer
+	Dim PrintString As String
+	Dim myctrldef As ControlDefinition
+	For I = 0 To pMyClass.GetControlCount-1
+		Set myctrldef = pMyClass.GetControlDefinition(I)
+		If pModus = "Detail" Then
+			PrintString = myctrldef.UserData  & vbTab & myctrldef.Name & vbTab & myctrldef.ControlType & vbTab & GetDescDetail(myctrldef.UserData)
+		Else
+			PrintString = myctrldef.UserData  & vbTab & myctrldef.Name & vbTab & myctrldef.ControlType
+		End If
+		Print #pfn, pmyGUID & vbTab & pMyName & vbTab & pMyClassName & vbTab & pmyType & vbTab & PrintString
+		PrintString = ""
+	Next I
+End Sub
+Private Function GetWFDescDetail(pDescID As String) As String
+	Dim I As Long
+	Dim sTmp As String
+	GetWFDescDetail = ""
+	For I = 0 To UBound(aWFArray) -1
+		If Mid(aWFArray(I),1,InStr(aWFArray(I),vbTab)-1) = pDescID Then
+			sTmp = aWFArray(I)
+			sTmp = Mid(sTmp,InStr(sTmp,vbTab)+1)
+			GetWFDescDetail =sTmp
+			Exit For
+		End If
+	Next I
+End Function
+Private Function GetDescDetail(pDescID As String) As String
+	Dim I As Long
+	Dim sarray() As String
+	GetDescDetail = ""
+	For I = 0 To UBound(aArray) -1
+		sarray=Split(aArray(I),vbTab)
+		If sarray(0) = pDescID Then
+	'	If Mid(aArray(I),1,4) = pDescID Then
+	'		GetDescDetail = Mid(aArray(I),6)
+			GetDescDetail=Right(aArray(I),Len(aArray(I))- Len(sarray(0)) - 1)
+			Exit For
+		End If
+	Next I
+End Function
+Private Function DescWFDefs(pModus As String, pSilent As Boolean)
+	'Ausgabe der DeskriptorDefinitionen in eine Tabgetrennt TextDatei
+	Dim fn As Integer
+	Dim myFileName As String
+	Dim I As Integer
+	Dim VType As String
+	Dim vUse As String
+	Dim PrintString As String
+	fn = FreeFile
+	myFileName = outPath & "WFL_Deskriptoren.xls"
+	If Application.wfSession Is Nothing Then Exit Function
+	With Application.wfSession
+		Open myFileName For Output As #fn
+		Print #fn, "GUID" & vbTab & "Name" & vbTab & "Type" & vbTab _
+		& "Index" & vbTab & "Länge"
+		For I = 0 To .DescriptorDefinitions.Count -1
+			PrintString = .DescriptorDefinitions(I).GUID & vbTab _
+				& .DescriptorDefinitions(I).Name
+			Application.StatusBarInfoText = "DescDefs: " & .DescriptorDefinitions(I).Name
+			Select Case .DescriptorDefinitions(I).ValueType 'Formatausgabe
+				Case 0
+					VType = "Benutzerdefiniert"
+				Case 1
+					VType = "Numerisch"
+				Case 2
+					VType = "Numerisch mit führenden Nullen"
+				Case 3
+					VType = "ITADatum"
+				Case 4
+					VType = "Buchstaben"
+				Case 5
+					VType = "Großbuchstaben"
+				Case 6
+					VType = "Kleinbuchstaben"
+				Case 7
+					VType = "Buchstaben & Ziffern"
+				Case 8
+					VType = "Großbuchstaben & Ziffern"
+				Case 9
+					VType = "Kleinbuchstaben & Ziffern"
+				Case 10
+					VType = "Beliebig"
+				Case 11
+					VType = "Beliebig Groß"
+				Case 12
+					VType = "Beliebig Klein"
+				Case 13
+					VType = "Zahl"
+				Case 14
+					VType = "Zahl mit führenden Nullen"
+				Case 15
+					VType = "Währung"
+				Case 16
+					VType = "WF Datum/Uhrzeit"
+				'...
+			End Select
+			If VType <> "" Then
+				PrintString = PrintString & vbTab & VType
+			Else
+				PrintString = PrintString & vbTab
+			End If
+			VType = ""
+			PrintString = PrintString & vbTab
+			PrintString = PrintString & vbTab & .DescriptorDefinitions(I).Length
+			If pModus = "Detail" Then
+				ReDim Preserve aWFArray(I)
+				aWFArray(I) = PrintString
+				Print #fn,PrintString
+				PrintString = ""
+			Else
+				Print #fn,PrintString
+				PrintString = ""
+			End If
+		Next I
+		Close #fn
+	End With
+	If pSilent = False Then
+		Application.ShowMessage("Die Ausgabe erfolgte nach " & myFileName)
+	End If
+End Function
+Private Function DescDefs(pModus As String, pSilent As Boolean)
+	'Ausgabe der DeskriptorDefinitionen in eine Tabgetrennt TextDatei
+	Dim fn As Integer
+	Dim myFileName As String
+	Dim I As Integer
+	Dim VType As String
+	Dim vUse As String
+	Dim PrintString As String
+	fn = FreeFile
+	myFileName = outPath & "Deskriptoren.xls"
+	With Application.System
+		Open myFileName For Output As #fn
+		Print #fn, "GUID" & vbTab & "Name" & vbTab & "Type" & vbTab _
+			& "Index" & vbTab & "Länge"
+		For I = 0 To .DescriptorDefinitions.Count -1
+			Application.StatusBarInfoText = "DescDefs: " & .DescriptorDefinitions(I).Name
+			PrintString = .DescriptorDefinitions(I).GUID & vbTab _
+			& .DescriptorDefinitions(I).Name
+			Select Case .DescriptorDefinitions(I).ValueType 'Formatausgabe
+				Case 0
+					VType = "Benutzerdefiniert"
+				Case 1
+					VType = "Numerisch"
+				Case 2
+					VType = "Numerisch mit führenden Nullen"
+				Case 3
+					VType = "ITADatum"
+				Case 4
+					VType = "Buchstaben"
+				Case 5
+					VType = "Großbuchstaben"
+				Case 6
+					VType = "Kleinbuchstaben"
+				Case 7
+					VType = "Buchstaben & Ziffern"
+				Case 8
+					VType = "Großbuchstaben & Ziffern"
+				Case 9
+					VType = "Kleinbuchstaben & Ziffern"
+				Case 10
+					VType = "Beliebig"
+				Case 11
+					VType = "Beliebig Groß"
+				Case 12
+					VType = "Beliebig Klein"
+				Case 13
+					VType = "Zahl"
+				Case 14
+					VType = "Zahl mit führenden Nullen"
+				Case 15
+					VType = "Währung"
+				Case 16
+					VType = "WF Datum/Uhrzeit"
+				'...
+			End Select
+			If VType <> "" Then
+				PrintString = PrintString & vbTab & VType
+			Else
+				PrintString = PrintString & vbTab
+			End If
+			VType = ""
+			Select Case .DescriptorDefinitions(I).Usage2 'Verwendung
+				Case 0
+					vUse = "Index"
+				Case 1
+					vUse = "Volltext"
+				Case 2
+					vUse = "Volltext Referenz"
+				Case 3
+					vUse = "Nicht im Index"
+				'...
+			End Select
+			If vUse <> "" Then
+				PrintString = PrintString & vbTab & vUse
+			Else
+				PrintString = PrintString & vbTab
+			End If
+			PrintString = PrintString & vbTab & .DescriptorDefinitions(I).Length
+			If pModus = "Detail" Then
+				ReDim Preserve aArray(I)
+				aArray(I) = PrintString
+				Print #fn,PrintString
+				PrintString = ""
+			Else
+				Print #fn,PrintString
+				PrintString = ""
+			End If
+		Next I
+		Close #fn
+	End With
+	If pSilent = False Then
+		Application.ShowMessage("Die Ausgabe erfolgte nach " & myFileName)
+	End If
+End Function
+Private Function Scripte (pSilent As Boolean)
+	'Ausgabe globale Scripte
+	Dim fn As Integer
+	Dim myFileName As String
+	Dim I As Integer
+	Dim K As Long
+	Dim myScript As String
+	Dim MyScriptPath As String
+	Dim sPhrase As String
+	Dim sSystem As String
+	Dim sType As String
+	Dim oAMDlg As ArchiveDlgDefinitions
+	Dim oAM As ArchiveDlgDefinition
+	Dim oSMDlg As QueryDlgDefinitions
+	Dim oSM As QueryDlgDefinition
+	Dim oWFDlg As wfWorkflowItemQueryDlgDefinitions
+	Dim oWFWI As wfWorkflowItemQueryDlgDefinition
+	Dim oWFPIS As wfProcessDefinitions
+	Dim oWFPI As wfProcessDefinition
+	Dim oWFPISteps As wfProcessSteps
+	Dim oWFPIStep As wfProcessStep
+	Dim oProcessDefinition As wfProcessDefinition
+	Dim oProcessDefinitionVersion As wfProcessDefinitionVersion
+	Dim J As Long
+	Dim myGUID As String
+	'sPhrase = "Option Explicit"
+	sPhrase = ""
+	MyScriptPath = outPath
+	'Ausgabe Globales Script:
+	fn = FreeFile
+	With Application.MetaData.GlobalScripts
+		For I = 0 To .Count-1
+			myFileName = "Global_" & .Item(I).Name  & TXT
+			myFileName = DoReplace(myFileName)
+			myFileName = MyScriptPath & myFileName
+			myScript = .Item(I).Script
+			Open myFileName For Output As #fn
+			Print #fn, myScript
+			Close #fn
+		Next I
+	End With
+	'Ausgabe Ablageumgebungen
+	With Application.MetaData.FilingEnvironments
+		For I = 0 To .Count-1
+			myFileName = "ENV_" & .Item(I).Name  & TXT
+			myFileName = DoReplace(myFileName)
+			myFileName = MyScriptPath & myFileName
+			myScript = .Item(I).Script
+			Open myFileName For Output As #fn
+			Print #fn, myScript
+			Close #fn
+		Next I
+	End With
+	'Dokumentenklassen
+	With Application.MetaData.ArchiveDocClasses
+		For I = 0 To .Count -1
+			Set oAMDlg = .Item(I).ArchiveDlgDefinitions
+			For K = 0 To oAMDlg.Count -1
+				oAMDlg.Item(K,  sType, oAM)
+				myFileName = "DC_" & .Item(I).Name &  "_"  & sType & TXT
+				myFileName = DoReplace(myFileName)
+				myFileName = MyScriptPath & myFileName
+				myScript = .Item(I).ArchiveDlgDefinitions.ItemByType(sType).BasicScript
+				Open myFileName  For Output As #fn
+				Print #fn, myScript
+				Close #fn
+			Next K
+		Next I
+	End With
+	'Suchdialoge
+	With Application.MetaData.QueryDocClasses
+		For I = 0 To .Count -1
+			Set oSMDlg = .Item(I).QueryDlgDefinitions
+			For K = 0 To oSMDlg.Count -1
+				oSMDlg.Item(K,  sType, oSM)
+				myFileName = "QC_" & .Item(I).Name & "_"
+				myFileName = DoReplace(myFileName)
+				myFileName = MyScriptPath & myFileName
+				myScript = .Item(I).QueryDlgDefinitions.ItemByType(sType).BasicScript
+				Open myFileName & sType & TXT For Output As #fn
+				Print #fn, myScript
+				Close #fn
+			Next K
+		Next I
+	End With
+	'Dokumentenanzeigen
+	With Application.MetaData.DocumentDisplays
+		For I = 0 To .Count -1
+			myFileName = "DocV_" & .Item(I).Name & TXT
+			myFileName = DoReplace(myFileName)
+			myFileName = MyScriptPath & myFileName
+			myScript = .Item(I).Script
+			Open myFileName For Output As #fn
+			Print #fn, myScript
+			Close #fn
+		Next I
+	End With
+	'Trefferlisten
+	With Application.MetaData.ResultDlgDefinitions
+		For I = 0 To .Count -1
+			myFileName = "RL_" & Replace(.Item(I).Name,":","_") & TXT
+			myFileName = DoReplace(myFileName)
+			myFileName = MyScriptPath & myFileName
+			myScript = .Item(I).BasicScript
+			Open myFileName For Output As #fn
+			Print #fn, myScript
+			Close #fn
+		Next I
+	End With
+	'Ausgabe aller ActivXwindow-Scripte
+	With Application.MetaData.ActiveXWindowDefinitions
+		For I = 0 To .Count -1
+			myFileName =  "ActX_" & .Item(I).Name & TXT
+			myFileName = DoReplace(myFileName)
+			myFileName = MyScriptPath & myFileName
+			myScript = .Item(I).Script
+			Open myFileName For Output As #fn
+			Print #fn, myScript
+			Close #fn
+		Next I
+	End With
+	'WorkFlow:
+	If Application.wfMetaData Is Nothing Then
+		Application.ShowMessage("Achtung: Keine WFL-Daten vorhanden")
+	Else
+		If Not Application.wfMetaData Is Nothing Then
+			'Ausgabe aller WF-WBview-Scripte Scripte:
+			With Application.wfMetaData.WBViewDefinitions
+				For I = 0 To .Count -1
+					myFileName =  "WFL_WB_VIEW_" & .Item(I).Name & TXT
+					myFileName = DoReplace(myFileName)
+					myFileName = MyScriptPath & myFileName
+					myScript = .Item(I).BasicScript
+					Open myFileName For Output As #fn
+					Print #fn, myScript
+					Close #fn
+				Next I
+			End With
+			'Ausgabe aller WF-Prozessanzeige-Scripte Scripte:
+			With Application.wfMetaData.PIViewDefinitions
+				For I = 0 To .Count -1
+					myFileName =  "WFL_PI_" & .Item(I).Name & TXT
+					myFileName = DoReplace(myFileName)
+					myFileName = MyScriptPath & myFileName
+					myScript = .Item(I).BasicScript
+					Open myFileName For Output As #fn
+					Print #fn, myScript
+					Close #fn
+				Next I
+			End With
+			'Ausgabe aller WF-DocRefList-Scripte Scripte:
+			With Application.wfMetaData.DocRefListDefinitions
+				For I = 0 To .Count -1
+					myFileName = "WFL_DL_" & .Item(I).Name & TXT
+					myFileName = DoReplace(myFileName)
+					myFileName = MyScriptPath & myFileName
+					myScript = .Item(I).BasicScript
+					Open myFileName For Output As #fn
+					Print #fn, myScript
+					Close #fn
+				Next I
+			End With
+			'Ausgabe aller WF-Trefferlisten-Scripte Scripte:
+			With Application.wfMetaData.ResultDlgDefinitions
+				For I = 0 To .Count -1
+					myFileName = "WFL_TL_" & .Item(I).Name & TXT
+					myFileName = DoReplace(myFileName)
+					myFileName = MyScriptPath & myFileName
+					myScript = .Item(I).BasicScript
+					Open myFileName For Output As #fn
+					Print #fn, myScript
+					Close #fn
+				Next I
+			End With
+			'Ausgabe aller WF-Such-Scripte Scripte:
+			With Application.wfMetaData.QueryClasses
+				For I = 0 To .Count -1
+					Set oWFDlg = Application.wfMetaData.QueryClasses.Item(I).WorkflowItemQueryDlgDefinitions
+					For K = 0 To oWFDlg.Count -1
+						oWFDlg.Item(K,  sType, oWFWI)
+						myFileName = "WFL_QC_" & .Item(I).Name & "_" & sType & "_"  & TXT
+						myFileName = DoReplace(myFileName)
+						myFileName = MyScriptPath & myFileName
+						If Not Application.wfMetaData.QueryClasses.Item(I).WorkflowItemQueryDlgDefinitions(sType) Is Nothing Then
+							myScript = .Item(I).WorkflowItemQueryDlgDefinitions(sType).BasicScript
+							Open myFileName  For Output As #fn
+							Print #fn, myScript
+							Close #fn
+						End If
+					Next K
+				Next I
+			End With
+			'Ausgabe aller WF-Prozessdefinitionen:
+			With Application.wfMetaData.ExtProcessDefinitions
+				For I = 0 To .Count -1
+					For K = 0 To Application.wfMetaData.ExtProcessDefinitions.Item(I).WorkflowItemViewDlgDefinitions.Count -1
+						sType = ""
+						myScript = ""
+						On Error Resume Next
+						myGUID = Application.wfMetaData.ExtProcessDefinitions.Item(I).WorkflowItemViewDlgDefinitions.Item(K,sType).GUID
+						myScript = .Item(I).WorkflowItemViewDlgDefinitions.ItemByType(sType).BasicScript
+						myFileName = "WFL_PROZ_DEF_" & Application.wfMetaData.ExtProcessDefinitions.Item(I).ProcessDefinition.Name & "_" & sType & "_" & TXT
+						myFileName = DoReplace(myFileName)
+						myFileName = MyScriptPath & myFileName
+						If Err.Number <> 0 Then
+							Err.Clear
+						Else
+							Debug.Print
+						End If
+						Open myFileName For Output As #fn
+						Print #fn, myScript
+						Close #fn
+					Next K
+				Next I
+			End With
+			'Ausgabe aller WF-Weiterleiten-Scripte Scripte:
+			With Application.wfMetaData.ExtProcessDefinitions
+				For I = 0 To .Count - 1
+					Set oProcessDefinition = .Item(I).ProcessDefinition
+					Set oProcessDefinitionVersion = Nothing
+					For J = 0 To oProcessDefinition.ProcessDefinitionVersions.Count - 1
+						If oProcessDefinition.ProcessDefinitionVersions(J).Status = wfPD_VS_ACTIVE Then
+							Set oProcessDefinitionVersion = oProcessDefinition.ProcessDefinitionVersions(J)
+						End If
+					Next J
+					If Not oProcessDefinitionVersion Is Nothing Then
+						Set oWFPISteps = oProcessDefinitionVersion.ProcessSteps
+						For K = 0 To oWFPISteps.Count -1
+							'myFileName = "WFL_PROZ_DEF_WL_" & .Item(I).ProcessDefinition.Name  & "_" & oWFPISteps(K).Name & sTXT
+							myFileName = "WFL_PROZ_DEF_WL_" & .Item(I).ProcessDefinition.Name  & "--" & Format(K,"000") & "--" & oWFPISteps(K).Name & TXT
+							myFileName = DoReplace(myFileName)
+							myFileName = MyScriptPath & myFileName
+							myScript = ""
+							On Error Resume Next
+							myScript = oWFPISteps(K).BasicScript
+							If Err.Number <> 0 Then
+								'Debug.Print Err.Description
+								Err.Clear
+							Else
+								Debug.Print
+							End If
+							Open myFileName For Output As #fn
+							Print #fn, myScript
+							Close #fn
+						Next K
+					End If
+					Next I
+			End With
+		End If
+	End If
+	'Akten:
+	If Application.MetaData.ArchiveFolderClasses Is Nothing Then
+		Application.ShowMessage("Achtung - Keine Aktenklassen vorhanden")
+	Else
+		'Ausgabe aller Aktenklassen - Scripte
+		If Not Application.MetaData.ArchiveFolderClasses Is Nothing Then
+			With Application.MetaData.ArchiveFolderClasses
+				For I = 0 To .Count -1
+					Set oAMDlg = .Item(I).ArchiveDlgDefinitions
+					For K = 0 To oAMDlg.Count -1
+						oAMDlg.Item(K,  sType, oAM)
+						myFileName = "REC_FC_" & .Item(I).Name & "_"
+						myFileName = DoReplace(myFileName)
+						myFileName = MyScriptPath & myFileName
+						myScript = .Item(I).ArchiveDlgDefinitions.ItemByType(sType).BasicScript
+						Open myFileName & sType & TXT For Output As #fn
+						Print #fn, myScript
+						Close #fn
+					Next K
+				Next I
+			End With
+			With Application.MetaData.ArchiveFolderClasses
+				For I = 1 To .Count -1
+					For K = 0 To .Item(I).ArchiveDlgDefinitions.Count -1
+						.Item(I).ArchiveDlgDefinitions.Item(K,  sType, oAM)
+						myFileName = "REC_FC_Folder_" & .Item(I).Name & "_"
+						myFileName = DoReplace(myFileName)
+						myFileName = MyScriptPath & myFileName
+						myScript = .Item(I).ArchiveDlgDefinitions.ItemByType(sType).BasicScript
+						Open myFileName & sType & TXT For Output As #fn
+						Print #fn, myScript
+						Close #fn
+					Next K
+				Next I
+			End With
+			'FolderViews
+			With Application.MetaData.FolderDisplays
+				For I = 0 To .Count -1
+					myFileName = "REC_DocV_" & .Item(I).Name & TXT
+					myScript = .Item(I).Script
+					myFileName = DoReplace(myFileName)
+					myFileName = MyScriptPath & myFileName
+					myScript = .Item(I).Script
+					Open myFileName For Output As #fn
+					Print #fn, myScript
+					Close #fn
+				Next I
+			End With
+		End If
+	End If
+End Function
+Private Function getGlobalMatrixes(pSilent As Boolean)
+	Dim myMatrix As SWAMDLib.StringMatrix
+	Dim I As Long
+	Dim K As Long
+	Dim L As Long
+	Dim fn As Integer
+	Dim myFileName As String
+	Dim myValues As String
+	For I = 0 To Application.MetaData.StringMatrices.Count -1
+		myValues = ""
+		Set myMatrix = Application.MetaData.StringMatrices.Item(I)
+		If Not myMatrix Is Nothing Then
+			Application.StatusBarInfoText = "Werteliste: " & myMatrix.Name
+			myFileName = "MAT_" & myMatrix.Name & ".xls"
+			myFileName = DoReplace(myFileName)
+			myFileName = outPath & myFileName
+			fn = FreeFile
+			Open myFileName For Output As #fn
+			For K = 0 To myMatrix.ColumnCount -1
+				myValues = myValues & myMatrix.ColumnName(K) & K + 1 & vbTab
+			Next K
+			Print #fn, myValues
+			For K = 0 To myMatrix.RowCount -1
+				myValues = ""
+				For L = 0 To myMatrix.ColumnCount -1
+					myValues = myValues & myMatrix(K,L) & vbTab
+				Next L
+				Print #fn, myValues
+			Next K
+			Close #fn
+		End If
+		Set myMatrix = Nothing
+	Next I
+	If pSilent = False Then
+		Application.ShowMessage("Die Globalen Wertellisten wurden unter " & outPath & " gespeichert")
+	End If
+End Function
+Private Sub getNamespaces(pSilent As Boolean)
+	Dim fn As Integer
+	Dim I As Integer
+	Dim i1 As Long
+	Dim y As Long
+	Dim PrintString As String
+	Dim myFileName As String
+	fn = FreeFile
+	If conSystem < 2 Then Exit Sub
+	myFileName = outPath & "Namespaces.xls"
+	If Application.System.Namespaces Is Nothing Then Exit Sub
+	With Application.System.Namespaces
+		If .Count = -1 Then Exit Sub
+		Open myFileName For Output As #fn
+		Print #fn, "NAME" & vbTab & "GUID"  _
+			& vbTab & "URI"
+		For I = 0 To .Count - 1
+			PrintString=Application.System.Namespaces.Item(I).Name & vbTab & Application.System.Namespaces.Item(I).GUID & vbTab  _
+				& Application.System.Namespaces.Item(I).URI
+			Print #fn,PrintString
+		Next I
+	End With
+	Close #fn
+	If pSilent = False Then
+		Application.ShowMessage("Die Namespace-Definitionen wurden nach " & outPath & " ausgegeben!")
+	End If
+	Exit Sub
+Fail:
+	Application.ShowError(Err.Description)
+End Sub
+Private Sub getdbdefs(pSilent As Boolean)
+	Dim fn As Integer
+	Dim I As Integer
+	Dim i1 As Long
+	Dim Y As Long
+	Dim PrintString As String
+	Dim myFileName As String
+	If conSystem < 2 Then Exit Sub
+	fn = FreeFile
+	On Error GoTo Fail
+	With Application.MetaData.DBConnectionDefinitions
+		For I = 0 To .Count - 1
+			myFileName = outPath & "DB_" & .Item(I).Name &".txt"
+			Open myFileName For Output As #fn
+			PrintString=PrintString+"ADO" + vbTab + .Item(I).ADOConnection
+			Print #fn,PrintString
+			PrintString=""
+			PrintString=PrintString+"ADO1" + vbTab + .Item(I).ADOConnectionString
+			Print #fn,PrintString
+			PrintString=""
+			PrintString=PrintString+"JDBC" + vbTab + .Item(I).JDBCConnectionString
+			Print #fn,PrintString
+			PrintString=""
+			With Application.MetaData.DBConnectionDefinitions.Item(I)
+				Application.StatusBarInfoText = "DB: " & Application.MetaData.DBConnectionDefinitions.Item(I).Name
+				For i1=0 To .DBRecordsetDefinitions.Count-1
+					PrintString=PrintString & vbTab & vbTab & .DBRecordsetDefinitions.Item(i1).Name _
+					& vbTab & .DBRecordsetDefinitions.Item(i1).GUID
+					Print #fn,PrintString
+					PrintString=""
+					PrintString=PrintString & vbTab & vbTab & vbTab & .DBRecordsetDefinitions.Item(i1).SQLStatement
+					Print #fn,PrintString
+					PrintString=""
+					Next
+				End With
+				Close #fn
+		Next I
+	End With
+	If pSilent = False Then
+		Application.ShowMessage("Die DB-Definitionen wurden nach " & outPath & " ausgegeben!")
+	End If
+	Exit Sub
+Fail:
+	Application.ShowError(Err.Description)
+End Sub
+Private Function check_VerzeichnisExists(pPath As String) As Boolean
+	On Error GoTo Fehler
+	ChDir pPath
+	check_VerzeichnisExists = True
+	Exit Function
+Fehler:
+	check_VerzeichnisExists = False
+End Function
+Private Function do_DelTreeVB(ByVal pPath As String) As Boolean
+' Löscht mit reinen Visual Basic-Methoden einen
+' Verzeichnisbaum (sofern möglich), indem rekursiv mit
+' Dir$, Kill und RmDir gearbeitet wird.
+' Kann der Baum nicht komplett gelöscht werden, wird als
+' Funktionsrückgabewert FALSE verwendet.
+' Hinweis: Die Dateien werden direkt gelöscht, nicht
+' lediglich in den Papierkorb verschoben (VB-Funktion Kill)!
+	Dim sName As String
+	' Backslash-Zeichen notwendigenfalls anhängen
+	If Right$(pPath, 1) <> "\" Then
+		pPath = pPath & "\"
+	End If
+	' Ziel: Funktionsrückgabewert TRUE
+	do_DelTreeVB = True
+	On Error GoTo Error_DelTreeVB
+	' Das erste Element in Path suchen
+	sName = Dir$(pPath & "*.*", vbHidden + vbDirectory)
+	' Solange Elemente gefunden werden...
+	While Len(sName)
+		' Pseudo-Verzeichnisse "." und ".." ignorieren
+		If (sName <> ".") And (sName <> "..") Then
+		' Untersuchen, ob die Fundstelle eine Datei
+		' oder ein Verzeichnis ist:
+			If (GetAttr(pPath & sName) Or vbDirectory) = vbDirectory Then
+				' Es handelt sich um ein Verzeichnis.
+				do_DelTreeVB = do_DelTreeVB(pPath & sName & "\")
+				sName = Dir$(pPath & "*.*", vbHidden + vbDirectory)
+			Else
+				' Es handelt sich um eine Datei
+				SetAttr pPath & sName, vbNormal ' Attribute zurücksetzen
+				Kill pPath & sName  ' Datei löschen
+				sName = Dir$()  ' nächste Datei suchen
+			End If
+		Else
+			' Bei "." oder ".." nächstes Element suchen
+			sName = Dir$()
+		End If
+	Wend
+	' Unterverzeichnis durchlaufen - keine Dateien oder
+	' Unterverzeichnisse mehr vorhanden: Das Verzeichnis
+	' selber kann nun geloescht werden.
+	RmDir pPath
+Exit_DelTreeVB:
+	Exit Function
+Error_DelTreeVB:
+	' Funktiosrückgabewert FALSE
+	do_DelTreeVB = False
+	Resume Next
+	'  ' Optional: Interaktion mit dem Anwender (Beispiel):
+	'  Select Case MsgBox(Path & sName & vbNewLine _
+	'   & "konnte nicht gelöscht werden:" _
+	'   & vbNewLine & Err.Description, _
+	'   vbAbortRetryIgnore + vbDefaultButton2, _
+	'   "Fehler beim Löschen")
+	' Case vbAbort:  Resume Exit_DelTreeVB
+	' Case vbRetry:  Resume 0
+	' Case vbIgnore: Resume Next
+'  End Select
+End Function
+Private Sub do_create_dirs(ByVal p_path As String, p_bdel As Boolean)
+	Dim spath() As String
+	Dim spathtree As String
+	Dim xi As Integer
+	If Right(p_path,1) = "\" Then
+		p_path=Left(p_path,Len(p_path)-1)
+	End If
+	spath=Split(p_path,"\")
+	For xi=LBound(spath) To UBound(spath) -1
+		If xi > 0 Then
+			spathtree=spathtree & "\" & spath(xi)
+			If Not check_VerzeichnisExists(spathtree) Then
+				MkDir spathtree
+			End If
+		Else
+			spathtree=spath(xi)
+		End If
+	Next xi
+	If Not check_VerzeichnisExists(p_path) Then
+		MkDir p_path
+	Else
+		If p_bdel Then do_DelTreeVB(p_path)
+	End If
+End Sub
+Private Function DoReplace(pValue As String) As String
+	pValue = Replace(pValue,"/","_")
+	'pValue = Replace(pValue,"\","_")
+	pValue = Replace(pValue,":",".")
+	pValue = Replace(pValue,"?","_")
+	pValue = Replace(pValue,"*","_")
+	pValue = Replace(pValue,">","_")
+	pValue = Replace(pValue,"<","_")
+	pValue = Replace(pValue,"|","_")
+	pValue = Replace(pValue,"""","_")
+	DoReplace = pValue
+	Application.StatusBarInfoText = "Script: " & pValue
+End Function
+Private Sub showmessage(pMessage As String,pError As Boolean,pSilent As Boolean)
+	If pSilent = False Then
+		If pError=True Then
+			Application.ShowError(pMessage)
+		Else
+			Application.ShowMessage(pMessage)
+		End If
+	End If
+End Sub
+
+
+

@@ -1,0 +1,2266 @@
+'#Reference {2A75196C-D9EB-4129-B803-931327F72D5C}#2.8#0#C:\Program Files\Common Files\System\ado\msado28.tlb#Microsoft ActiveX Data Objects 2.8 Library#ADODB
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	Global Script/ ASF MHA Globale Functionen
+'*	erstellt am / von	:	29.07.2010/ Markus D. Hartbauer, SER
+'*	Überarbeitung Ü001	:	08.11.2010/ Markus D. Hartbauer, SER
+'*	Überarbeitung Ü002	:	04.01.2011/ Markus D. Hartbauer, SER: ASF_Ortsbezug_getStreckenAbschnittSqlString
+'*	Überarbeitung Ü003	:	28.01.2011/ Markus D. Hartbauer, SER: neu: ASF_security_initMvASFZugriff()
+'*  Überarbeitung Ü004  :   10.02.2011/ Christian Aigenr, SER: neu: ASF_getStraßenzugIDByKurzName
+'*	Überarbeitung Ü005	:	08.03.2011/ Markus D. Hartbauer, SER: initPerformanceTest(), ASF_Performance_writePerformanceLogEntry()
+'*	Überarbeitung Ü006	:	08.04.2011/ Markus D. Hartbauer, SER: ASF_Ortsbezug_getSqlSelectObjekte per default nicht mehr auf A1 eingeschränkt
+'*	Überarbeitung Ü007	:	12.04.2011/ Markus D. Hartbauer, SER: ASF_doVorlagenAuswahlZuDokumentArt zeigt bei leerer DokumentartID jetzt alle Vorlagen (Distinct)
+'*	Überarbeitung Ü008	:	31.05.2011/ Markus D. Hartbauer, SER: ASF_Ortsbezug_getSqlSelectObjeke[1](): bugFixes
+'*	Überarbeitung Ü009	:	31.05.2011/ Markus D. Hartbauer, SER: ASF_Ortsbezug_checkKmAutoCorrect_Filing: bugFixes
+'*	Überarbeitung Ü010	:	10.08.2011/ Martina Skalicka, SER: ASF_Ortsbezug_getStreckenAbschnittSqlStringNeu
+'*	Überarbeitung Ü011	:	24.11.2011/ Günther F. Schinko, SER: ASF_Immo_getSQLSelectKatastralgemeinde - CR 65
+'*	Überarbeitung Ü011	:	18.01.2012/ Martina Skalicka, SER: Ortsbezuglogik beim Spiechern und Lesen ändern
+'*	Überarbeitung Ü012	:	03.02.2012/ Christian Aigner, SER: Funktion ASF_Ortsbezug_loadOrtsbezuegeFromResultsetToDoc hinzugefügt
+'*	Überarbeitung Ü013	:	03.02.2012/ Christian Aigner, SER: Funktion ASF_Ortsbezug_loadOrtsbezuegeFromResultsetToControls hinzugefügt
+'*	Überarbeitung Ü014	:	06.11.2012/ Christian Aigner, SER: Funktion ASF_Ortsbezug_copyOrtsbezuege: Abfangen einer Fehlermeldung beim Hinzufügen von Werten in Multivalue-Control
+'*	Überarbeitung Ü015	:	06.11.2012/ Christian Aigner, SER: Funktion ASF_Ortsbezug_loadOrtsbezuegeFromResultsetToControls: Abfangen einer Fehlermeldung beim Hinzufügen von Werten in Multivalue-Control (hinzuzufügender Wert bereits in Liste enthalten)
+'*	Überarbeitung Ü016	:	03.12.2012/ Christian Aigner, SER: Funktion ASF_Grundstueck_loadGrundstueckeFromResultsetToControls: Abfangen einer Fehlermeldung beim Hinzufügen von Werten in Multivalue-Control (hinzuzufügender Wert bereits in Liste enthalten)
+'*	Überarbeitung Ü017	:	05.06.2013/ Christian Aigner, SER: Funktion ASF_DokumentartIsPartOfKategorie
+'*	Überarbeitung Ü018	:	11.06.2013/ Christian Aigner, SER: Funktion ASF_getDokumentartBerechtigung hinzugefügt
+'*	Überarbeitung Ü019	:	04.07.2013/ Christian Aigner, SER: Funktion ASF_Ortsbezug_CopyOrtsbezuege2 hinzugefügt
+'*	Überarbeitung Ü020	:	05.07.2013/ Christian Aigner, SER: Funktion ASF_Ortsbezug_loadOrtsbezuegeFromResultsetToDoc umbenannt nach ASF_Ortsbezug_SaveOrtsbezugInDoc
+'*	Überarbeitung Ü021	:	05.07.2013/ Christian Aigner, SER: Funktion ASF_Ortsbezug_loadOrtsbezuegeFromResultsetToDoc hinzugefügt
+'*	Überarbeitung Ü022	:	12.08.2013/ Christian Aigner, SER: Änderungen an der Fkt. ASF_Ortsbezug_copyOrtsbezuege2
+'*	Überarbeitung Ü023	:	21.08.2013/ Christian Aigner, SER: Funktionen ASF_Ortsbezug_loadOrtsbezuegeByInternalUUID, ASF_Ortsbezug_ChangeDescriptors, ASF_Ortsbezug_deleteOrtsbezuege hinzugefügt
+'*	Überarbeitung Ü024	:	07.10.2013/ Christian Aigner, SER: Funktion ASF_getCategoryIdByParentCategoryNameAndCategoryName hinzugefügt
+'*	Überarbeitung Ü025	:	10.10.2013/ Christian Aigner, SER: Select-Statement in der Funktion ASF_Ortsbezug_getSqlSelectObjekte1 um die Felder 'Richtung' und 'Aktiv' erweitert
+'*	Überarbeitung Ü026	:	11.10.2013/ Christian Aigner, SER: Fkt.ASF_Ortsbezug_ObjektIsActive hinzugefügt
+'* 	Überarbeitung Ü027	:	9.9.2015/	Michael Lämmle, SER: Öffnen des IExplorer bei HTTP Hilfe Pfad
+'* 	Überarbeitung Ü028	:	7.1.2015/	Michael Lämmle, SER: Umstellung auf neue PSP-Tabelle
+'
+'************************************************************************
+
+	Option Explicit
+
+'************************************************************************
+'*	Globale Objekte
+'************************************************************************
+
+'*	Verbindung zur Datenbank ASF_DMS_Daten
+	Public ASF_DMS_Daten As ADODB.Connection
+
+'*	letzte benutzte Objekte
+	Public ASF_aktuelle_Akte As SWAFRAMELib.ItaFolder
+	Public ASF_aktuelles_Register As FolderManager.CNode
+	Public ASF_aktuelles_Dok As SWAFRAMELib.ItaDocument
+	Public ASF_aktuelle_PI As BPMLINELib.wfProcessInstance
+
+'*	Klassifikation/Kategorisierung
+	Public Const ASF_STARTKATEGORIE_LEER As String = "{8e557b4e-f64c-4ee7-9b90-bc484c599b8f}"
+
+'*	Dokumentarten-Handling
+	Public Type ASF_Dokumentart
+		ID As String
+		Name As String
+		Kurzname As String
+		Zugriff As String
+'		Aktenklasse As String
+'		Aktenregister As String
+		Prozessdefinition As String
+		ContentRepository As String
+		AutoGZ As Boolean
+		geschützt As Boolean
+	End Type
+
+'*	Enumeratoren
+	Public Enum ASF_enumStreckenabschnittSuchart
+		asfStrAbSuchExaktInnerhalb
+		asfStrAbSuchUeberschneidend
+	End Enum
+
+'*	Geschäftspartner
+	Public Type ASF_Geschaeftspartner
+		ID As String
+		GPName As String
+		APName As String
+		Strasse As String
+		Land As String
+		PLZ As String
+		Ort As String
+	End Type
+
+'*	Anzeige von Dateien
+	Private Declare Function ShellExecute Lib "shell32.dll" Alias _
+        "ShellExecuteA" (ByVal hwnd As Long, ByVal lpOperation _
+        As String, ByVal lpFile As String, ByVal lpParameters _
+        As String, ByVal lpDirectory As String, ByVal nShowCmd _
+        As Long) As Long
+
+
+'************************************************************************
+'*	Lokale Objekte
+'************************************************************************
+
+'*	Datenbank-Abfragen
+	Private MyRst As New ADODB.Recordset
+
+
+
+'************************************************************************
+'*	APPLICATION LEBENSZYKLUS
+'************************************************************************
+
+Private Sub Application_OnDebugResume()
+	initGlobal
+End Sub
+
+Private Sub Application_OnDebugStop()
+	If MyRst.State = adStateOpen Then MyRst.Close
+End Sub
+
+Private Sub Application_OnInit()
+	initGlobal
+	initPerformanceTest
+End Sub
+
+
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+'Ü024
+Public Function ASF_getCategoryIdByParentCategoryNameAndCategoryName(ByVal pPCSN As String, ByVal pCSN As String) As String
+On Error Resume Next
+'*	lokale Objekte
+	Dim xt As String
+'*	Business Logik
+	xt =	"SELECT * FROM Kategorien WHERE CategoryName = '" & pCSN & "'"
+	If pPCSN <> "" Then
+		xt = xt + " AND ParentCategoryID = (SELECT CategoryID FROM Kategorien WHERE CategoryName = '" & pPCSN & "')"
+	End If
+	openLocalRecordset xt, "ASF_getCategoryIdByParentCategoryNameAndCategoryName"
+	With MyRst
+		If Not .EOF Then
+			ASF_getCategoryIdByParentCategoryNameAndCategoryName = .Fields("CategoryID")
+		End If
+	End With
+
+End Function
+'/Ü024
+Private Sub initGlobal()
+
+	Set ASF_DMS_Daten = Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").ADOConnection
+
+End Sub
+
+Private Sub openLocalRecordset(	ByVal pSQL As String, _
+								Optional ByVal pCallerName As String, _
+								Optional ByVal pCursorType As CursorTypeEnum = adOpenStatic, _
+								Optional ByVal pLockType As LockTypeEnum = adLockReadOnly)
+
+	On Error GoTo ErrorHandler
+
+	Debug.Print pSQL
+
+	If MyRst.State = adStateOpen Then MyRst.Close
+	If Not ASF_DMS_Daten.State = adStateOpen Then
+		ASF_DMS_Daten.Open Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").ADOConnectionString
+	End If
+	MyRst.Open pSQL, ASF_DMS_Daten, pCursorType, pLockType
+
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler beim Abfragen von Daten aus der Datenbank ASF_DMS_Daten!", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in openLocalRecordset(" & pSQL & ")" & vbCrLf & "aufgerufen von " & pCallerName, 0
+End Sub
+
+
+
+'************************************************************************
+'*	GLOBALE BUSINESS LOGIK
+'************************************************************************
+
+'Ü019
+Public Function ASF_Ortsbezug_copyOrtsbezuege2(	ByRef pSource As IDocument, _
+											ByRef pTarget As IDocument, _
+											Optional ByVal pDuplicateOrtsbezugIndexDocuments As Boolean = True, _
+											Optional doCommit As Boolean = True) As Boolean
+
+'*	Info
+'	kopiert die Ortsbezüge von pSource nach pTarget
+'	dupliziert optional (Standard) die referenzierten Ortsbezug-Indexdokumente,
+'	dann werden dem pTarget die IDs der neuen/duplizierten Indexdokumente übergeben
+
+'*	Checks
+	If pSource Is Nothing Then Exit Function
+	If pTarget Is Nothing Then Exit Function
+	On Error GoTo ErrorHandler
+
+'*	lokale Objekte
+	Dim xDescNames(6) As String
+	Dim xDescNamesMax As Integer
+	Dim XSourceDesc As Descriptor
+	Dim XTargetDesc As Descriptor
+	Dim xi,xj As Integer
+	Dim XItaDoc As SWAFRAMELib.ItaDocument 'Zielortsbezug
+	Dim oDescDef As DescriptorDefinition
+	Dim descriptorValues() As Variant
+	Dim tempOrtsbezuDoc As ItaDocument
+	Dim copyOrtsbezug As Boolean
+
+'**	Business Logik
+'*	zu kopierende Deskriptoren
+	xDescNames(0)= "ASF_Dok_Strasse"
+	xDescNames(1)= "ASF_Dok_StrKmVon"
+	xDescNames(2)= "ASF_Dok_StrKmBis"
+	xDescNames(3)= "ASF_Dok_Objekttyp"
+	xDescNames(4)= "ASF_Dok_Objekt"
+	xDescNames(5)= "ASF_Dok_Objektdetail"
+	xDescNames(6)= "ASF_Ort_Ortsbezug_DokId"
+
+'Ü022
+	ASF_Ortsbezug_copyOrtsbezuege2 = True
+'/Ü022
+'*	prüfen, ob überhaupt Ortsbezüge vorhanden sind
+	Set XSourceDesc = pSource.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(xDescNames(6)).GUID)
+	If XSourceDesc Is Nothing Then Exit Function
+	If XSourceDesc.ValueCount = 0 Then Exit Function
+
+'Ü022
+	ASF_Ortsbezug_copyOrtsbezuege2 = False
+'/Ü022
+'*	Kopieren der Indexdokumente
+	If pDuplicateOrtsbezugIndexDocuments Then
+		Set oDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID")
+		'ASF_Ort_Ortsbezug_DokId
+		Set XSourceDesc = pSource.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(xDescNames(6)).GUID)
+		For xi = 0 To XSourceDesc.ValueCount - 1
+			copyOrtsbezug = True
+
+			'Prüfen, ob das Zieldokument den Ortsbezug bereits enthält
+			Set tempOrtsbezuDoc = Application.System.GetDocumentDirect(XSourceDesc.Value(xi))
+			If Not tempOrtsbezuDoc.Descriptors.ItemByGUID(oDescDef.GUID) Is Nothing Then
+				If tempOrtsbezuDoc.Descriptors.ItemByGUID(oDescDef.GUID).Value (0) = pTarget.InternalDescriptors.ItemByGUID("UUID").Value(0) Then
+					copyOrtsbezug = False
+				End If
+			End If
+
+			If copyOrtsbezug Then
+				Set XItaDoc = Application.System.CreateDocument(enumDocumentType.ItaDocument)
+				With XItaDoc
+					.Copy tempOrtsbezuDoc, True, True, True
+					.IndexOnly = True
+
+					'Deskriptor ASF_Dok_DokFolderUUID vom Ortsbezug-Dokument entfernen
+					For xj = 0 To XItaDoc.Descriptors.Count - 1
+						If XItaDoc.Descriptors.Item(xj).DescriptorDefinition.GUID = oDescDef.GUID Then
+							XItaDoc.Descriptors.Remove(xj)
+							GoTo commit
+						End If
+					Next xj
+	commit:
+					XItaDoc.Descriptors.AddNewByGUID (oDescDef.GUID).AddValue pTarget.InternalDescriptors.ItemByGUID("UUID").Value(0)
+					.Commit
+				End With
+				If pTarget.DocumentID = pSource.DocumentID Then
+					descriptorValues = pTarget.Descriptors.ItemByGUID(XSourceDesc.DescriptorDefinition.GUID).Values
+					descriptorValues(xi) = XItaDoc.DocumentID
+					pTarget.Descriptors.ItemByGUID  (XSourceDesc.DescriptorDefinition.GUID).Values = descriptorValues
+				Else
+					If pTarget.Descriptors.ItemByGUID(XSourceDesc.DescriptorDefinition.GUID) Is Nothing Then
+						pTarget.Descriptors.AddNewByGUID (XSourceDesc.DescriptorDefinition.GUID)
+					Else
+						pTarget.Descriptors.ItemByGUID (XSourceDesc.DescriptorDefinition.GUID).RemoveValues
+					End If
+					pTarget.Descriptors.ItemByGUID  (XSourceDesc.DescriptorDefinition.GUID).AddValue XItaDoc.DocumentID
+				End If
+			End If
+		Next xi
+		xDescNamesMax = 5
+	Else
+		xDescNamesMax = 6
+	End If
+
+'*	Rest der Werte einfach kopieren
+	If pTarget.DocumentID <> pSource.DocumentID  Then
+		For xi = 0 To xDescNamesMax
+			Set XSourceDesc = pSource.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(xDescNames(xi)).GUID)
+			If Not XSourceDesc Is Nothing Then
+				For xj = 0 To XSourceDesc.ValueCount - 1
+					If pTarget.Descriptors.ItemByGUID(XSourceDesc.DescriptorDefinition.GUID) Is Nothing Then
+						Set XTargetDesc = pTarget.Descriptors.AddNewByGUID (XSourceDesc.DescriptorDefinition.GUID)
+					Else
+						Set XTargetDesc = pTarget.Descriptors.ItemByGUID  (XSourceDesc.DescriptorDefinition.GUID)
+						XTargetDesc.RemoveValues
+					End If
+					XTargetDesc.AddValue XSourceDesc.Values(xj)
+				Next
+			End If
+		Next
+	End If
+	If doCommit Then
+		pTarget.Commit
+	End If
+	ASF_Ortsbezug_copyOrtsbezuege2 = True
+finish:
+	Set XSourceDesc = Nothing
+	Set XTargetDesc = Nothing
+	Set XItaDoc = Nothing
+	Set oDescDef = Nothing
+	Set tempOrtsbezuDoc = Nothing
+	Exit Function
+ErrorHandler:
+	Err.Raise 400, "Global Script/ ASF MHA Globale Functionen ASF_Ortsbezug_copyOrtsbezuege2()", "Fehler beim Kopieren der Ortsbezüge: " + Err.Description
+End Function
+
+'/Ü019
+Public Sub ASF_loadKategorieStartwerteToSelectionBox(ByRef pSb As SelectionBox, ByRef pRemoveAll As Boolean)
+
+'*	Lokale Objekte
+	Dim xGroups() As String
+	Dim xl As Long
+	Dim xt As String
+
+'**	Business Logik
+'*	SelectionBox leeren, wenn angefordert
+	If pRemoveAll Then pSb.RemoveAll
+'*	Werte laden
+	SER_getGroupMemberArray(xGroups)
+	If UBound(xGroups) = 0 Then
+		Err.Raise 1000,,"Der Benutzer hat keinerlei Berechtigungen auf Startkategorien"
+	End If
+
+'	Ü001: CategoryDefinitionShortName --> CategoryDefinitionName
+	xt = "SELECT DISTINCT(CategoryDefinitionName) FROM relKategorienBerechtigungen WHERE GroupName IN ("
+	For xl = 0 To UBound(xGroups) - 1
+		xt = xt & "'" & xGroups(xl) & "',"
+	Next
+	xt = Left(xt, Len(xt)-1) & ")" 'letztes ' weg und ) dazu
+	openLocalRecordset xt, "ASF_loadKategorieStartwerteToSelectionBox"
+	With MyRst
+		If Not .EOF Then
+			While Not .EOF
+				pSb.Add .Fields("CategoryDefinitionName")
+				.MoveNext
+			Wend
+		End If
+	End With
+
+'*	wenn nur 1 Wert, auswählen
+'	If pSb.Count = 1 Then
+'		pSb.SelectedItem = 0
+'	End If
+
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler beim Laden von Kategorien-Startwerten!", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_loadKategorieStartwerteToSelectionBox()", 0
+End Sub
+
+Public Function ASF_getCategoryStartIdByCategoryShortName(ByVal pCSN As String) As String
+
+'*	Lokale Objekte
+	Dim xt As String
+'*	Business Logik
+	xt = "SELECT CategoryStartID FROM KategorienStartwerte WHERE CategoryDefinitionShortName='" & pCSN & "'"
+	openLocalRecordset xt, "ASF_getCategoryStartIdByCategoryShortName"
+	With MyRst
+		If Not .EOF Then
+			ASF_getCategoryStartIdByCategoryShortName = .Fields("CategoryStartID")
+		Else
+			ASF_getCategoryStartIdByCategoryShortName = ASF_STARTKATEGORIE_LEER
+		End If
+	End With
+
+End Function
+
+'Ü001: neu
+Public Function ASF_getCategoryStartIdByCategoryName(ByVal pCN As String) As String
+
+'*	Lokale Objekte
+	Dim xt As String
+'*	Business Logik
+	xt = "SELECT CategoryStartID FROM KategorienStartwerte WHERE CategoryDefinitionName='" & pCN & "'"
+	openLocalRecordset xt, "ASF_getCategoryStartIdByCategoryName"
+	With MyRst
+		If Not .EOF Then
+			ASF_getCategoryStartIdByCategoryName = .Fields("CategoryStartID")
+		Else
+			ASF_getCategoryStartIdByCategoryName = ASF_STARTKATEGORIE_LEER
+		End If
+	End With
+
+End Function
+
+Public Function ASF_getCategoryShortNameByCategoryId(ByVal pCID As String) As String
+
+'*	Lokale Objekte
+	Dim xt As String
+'*	Business Logik
+	xt = "SELECT CategoryShortName FROM Kategorien WHERE CategoryID = '" & pCID & "'"
+	openLocalRecordset xt, "ASF_getCategoryShortNameByCategoryId"
+	With MyRst
+		If Not .EOF Then
+			ASF_getCategoryShortNameByCategoryId = .Fields("CategoryShortName")
+		End If
+	End With
+
+End Function
+
+'Ü001: neu
+Public Function ASF_getCategoryNameByCategoryId(ByVal pCID As String) As String
+
+'*	Lokale Objekte
+	Dim xt As String
+'*	Business Logik
+	xt = "SELECT CategoryName FROM Kategorien WHERE CategoryID = '" & pCID & "'"
+	openLocalRecordset xt, "ASF_getCategoryNameByCategoryId"
+	With MyRst
+		If Not .EOF Then
+			ASF_getCategoryNameByCategoryId = .Fields("CategoryName")
+		End If
+	End With
+
+End Function
+
+Public Function ASF_getVorgangByKategorieNameAndDokumentArtName(ByVal pKategorieName As String, ByVal pDokumentart As String) As String
+
+'*	Lokale Objekte
+	Dim xt As String
+'*	Business Logik
+	xt = "SELECT Prozessdefinition FROM Kategorien, Dokumentarten WHERE Kategorien.CategoryID = Dokumentarten.CategoryID And " + _
+			"Kategorien.CategoryName = '" & pKategorieName & "' and Dokumentarten.Name = '" +pDokumentart + "'"
+	openLocalRecordset xt, "ASF_getVorgangByKategorieNameAndDokumentArtName"
+	With MyRst
+		If Not .EOF Then
+			If Not IsNull(.Fields("Prozessdefinition")) Then
+				ASF_getVorgangByKategorieNameAndDokumentArtName = .Fields("Prozessdefinition")
+			End If
+		End If
+	End With
+
+End Function
+
+Public Function ASF_getASF_Dokumentart(ByVal pCategoryId As String, ByVal pName As String) As ASF_Dokumentart
+
+'*	Lokale Objekte
+	Dim xt As String
+'*	Business Logik
+	xt =  "SELECT * FROM Dokumentarten WHERE CategoryID = '" & pCategoryId & "' AND Name = '" & pName & "'"
+	openLocalRecordset xt, "ASF_getASF_Dokumentart"
+	If Not MyRst.EOF Then
+		With ASF_getASF_Dokumentart
+			.ID = MyRst.Fields("ID")
+			.Name = MyRst.Fields("Name")
+			.ContentRepository = MyRst.Fields("ContentRepository")
+			.Zugriff = MyRst.Fields("Berechtigung")
+'			.Aktenklasse = MyRst.Fields("Aktenklasse")
+'			.Aktenregister = MyRst.Fields("Aktenregister")
+			.Prozessdefinition = SER_getDBFieldSafe(MyRst.Fields("Prozessdefinition"))
+			.geschützt = CBool(SER_getDBFieldSafe(MyRst.Fields("Geschützt"),False))
+			.AutoGZ = CBool(SER_getDBFieldSafe(MyRst.Fields("AutoGZ"), "0"))
+		End With
+	End If
+End Function
+
+Public Sub ASF_loadDokumentartenBerechtigungenToMVEdit(	ByVal pDokumentartID As String, _
+															ByRef pMVEdit As MultivalueEdit, _
+															ByVal pResetContent As Boolean)
+
+'*	Checks
+	If pMVEdit Is Nothing Then Exit Sub
+	If pResetContent Then pMVEdit.ResetContent
+	If pDokumentartID = "" Then Exit Sub
+
+'*	Lokale Objekte
+	Dim xt As String
+
+'*	Business Logic
+	xt = "SELECT * FROM relDokumentartenBerechtigungen WHERE DokumentartID = '" & pDokumentartID & "'"
+	openLocalRecordset xt, "ASF_loadDokumentartenBerechtigungenToMVEdit"
+	With MyRst
+		If Not .EOF Then
+			.MoveFirst
+			While Not .EOF
+				pMVEdit.AddData .Fields("GroupOrUnitName")
+				.MoveNext
+			Wend
+		End If
+	End With
+
+End Sub
+'Ü018
+Public Function ASF_getDokumentartBerechtigung(ByVal pDokumentartID As String) As String
+
+'*	Checks
+	ASF_getDokumentartBerechtigung = ""
+	If pDokumentartID = "" Then Exit Function
+
+'*	Lokale Objekte
+	Dim xt As String
+
+'*	Business Logic
+	xt = "SELECT * FROM relDokumentartenBerechtigungen WHERE DokumentartID = '" & pDokumentartID & "'"
+	openLocalRecordset xt, "ASF_loadDokumentartenBerechtigungenToMVEdit"
+	With MyRst
+		If Not .EOF Then
+			.MoveFirst
+			While Not .EOF
+				ASF_getDokumentartBerechtigung = .Fields("GroupOrUnitName")
+				.MoveNext
+			Wend
+		End If
+	End With
+
+End Function
+'/Ü018
+'Ü017
+'*Diese Funktion prüft, ob eine Dokumentart einer Kategorie zugeordnet ist
+'* @param: pRootParentCategoryId: StartKategorie
+'* @param: pDokumentartToCheck: Dokumentart, die geprüft wird
+'* @param: pCategoryId: Kategorie, wenn angegenen (bei 2-stufiger Kategorisierung für Standard-Dokumente)
+Public Function ASF_DokumentartIsPartOfKategorie(ByVal pRootParentCategoryId As String, _
+													ByVal pDokumentartToCheck As String, _
+													ByRef pDokumentartID As String, _
+												Optional ByVal pCategoryId As String) As Boolean
+'*	Lokale Objekte
+	Dim xt As String
+
+	ASF_DokumentartIsPartOfKategorie = False
+'**	Business Logik
+'*	SQL vorbereiten
+	xt = 			"SELECT name, id "
+	xt = xt & 		"FROM Dokumentarten " & _
+					"WHERE RootParentCategoryID='" & pRootParentCategoryId & "' "
+	If pCategoryId <> "" Then
+		xt = xt & 	"AND CategoryID='" & pCategoryId & "' "
+	End If
+
+'*	abfragen und füllen
+	openLocalRecordset xt, "ASF_DokumentartIsPartOfKategorie"
+	With MyRst
+		If Not .EOF Then
+			.MoveFirst
+			While Not .EOF
+				If Trim(.Fields("Name")) = Trim(pDokumentartToCheck) Then
+					ASF_DokumentartIsPartOfKategorie = True
+					pDokumentartID = .Fields("id")
+					Exit Function
+				End If
+				.MoveNext
+			Wend
+		End If
+	End With
+End Function
+'/Ü017
+Public Sub ASF_loadDokumentartenToSelectionBox(	ByVal pRootParentCategoryId As String, _
+												ByRef pSb As SWACTRLSLib.SelectionBox, _
+												Optional ByVal pCategoryId As String, _
+												Optional ByVal pRemoveAll As Boolean, _
+												Optional ByVal pDistinct As Boolean)
+
+'*	Checks
+	If pSb Is Nothing Then Exit Sub
+	If pRemoveAll Then pSb.RemoveAll
+	If pRootParentCategoryId = "" Then Exit Sub
+
+'*	Lokale Objekte
+	Dim xt As String
+
+'**	Business Logik
+'*	SQL vorbereiten
+	xt = 			"SELECT "
+	If pDistinct Then
+		xt = xt & 	"DISTINCT Name " 'MLA, Position entfernt
+	Else
+		xt = xt & 	"Name "
+	End If
+	xt = xt & 		"FROM Dokumentarten " & _
+					"WHERE RootParentCategoryID='" & pRootParentCategoryId & "' "
+	If pCategoryId <> "" Then
+		xt = xt & 	"AND CategoryID='" & pCategoryId & "' "
+	End If
+	xt = xt & 		"ORDER BY Name "
+
+'*	abfragen und füllen
+	openLocalRecordset xt, "ASF_loadDokumentartenToSelectionBox"
+	With MyRst
+		If Not .EOF Then
+			.MoveFirst
+			While Not .EOF
+				pSb.Add Left(.Fields("Name"), Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Art").Length)
+				.MoveNext
+			Wend
+		End If
+	End With
+
+End Sub
+
+Public Sub ASF_loadFullOUNameToArray(ByRef pArray() As String)
+
+	ReDim pArray(2)
+
+	If Application.System.User.Unit <> "" Then
+		pArray(0) = "ASF"
+		pArray(1) = pArray(0) & "/" & Left(Application.System.User.Unit, InStr(Application.System.User.Unit, " ") - 1)
+		pArray(2) = pArray(1) & "/" & Application.System.User.Unit
+	End If
+
+End Sub
+
+Public Function ASF_Organisation_getUserGesellschaft() As String
+
+	If Application.System.User.Unit <> "" Then
+		ASF_Organisation_getUserGesellschaft = Left(Application.System.User.Unit, InStr(Application.System.User.Unit, " ") - 1)
+	End If
+
+End Function
+
+Public Sub ASF_loadValuesFromDBToSelectionBox(	ByVal pSQL As String, ByVal pFieldName As String, _
+												ByRef pSb As SWACTRLSLib.SelectionBox, _
+												Optional ByVal pRemoveAll As Boolean = False)
+
+'*	Checks
+	If pSb Is Nothing Then Exit Sub
+	If pFieldName = "" Then Exit Sub
+	If pSQL = "" Then Exit Sub
+	If pRemoveAll Then pSb.RemoveAll
+
+'*	Business Logik
+	openLocalRecordset pSQL, "ASF_loadValuesFromDBToSelectionBox"
+	With MyRst
+		If Not .EOF Then
+			.MoveFirst
+			While Not .EOF
+				If Not IsNull(MyRst.Fields(pFieldName)) Then
+					pSb.Add MyRst.Fields(pFieldName)
+				End If
+				.MoveNext
+			Wend
+		End If
+	End With
+
+End Sub
+
+Public Function ASF_doVorlagenAuswahlZuDokumentart(pDokumentartID As String) As SWAMDLib.DocumentTemplate
+
+'*	Checks
+'Ü007
+'	If pDokumentartID = "" Then Exit Function
+'/Ü007
+
+'*	Lokale Objekte
+	Dim xt As String
+	Dim VorlagenName() As String
+	Dim VorlagenFQN() As String
+
+'*	Business Logic
+'Ü007
+	If pDokumentartID = "" Then
+		'alle anzeigen (Distinct)
+		xt = "SELECT DISTINCT(VorlagenName), VorlagenFQN FROM relDokumentartenVorlagen ORDER BY VorlagenName"
+	Else
+		xt = "SELECT * FROM relDokumentartenVorlagen WHERE DokumentartID = '" & pDokumentartID & "' ORDER BY VorlagenName"
+	End If
+'/Ü007
+	openLocalRecordset xt, "ASF_doVorlagenAuswahlZuDokumentart(" & pDokumentartID & ")"
+	With MyRst
+		If Not .EOF Then
+			.MoveFirst
+			ReDim VorlagenName(0)
+			ReDim VorlagenFQN(0)
+			While Not .EOF
+				VorlagenName(UBound(VorlagenName)) = .Fields("VorlagenName")
+				ReDim Preserve VorlagenName(UBound(VorlagenName)+1)
+				VorlagenFQN(UBound(VorlagenFQN)) = .Fields("VorlagenFQN")
+				ReDim Preserve VorlagenFQN(UBound(VorlagenFQN)+1)
+				.MoveNext
+			Wend
+		End If
+	End With
+
+	Begin Dialog UserDialog 340,175,"Vorlage auswählen" ' %GRID:10,7,1,1
+		ListBox 10,7,320,126,VorlagenName(),.VorlagenList
+		OKButton 10,147,90,21
+		CancelButton 110,147,90,21
+	End Dialog
+
+	Dim dlg As UserDialog
+	Dim xi As Integer
+
+	If Dialog(dlg) <> 0 Then
+		xi = dlg.VorlagenList
+		Set ASF_doVorlagenAuswahlZuDokumentart = _
+			Application.MetaData.DocumentTemplates.ItemByFullyQualifiedName(VorlagenFQN(xi))
+	End If
+
+End Function
+
+Public Function ASF_getCategoryNamePathFromCategoryIdPath(	ByVal pCatIdPath As String, _
+															Optional ByVal pPathDelimiter As String = "/") As String
+
+'*	Checks
+	If IsMissing(pCatIdPath) Then Exit Function
+
+'*	Lokale Objekte
+	Dim xl As Long
+	Dim xt As String
+	Dim xid As String
+	Dim xret As String
+
+'*	Business Logik
+	xt = pCatIdPath & pPathDelimiter 'letztes / dazu für while/wend
+	xl = InStr(xt, pPathDelimiter)
+	While Not xl = 0
+		xid = Left(xt, xl - 1)
+		openLocalRecordset("SELECT CategoryName FROM Kategorien WHERE CategoryID='" & xid & "'", "getCategoryNamePathFromCategoryIdPath()")
+		If Not MyRst.EOF Then
+			xret = xret & MyRst.Fields("CategoryName") & pPathDelimiter
+		End If
+		xt = Mid(xt, xl + 1)
+		xl = InStr(xt, pPathDelimiter)
+	Wend
+	If Right(xret, 1) = pPathDelimiter Then
+		xret = Left(xret, Len(xret) - 1)
+	End If
+
+'*	Rückgabe
+	ASF_getCategoryNamePathFromCategoryIdPath = xret
+
+End Function
+
+Public Sub ASF_db_initDbrsWithRecordsetDefinition(	ByRef pDBRS As DBRecordSelector, _
+													ByVal pRSDName As String, _
+													Optional ByVal pEmptyRSDName As String = "(leer)", _
+													Optional ByVal immediateRetrieve As Boolean = True)
+
+	If pDBRS Is Nothing Then Exit Sub
+	If pRSDName = "" Then Exit Sub
+
+	With pDBRS
+		If .DBRecordsetDefinition.Name = pEmptyRSDName Then
+			.DBRecordsetDefinition = Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").DBRecordsetDefinitions.ItemByName(pRSDName)
+		End If
+		If immediateRetrieve Then
+			.RetrieveData
+		End If
+	End With
+
+End Sub
+'************************************************************************
+'*	ORTS- UND OBJEKTBEZUG
+'************************************************************************
+
+Public Sub ASF_Ortsbezug_initDialogAndObjects(	ByRef pRLOrtsbezug As ResultList, _
+												ByRef pRLOrtsbezugLE As ResultListLanguageExtension, _
+												ByRef pCCResultList As ControlContainer, _
+												ByVal pResultDlgDefinitionName As String, _
+												ByVal pQueryDatabaseName As String, _
+												ByVal pRangeStartDate As String, _
+												ByRef pMvASFOrtOrtsbezugDokId As MultivalueEdit)
+
+'*	Info
+'	Initialisiert die Resultlist der zugeordneten Ortsbezüge sowie
+'	die Objekte zum Ortsbezug am Dialog
+
+'*	Checks
+	If IsMissing(pRLOrtsbezug) Then Exit Sub
+	If IsMissing(pRLOrtsbezugLE) Then Exit Sub
+	If pCCResultList Is Nothing Then Exit Sub
+	If pResultDlgDefinitionName = "" Then Exit Sub
+	If pQueryDatabaseName = "" Then Exit Sub
+	If pRangeStartDate = "" Then Exit Sub
+	If pMvASFOrtOrtsbezugDokId Is Nothing Then Exit Sub
+
+'*	Lokale Objekte
+	Dim XQuery As Query
+	Dim xl As Long
+
+'**	Business Logik
+'*	Controls initialisieren
+	Set pRLOrtsbezug = pCCResultList.Control
+	Set pRLOrtsbezugLE = pCCResultList.Control
+	With pRLOrtsbezug
+		Set .System = Application.System
+		Set .ResultDlgDefinition = Application.MetaData.ResultDlgDefinitions.ItemByName(pResultDlgDefinitionName)
+		.ShowGroupPanel = False
+		.ToolbarVisible = False
+	End With
+'*	zugeordnete Ortsbezüge laden
+	Set XQuery = Application.System.CreateQuery
+	With XQuery
+		.Databases.Add Application.System.QueryDatabases.ItemByName(pQueryDatabaseName)
+		.RangeStart = pRangeStartDate
+		.RangeEnd = Format(Now, "YYYYMMDD")
+		.HitLimit = 100
+		.SQLStatement = "SELECT * WHERE 1=0"
+		Set pRLOrtsbezug.Resultset = .Execute
+	End With
+	For xl = 0 To pMvASFOrtOrtsbezugDokId.DataCount - 1
+		pRLOrtsbezug.Resultset.AppendDocument(Application.System.GetDocumentDirect(pMvASFOrtOrtsbezugDokId.GetData(xl)))
+	Next
+
+End Sub
+'Ü011
+'************************************************************************
+'*	ORTS- UND OBJEKTBEZUG
+'************************************************************************
+
+Public Sub ASF_Ortsbezug_initDialogAndObjectsNew(ByRef pRLOrtsbezug As ResultList, _
+												ByRef pRLOrtsbezugLE As ResultListLanguageExtension, _
+												ByRef pCCResultList As ControlContainer, _
+												ByVal pResultDlgDefinitionName As String, _
+												ByVal pQueryDatabaseName As String, _
+												ByVal pRangeStartDate As String, _
+												ByRef pStrInterneUUID As String)
+
+'*	Info
+'	Initialisiert die Resultlist der zugeordneten Ortsbezüge sowie
+'	die Objekte zum Ortsbezug am Dialog
+
+'*	Checks
+	If IsMissing(pRLOrtsbezug) Then Exit Sub
+	If IsMissing(pRLOrtsbezugLE) Then Exit Sub
+	If pCCResultList Is Nothing Then Exit Sub
+	If pResultDlgDefinitionName = "" Then Exit Sub
+	If pQueryDatabaseName = "" Then Exit Sub
+	If pRangeStartDate = "" Then Exit Sub
+
+'*	Lokale Objekte
+	Dim XQuery As Query
+	Dim xl As Long
+
+'**	Business Logik
+'*	Controls initialisieren
+	Set pRLOrtsbezug = pCCResultList.Control
+	Set pRLOrtsbezugLE = pCCResultList.Control
+	With pRLOrtsbezug
+		Set .System = Application.System
+		Set .ResultDlgDefinition = Application.MetaData.ResultDlgDefinitions.ItemByName(pResultDlgDefinitionName)
+		.ShowGroupPanel = False
+		.ToolbarVisible = False
+	End With
+'*	zugeordnete Ortsbezüge laden (UUID von dem tatsächlichen Dokument / Folder wurde bei dem Ortsbezugdokument gespeichert)
+	Set XQuery = Application.System.CreateQuery
+	With XQuery
+		.Databases.Add Application.System.QueryDatabases.ItemByName(pQueryDatabaseName)
+		.RangeStart = pRangeStartDate
+		.RangeEnd = Format(Now, "YYYYMMDD")
+		.HitLimit = 100
+		If pStrInterneUUID <> "" Then
+			.SQLStatement = "SELECT * WHERE " & Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID").QueryLiteral & " = '" & pStrInterneUUID & "'"
+		Else
+			.SQLStatement = "SELECT * WHERE 1=0"
+		End If
+		Set pRLOrtsbezug.Resultset = .Execute
+	End With
+
+End Sub
+'/Ü011
+'Ü023
+'Diese Fkt. entfernt sämtliche Ortsbezüge von einem Dokument
+Public Function ASF_Ortsbezug_deleteOrtsbezuege(pDoc As ItaDocument, pQueryDatabaseName As String, _
+														pRangeStartDate As String, ByRef pErrmsg As String) As Boolean
+	Dim myResultSet As IResultset
+	Dim xl As Long
+	Dim xi, xj As Integer
+	Dim oDocOrtsbezug As ItaDocument
+	Dim oDescDef As DescriptorDefinition
+	Dim xDescNames(6) As String
+	Dim XSourceDesc As Descriptor
+
+	ASF_Ortsbezug_deleteOrtsbezuege = False
+	Set myResultSet = ASF_Ortsbezug_loadOrtsbezuegeByInternalUUID(pDoc.InternalDescriptors.ItemByGUID("UUID").Value(0) , pQueryDatabaseName, pRangeStartDate)
+	Set oDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID")
+	For xl = 0 To myResultSet.TotalCount - 1
+		'Deskriptor ASF_Dok_DokFolderUUID vom Ortsbezug-Dokument entfernen
+		Set oDocOrtsbezug = myResultSet.Document(xl)
+		If Not oDocOrtsbezug.Descriptors.ItemByGUID(oDescDef.GUID) Is Nothing Then
+			If oDocOrtsbezug.Descriptors.ItemByGUID(oDescDef.GUID).ValueCount > 0 Then
+				oDocOrtsbezug.Descriptors.ItemByGUID(oDescDef.GUID).RemoveValues
+				oDocOrtsbezug.Commit
+			End If
+		End If
+	Next xl
+	'folgende deskriptoren aus dem Dokument entfernen
+	xDescNames(0)= "ASF_Dok_Strasse"
+	xDescNames(1)= "ASF_Dok_StrKmVon"
+	xDescNames(2)= "ASF_Dok_StrKmBis"
+	xDescNames(3)= "ASF_Dok_Objekttyp"
+	xDescNames(4)= "ASF_Dok_Objekt"
+	xDescNames(5)= "ASF_Dok_Objektdetail"
+	xDescNames(6)= "ASF_Ort_Ortsbezug_DokId"
+
+	For xi = 0 To 6
+		Set XSourceDesc = pDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(xDescNames(xi)).GUID)
+		If Not XSourceDesc Is Nothing Then
+			If XSourceDesc.ValueCount > 0 Then
+				XSourceDesc.RemoveValues
+			End If
+		End If
+	Next
+	pDoc.Commit
+	ASF_Ortsbezug_deleteOrtsbezuege = True
+finish:
+	Set myResultSet = Nothing
+	Set oDocOrtsbezug = Nothing
+	Set oDescDef = Nothing
+	Set XSourceDesc = Nothing
+	Exit Function
+fError:
+	pErrmsg = Err.Description
+	GoTo finish
+End Function
+
+Public Function ASF_Ortsbezug_loadOrtsbezuegeByInternalUUID(pStrInterneUUID As String, pQueryDatabaseName As String, _
+														pRangeStartDate As String) As IResultset
+
+'*	Lokale Objekte
+	Dim XQuery As Query
+	Dim xl As Long
+
+'*	zugeordnete Ortsbezüge laden (UUID von dem tatsächlichen Dokument / Folder wurde bei dem Ortsbezugdokument gespeichert)
+	Set XQuery = Application.System.CreateQuery
+	With XQuery
+		.Databases.Add Application.System.QueryDatabases.ItemByName(pQueryDatabaseName)
+		.RangeStart = pRangeStartDate
+		.RangeEnd = Format(Now, "YYYYMMDD")
+		.HitLimit = 100
+		If pStrInterneUUID <> "" Then
+			.SQLStatement = "SELECT * WHERE " & Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID").QueryLiteral & " = '" & pStrInterneUUID & "'"
+		Else
+			.SQLStatement = "SELECT * WHERE 1=0"
+		End If
+		Set ASF_Ortsbezug_loadOrtsbezuegeByInternalUUID  = .Execute
+	End With
+
+End Function
+Public Function ASF_Ortsbezug_ChangeDescriptors(pDoc As ItaDocument, pNewStraße As String, pNewkmVon As String, pNewkmBis As String, _
+												pNewObjektTyp As String, pNewObjektDetail As String, pNewObjekt As String, _
+												ByRef pErrmsg As String) As Boolean
+
+	Dim xDescNames(5) As String
+	Dim XDescDef As DescriptorDefinition
+	Dim descValue As String
+	Dim xi As Integer
+	Dim xDesc As Descriptor
+
+	On Error GoTo fError
+
+	ASF_Ortsbezug_ChangeDescriptors = False
+	xDescNames(0)= "ASF_Ort_Strasse"
+	xDescNames(1)= "ASF_Ort_StrKmVon"
+	xDescNames(2)= "ASF_Ort_StrKmBis"
+	xDescNames(3)= "ASF_Ort_Objekttyp"
+	xDescNames(4)= "ASF_Ort_Objekt"
+	xDescNames(5)= "ASF_Ort_Objektdetail"
+	If Not pDoc Is Nothing Then
+		For xi = 0 To 5
+			Set XDescDef = Application.System.DescriptorDefinitions.ItemByName (xDescNames(xi))
+			If Not XDescDef Is Nothing Then
+				If pDoc.Descriptors.ItemByGUID (XDescDef.GUID) Is Nothing Then
+					Set xDesc = pDoc.Descriptors.AddNewByGUID (XDescDef.GUID)
+				Else
+					Set xDesc = pDoc.Descriptors.ItemByGUID (XDescDef.GUID)
+				End If
+				Select Case XDescDef.Name
+					Case xDescNames(0)
+						descValue = SER_getFirstDescriptorValueByName(pDoc.Descriptors , "ASF_Ort_Straße")
+						If descValue <> "" Then
+							xDesc.RemoveValues
+						End If
+						If pNewStraße <> "" Then
+							xDesc.AddValue pNewStraße
+						End If
+					Case xDescNames(1)
+						descValue = SER_getFirstDescriptorValueByName(pDoc.Descriptors, "ASF_Ort_KmVon")
+						If descValue <> "" Then
+							xDesc.RemoveValues
+						End If
+						If pNewkmVon <> "" Then
+							xDesc.AddValue pNewkmVon
+						End If
+					Case xDescNames(2)
+						descValue = SER_getFirstDescriptorValueByName(pDoc.Descriptors, "ASF_Ort_KmBis")
+						If descValue <> "" Then
+							xDesc.RemoveValues
+						End If
+						If pNewkmBis <> "" Then
+							xDesc.AddValue pNewkmBis
+						End If
+					Case xDescNames(3)
+						descValue = SER_getFirstDescriptorValueByName(pDoc.Descriptors, "ASF_Ort_Objekttyp")
+						If descValue <> "" Then
+							xDesc.RemoveValues
+						End If
+						If pNewObjektTyp <> "" Then
+							xDesc.AddValue pNewObjektTyp
+						End If
+					Case xDescNames(4)
+						descValue = SER_getFirstDescriptorValueByName(pDoc.Descriptors, "ASF_Ort_Objekt")
+						If descValue <> "" Then
+							xDesc.RemoveValues
+						End If
+						If pNewObjekt <> "" Then
+							xDesc.AddValue pNewObjekt
+						End If
+					Case xDescNames(5)
+						descValue = SER_getFirstDescriptorValueByName(pDoc.Descriptors, "ASF_Ort_Objektdetail")
+						If descValue <> "" Then
+							xDesc.RemoveValues
+						End If
+						If pNewObjektDetail <> "" Then
+							xDesc.AddValue pNewObjektDetail
+						End If
+				End Select
+			End If
+		Next xi
+		pDoc.Commit
+	End If
+	ASF_Ortsbezug_ChangeDescriptors = True
+finish:
+	Set XDescDef = Nothing
+	Set xDesc = Nothing
+	Exit Function
+fError:
+	pErrmsg = Err.Description
+	GoTo finish
+End Function
+
+'/Ü023
+'Ü021
+Public Sub ASF_Ortsbezug_loadOrtsbezuegeFromResultsetToDoc(ByRef pResultset As SWAFRAMELib.IResultset, _
+														ByRef pDoc As ItaDocument)
+
+'*	Info
+'	lädt die Daten der Ortsbezüge aus einem Resultset in die entsprechenden Deskriptoren des Dokuments
+
+'*	Checks
+	If pResultset Is Nothing Then Exit Sub
+	If pDoc Is Nothing Then Exit Sub
+
+'*	Lokale Objekte
+	Dim xl As Long
+	Dim xi As Integer
+	Dim xDesc As Descriptor
+	Dim xDescNames(6) As String
+	Dim XDescDef As DescriptorDefinition
+	Dim descValue As String
+
+
+'*	zu kopierende Deskriptoren
+
+	xDescNames(0)= "ASF_Dok_Strasse"
+	xDescNames(1)= "ASF_Dok_StrKmVon"
+	xDescNames(2)= "ASF_Dok_StrKmBis"
+	xDescNames(3)= "ASF_Dok_Objekttyp"
+	xDescNames(4)= "ASF_Dok_Objekt"
+	xDescNames(5)= "ASF_Dok_Objektdetail"
+	xDescNames(6)= "ASF_Ort_Ortsbezug_DokId"
+
+'Ü015
+	On Error Resume Next
+'/Ü015
+	For xl = 0 To pResultset.TotalCount - 1
+		For xi = 0 To 6
+			Set XDescDef = Application.System.DescriptorDefinitions.ItemByName (xDescNames(xi))
+			If Not XDescDef Is Nothing Then
+				If pDoc.Descriptors.ItemByGUID (XDescDef.GUID) Is Nothing Then
+					Set xDesc = pDoc.Descriptors.AddNewByGUID (XDescDef.GUID)
+				Else
+					Set xDesc = pDoc.Descriptors.ItemByGUID (XDescDef.GUID)
+				End If
+				Select Case XDescDef.Name
+					Case xDescNames(0)
+						descValue = SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Straße")
+						If descValue <> "" Then
+							xDesc.AddValue descValue
+						End If
+					Case xDescNames(1)
+						descValue = ASF_Ortsbezug_getSearchableKmString(SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_Straße"), _
+	   											SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_KmVon"))
+						If descValue <> "" Then
+							xDesc.AddValue descValue
+						End If
+					Case xDescNames(2)
+						descValue = ASF_Ortsbezug_getSearchableKmString(	SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_Straße"), _
+	   											SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_KmBis"))
+						If descValue <> "" Then
+							xDesc.AddValue descValue
+						End If
+					Case xDescNames(3)
+						descValue = SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Objekttyp")
+						If descValue <> "" Then
+							xDesc.AddValue descValue
+						End If
+					Case xDescNames(4)
+						descValue = SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Objekt")
+						If descValue <> "" Then
+						xDesc.AddValue descValue
+						End If
+					Case xDescNames(5)
+						descValue = SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Objektdetail")
+						If descValue <> "" Then
+							xDesc.AddValue descValue
+						End If
+					Case xDescNames(6)
+						descValue = pResultset.Document(xl).DocumentID
+						If descValue <> "" Then
+							xDesc.AddValue descValue
+						End If
+				End Select
+			End If
+		Next xi
+	Next xl
+
+End Sub
+'/Ü021
+Public Sub ASF_Ortsbezug_loadOrtsbezuegeFromResultsetToControls(	ByRef pResultset As SWAFRAMELib.IResultset, _
+																	ByRef pMvDokOrtStrasse As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvDokOrtKmVon As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvDokOrtKmBis As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvDokOrtObjekttyp As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvDokOrtObjekt As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvDokOrtObjektdetail As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvOrtOrtsbezugDokId As SWACTRLSLib.MultivalueEdit)
+
+'*	Info
+'	lädt die Daten der Ortsbezüge aus einem Resultset in die Multivalue-Felder der Ortsbezüge des Dokuments
+
+'*	Checks
+	If pResultset Is Nothing Then Exit Sub
+	If pMvDokOrtStrasse Is Nothing Then Exit Sub
+	If pMvDokOrtKmVon Is Nothing Then Exit Sub
+	If pMvDokOrtKmBis Is Nothing Then Exit Sub
+	If pMvDokOrtObjekttyp Is Nothing Then Exit Sub
+	If pMvDokOrtObjekt Is Nothing Then Exit Sub
+	If pMvDokOrtObjektdetail Is Nothing Then Exit Sub
+	If pMvOrtOrtsbezugDokId Is Nothing Then Exit Sub
+
+'*	Lokale Objekte
+	Dim xl As Long
+	Dim xt As String
+	Dim xt2 As String
+	Dim xDesc As Descriptor
+	Dim strDokOrtObjekttyp As String
+	Dim strDokOrtObjekt As String
+	Dim strDokOrtObjektdetail As String
+
+'**	Business Logik
+'*	Inhalte löschen
+	pMvDokOrtStrasse.ResetContent
+	pMvDokOrtKmVon.ResetContent
+	pMvDokOrtKmBis.ResetContent
+	pMvDokOrtObjekttyp.ResetContent
+	pMvDokOrtObjekt.ResetContent
+	pMvDokOrtObjektdetail.ResetContent
+	pMvOrtOrtsbezugDokId.ResetContent
+'*	Inhalte laden
+
+'Ü015
+	On Error Resume Next
+'/Ü015
+	For xl = 0 To pResultset.TotalCount - 1
+		'Straße
+		pMvDokOrtStrasse.AddData SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Straße")
+		'Kilometer
+		pMvDokOrtKmVon.AddData ASF_Ortsbezug_getSearchableKmString(	SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_Straße"), _
+	   																SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_KmVon"))
+		pMvDokOrtKmBis.AddData ASF_Ortsbezug_getSearchableKmString(	SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_Straße"), _
+	   																SER_getFirstDescriptorValueByName( pResultset.Document(xl).Descriptors, "ASF_Ort_KmBis"))
+		'Objekte
+		strDokOrtObjekttyp = SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Objekttyp")
+		If strDokOrtObjekttyp <> "" Then
+			pMvDokOrtObjekttyp.AddData strDokOrtObjekttyp
+		End If
+		strDokOrtObjekt = SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Objekt")
+		If strDokOrtObjekt <> "" Then
+			pMvDokOrtObjekt.AddData strDokOrtObjekt
+		End If
+		strDokOrtObjektdetail = SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Ort_Objektdetail")
+		If strDokOrtObjektdetail <> "" Then
+			pMvDokOrtObjektdetail.AddData strDokOrtObjektdetail
+		End If
+		'DokId
+		pMvOrtOrtsbezugDokId.AddData pResultset.Document(xl).DocumentID
+	Next
+
+End Sub
+'Ü012
+'Ü020
+Public Sub ASF_Ortsbezug_SaveOrtsbezugInDoc(ByRef myOrtsbezug As ItaDocument , _
+											ByRef myDoc As ItaDocument)
+
+'*	Info
+'	lädt die DocId des Ortsbezugs in den Deskriptor ASF_Ort_Ortsbezug_DokId des Dokuments
+
+'*	Checks
+	If myOrtsbezug Is Nothing Then Exit Sub
+
+'*	Lokale Objekte
+	Dim xl As Long
+	Dim deskOrtsbezugDokId As Descriptor
+	Dim deskDef As DescriptorDefinition
+
+'**	Business Logik
+'*	Inhalte löschen
+	Set deskDef= Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_Ortsbezug_DokId")
+	Set deskOrtsbezugDokId= myDoc.Descriptors.ItemByGUID(deskDef.GUID)
+	If deskOrtsbezugDokId Is Nothing Then
+		 Set deskOrtsbezugDokId = myDoc.Descriptors.AddNewByGUID (deskDef.GUID)
+	End If
+
+'*	Inhalte laden
+	'DokId
+	deskOrtsbezugDokId.AddValue  myOrtsbezug.DocumentID
+	myDoc.Commit
+End Sub
+'/Ü020
+'/Ü012
+'Ü011
+Public Sub ASF_Ortsbezug_updateOrtsbezuegeFromResultset(	ByRef pResultset As SWAFRAMELib.IResultset, _
+																	ByRef pStrInterneUUID As String)
+
+'*	Info
+'*  In allen Ortsbezugsdokumenten wird die UUID des tatsächlichen Dokumentes/Aktes gespeichert (als Verknüpfung)
+'*  Nur einmal beim Anlegen
+
+'*	Checks
+	If pResultset Is Nothing Then Exit Sub
+
+'*	Lokale Objekte
+	Dim xl As Long
+	Dim oDocument As IDocument
+	Dim oDescDef As DescriptorDefinition
+	Dim oDesc As Descriptor
+
+'**	Business Logik
+
+	Set oDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID")
+
+'*	Inhalte laden
+	For xl = 0 To pResultset.TotalCount - 1
+
+		If pStrInterneUUID <> "" Then
+			Set oDocument = Application.System.GetDocumentDirect(pResultset.Document(xl).DocumentID)
+
+			If Not oDocument Is Nothing And oDocument.FilingView = Application.System.DocumentTypes.ItemByName("Ortsbezug").GUID Then
+
+				Set oDesc = oDocument.Descriptors.ItemByGUID(oDescDef.GUID)
+				If oDesc Is Nothing Then
+					Set oDesc = oDocument.Descriptors.AddNewByGUID(oDescDef.GUID)
+					oDesc.AddValue(pStrInterneUUID)
+					oDocument.Commit
+				End If
+			End If
+		End If
+	Next
+
+End Sub
+'/Ü011
+
+'Ü026
+Public Function ASF_Ortsbezug_getSearchableKmString(ByVal pStraße As String, ByVal pKm As Variant) As String
+
+	If pStraße = "" Then Exit Function
+	If IsMissing(pKm) Then Exit Function
+	ASF_Ortsbezug_getSearchableKmString =	pStraße & _
+											Space(6-Len(pStraße)) & _
+											"|" & _
+											Replace(Format(pKm, "000.000"), ",", "")
+
+End Function
+'/Ü026
+Public Function ASF_Ortsbezug_getStreckenAbschnittSqlString(	ByVal pStrasse As String, _
+																ByVal pkmVon As Variant, _
+																ByVal pkmBis As Variant, _
+																ByVal pSuchart As ASF_enumStreckenabschnittSuchart) _
+																As String
+
+'*	Checks
+	If pStrasse = "" Then Exit Function
+	If IsMissing(pkmVon) Then Exit Function
+	If IsMissing(pkmBis) Then Exit Function
+	If IsMissing(pSuchart) Then Exit Function
+
+'*	Lokale Objekte
+	Dim xQVKmVonQl As String
+	Dim xQVKmVonVal As String
+	Dim xQVKmBisQl As String
+	Dim xQVKmBisVal As String
+	Dim xt As String
+
+'**	Business Logik - Ortsbezug
+'*	Suchwerte vorbereiten
+	xQVKmVonQl = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_StrKmVon").QueryLiteral
+	xQVKmVonVal = "'" & ASF_Ortsbezug_getSearchableKmString(pStrasse, pkmVon) & "'
+	xQVKmBisQl = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_StrKmBis").QueryLiteral
+	xQVKmBisVal = "'" & ASF_Ortsbezug_getSearchableKmString(pStrasse, pkmBis) & "'
+
+'*	Art der Suche auswerten
+	Select Case pSuchart
+		Case asfStrAbSuchExaktInnerhalb
+			xt = 	" AND (" & xQVKmVonQl & ">=" & xQVKmVonVal & " AND " & xQVKmBisQl & "<=" & xQVKmBisVal & ")"
+		Case asfStrAbSuchUeberschneidend
+			xt =	" AND (((" & xQVKmVonQl & ">=" & xQVKmVonVal & " AND " & xQVKmVonQl & "<=" & xQVKmBisVal & ") " & _
+					" OR (" & xQVKmBisQl & "<=" & xQVKmBisVal & " AND " & xQVKmBisQl & ">=" & xQVKmVonVal & "))" & _
+					" OR (" & xQVKmVonQl & "<=" & xQVKmVonVal & " AND " & xQVKmBisQl & ">=" & xQVKmBisVal & "))"
+		Case Else
+	End Select
+
+'Ü002
+'*	Straßenzug jedenfalls mit AND Einschränken, sonst kommen false positives bei der Suche
+	xt = xt & " AND " & xQVKmVonQl & " LIKE '" & pStrasse & "*'"
+'/Ü002
+
+
+'*	Rückgabe
+	ASF_Ortsbezug_getStreckenAbschnittSqlString = xt
+
+End Function
+
+'Ü010
+Public Function ASF_Ortsbezug_getStreckenAbschnittSqlStringNeu(	ByVal pStrasse As String, _
+																ByVal pkmVon As Variant, _
+																ByVal pkmBis As Variant, _
+																ByVal pSuchart As ASF_enumStreckenabschnittSuchart, _
+																ByVal pStartRange As String) _
+																As String
+
+'*	Checks
+	If pStrasse = "" Then Exit Function
+	If IsMissing(pkmVon) Then Exit Function
+	If IsMissing(pkmBis) Then Exit Function
+	If IsMissing(pSuchart) Then Exit Function
+
+'*	Lokale Objekte
+	Dim xQVKmVonQl As String
+	Dim xQVKmVonVal As String
+	Dim xQVKmBisQl As String
+	Dim xQVKmBisVal As String
+	Dim xQVStrasseQl As String
+	Dim xt As String
+	Dim strError As String
+	Dim resultIDocuments() As IDocument
+	Dim i As Integer
+	Dim xQVOrtbezugDokIdQl As String
+	Dim counter As Integer
+	Dim sSQL As String
+
+'**	Business Logik - Ortsbezug
+'*	Suchwerte vorbereiten
+	xQVStrasseQl = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_Straße").QueryLiteral
+	xQVKmVonQl = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmVon").QueryLiteral
+	xQVKmVonVal = Replace(pkmVon, ",", ".")
+	xQVKmBisQl = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmBis").QueryLiteral
+	xQVKmBisVal = Replace(pkmBis, ",", ".")
+	xQVOrtbezugDokIdQl = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_Ortsbezug_DokId").QueryLiteral
+
+'*	Art der Suche auswerten + SQL zur Suche nach den Ortbezugsindexdokumenten
+	Select Case pSuchart
+		Case asfStrAbSuchExaktInnerhalb
+			xt = 	"SELECT * WHERE " & xQVStrasseQl & " = '" & pStrasse & "'" & " AND (" & xQVKmVonQl & ">=" & xQVKmVonVal & " And " & xQVKmBisQl & "<=" & xQVKmBisVal & ")"
+		Case asfStrAbSuchUeberschneidend
+			xt =	"SELECT * WHERE " & xQVStrasseQl & " = '" & pStrasse & "'" & " AND (((" & xQVKmVonQl & ">=" & xQVKmVonVal & " AND " & xQVKmVonQl & "<=" & xQVKmBisVal & ") " & _
+					" OR (" & xQVKmBisQl & "<=" & xQVKmBisVal & " AND " & xQVKmBisQl & ">=" & xQVKmVonVal & "))" & _
+					" OR (" & xQVKmVonQl & "<=" & xQVKmVonVal & " AND " & xQVKmBisQl & ">=" & xQVKmBisVal & "))"
+		Case Else
+	End Select
+
+	resultIDocuments = SER_searchDocumentsOrFolders("IndexOnly", pStartRange, xt, strError)
+
+	counter = -1
+
+	If SER_isIDocumentArrayFilled(resultIDocuments) Then
+		sSQL = " AND ("
+
+'	End if ' Auskommentiert JMB 20110817, For Schleifenblock eingerückt
+		For i = LBound(resultIDocuments) To UBound(resultIDocuments)
+			counter = counter + 1
+			If i = 0 Or counter = 0 Then
+				sSQL = sSQL & xQVOrtbezugDokIdQl & " IN ('" & resultIDocuments(i).DocumentID & "'"
+			Else
+				If i Mod 999 = 0 Then
+					sSQL = sSQL & "," & "'" & resultIDocuments(i).DocumentID & "'" & ")"
+					counter = -1
+					If i < UBound(resultIDocuments) Then
+						sSQL = sSQL & " OR "
+					End If
+				Else
+					sSQL = sSQL & ", " & "'" & resultIDocuments(i).DocumentID & "'"
+				End If
+			End If
+	  	Next i
+
+'  	If SER_isIDocumentArrayFilled(resultIDocuments) Then ' Auskommentiert JMB 20110817
+  		If counter >= 0 Then
+  			sSQL = sSQL & ")"
+  		End If
+  		sSQL = sSQL & ")"
+'  	End If ' Auskommentiert JMB 20110817, ElseZweig Neu, da keine Treffer gezeigt werden dürfen wenn der Ortsbezug keine Treffer liefert
+	Else
+		sSQL = " AND (1 = 0)"
+	End If
+
+'*	Rückgabe
+	ASF_Ortsbezug_getStreckenAbschnittSqlStringNeu = sSQL
+
+End Function
+'/Ü010
+'Ü011
+Public Function ASF_Ortsbezug_getStreckenAbschnittSql(	ByVal pStrasse As String, _
+																ByVal pkmVon As Variant, _
+																ByVal pkmBis As Variant, _
+																ByVal pSuchart As ASF_enumStreckenabschnittSuchart, _
+																ByVal pAlias As String) _
+																As String
+
+'*	Checks
+	If pStrasse = "" Then Exit Function
+	If IsMissing(pkmVon) Then Exit Function
+	If IsMissing(pkmBis) Then Exit Function
+	If IsMissing(pSuchart) Then Exit Function
+
+'*	Lokale Objekte
+	Dim xQVKmVonQl As String
+	Dim xQVKmVonVal As String
+	Dim xQVKmBisQl As String
+	Dim xQVKmBisVal As String
+	Dim xQVStrasseQl As String
+	Dim sSQL As String
+
+'**	Business Logik - Ortsbezug
+'*	Suchwerte vorbereiten
+	xQVStrasseQl = pAlias & "." & Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_Straße").QueryLiteral
+	xQVKmVonQl = pAlias & "." & Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmVon").QueryLiteral
+	xQVKmVonVal = Replace(pkmVon, ",", ".")
+	xQVKmBisQl = pAlias & "." & Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmBis").QueryLiteral
+	xQVKmBisVal = Replace(pkmBis, ",", ".")
+
+'*	Art der Suche auswerten + SQL zur Suche nach den Ortbezugsindexdokumenten
+	Select Case pSuchart
+		Case asfStrAbSuchExaktInnerhalb
+			sSQL = 	" AND " & xQVStrasseQl & " = '" & pStrasse & "'" & " AND (" & xQVKmVonQl & ">=" & xQVKmVonVal & " And " & xQVKmBisQl & "<=" & xQVKmBisVal & ")"
+		Case asfStrAbSuchUeberschneidend
+			sSQL =	" AND " & xQVStrasseQl & " = '" & pStrasse & "'" & " AND (((" & xQVKmVonQl & ">=" & xQVKmVonVal & " AND " & xQVKmVonQl & "<=" & xQVKmBisVal & ") " & _
+					" OR (" & xQVKmBisQl & "<=" & xQVKmBisVal & " AND " & xQVKmBisQl & ">=" & xQVKmVonVal & "))" & _
+					" OR (" & xQVKmVonQl & "<=" & xQVKmVonVal & " AND " & xQVKmBisQl & ">=" & xQVKmBisVal & "))"
+		Case Else
+	End Select
+
+'*	Rückgabe
+	ASF_Ortsbezug_getStreckenAbschnittSql = sSQL
+
+End Function
+'/Ü011
+'Ü008
+Public Function ASF_Ortsbezug_getStrassenzugIdFromKurzname(ByVal pKurzname As String) As String
+
+'*	Checks
+	If pKurzname = "" Then Exit Function
+
+'*	Business Logik
+	openLocalRecordset "SELECT ID FROM OrtsbezugStraßenzüge WHERE Kurzname='" & pKurzname & "'", "ASF_Ortsbezug_getStrassenzugIdFromKurzname(" & pKurzname & ")"
+	If Not MyRst.EOF Then
+		ASF_Ortsbezug_getStrassenzugIdFromKurzname = MyRst.Fields("ID")
+	End If
+
+End Function
+'/Ü008
+
+Public Function ASF_Ortsbezug_getStrassenzugKurznameFromId(ByVal pID As String) As String
+
+'*	Checks
+	If pID = "" Then Exit Function
+
+'*	Business Logik
+	openLocalRecordset "SELECT Kurzname FROM OrtsbezugStraßenzüge WHERE ID='" & pID & "'", "ASF_Ortsbezug_getStrassenzugKurznameFromId(" & pID & ")"
+	If Not MyRst.EOF Then
+		ASF_Ortsbezug_getStrassenzugKurznameFromId = MyRst.Fields("Kurzname")
+	End If
+
+End Function
+
+Public Function ASF_Ortsbezug_checkKmAutoCorrect_Filing(	ByRef pASFOrtKmVon As SWACTRLSLib.Edit, _
+															ByRef pASFOrtKmbis As SWACTRLSLib.Edit, _
+															ByRef pDbrsASFOrtAStVon As SWACTRLSLib.DBRecordSelector, _
+															ByRef pDbrsASFOrtAStBis As SWACTRLSLib.DBRecordSelector, _
+															ByRef pDbrsASFOrtStrasse As SWACTRLSLib.DBRecordSelector) _
+															As Boolean
+
+'*	Info
+'	inhaltliche Überprüfungen der Felder bei der Ablage von Ortsbezug
+'	liefert false, wenn Fehler gefunden wurden und nicht automatisch korrigiert
+
+'*	lokale Objekte
+	Dim xAnzahlFehler As Integer
+
+'*	leere Werte
+	If pASFOrtKmbis.Data = "" And pASFOrtKmVon.Data <> "" Then
+		pASFOrtKmbis.Data = pASFOrtKmVon.Data
+	End If
+	If pASFOrtKmVon.Data = "" And  pASFOrtKmbis.Data <> "" Then
+		pASFOrtKmVon.Data = pASFOrtKmbis.Data
+	End If
+
+'*	Größenvergleich
+	If CDbl(pASFOrtKmbis.Data) < CDbl(pASFOrtKmVon.Data) Then
+		If MsgBox(	"Der Wert im 'von km' darf nicht höher sein als" & vbCrLf & _
+					"der Wert im 'bis km'." & vbCrLf & vbCrLf & _
+					"Werte vertauschen?", vbExclamation + vbYesNo, "Warnung | Frage") = vbYes Then
+			Dim xd As Double
+			Dim xt As String
+			xd = pASFOrtKmVon.Data
+			pASFOrtKmVon.Data = pASFOrtKmbis.Data
+			pASFOrtKmbis.Data = xd
+			If pDbrsASFOrtAStVon.DataCount = 1 And pDbrsASFOrtAStBis.DataCount = 1 Then
+				xt = pDbrsASFOrtAStVon.Data(0)
+				pDbrsASFOrtAStVon.Data(0) = pDbrsASFOrtAStBis.Data(0)
+				pDbrsASFOrtAStBis.Data(0) = xt
+			End If
+		Else
+			xAnzahlFehler = xAnzahlFehler + 1
+		End If
+	End If
+
+'*
+
+'*	Rückgabe
+	If xAnzahlFehler > 0 Then
+		ASF_Ortsbezug_checkKmAutoCorrect_Filing = False
+	Else
+		ASF_Ortsbezug_checkKmAutoCorrect_Filing = True
+	End If
+
+'*	Übereinstimmung mit Straßenzug
+	'Ü009
+	If pDbrsASFOrtStrasse.DataCount = 1 Then
+		openLocalRecordset "SELECT * FROM OrtsbezugStraßenzüge WHERE Kurzname='" & pDbrsASFOrtStrasse.Data(0) & "'", "ASF_Ortsbezug_checkKmAutoCorrect_Filing()"
+		If CDbl(pASFOrtKmVon.Data) < CDbl(MyRst.Fields("kmvon")) Then
+			If MsgBox(	"Der Wert im 'von km' darf nicht kleiner sein als" & vbCrLf & _
+						"der Startkilometer der Strecke." & vbCrLf & vbCrLf & _
+						"Automatisch korrigieren?", vbExclamation + vbYesNo, "Warnung | Frage") = vbYes Then
+				pASFOrtKmVon.Data = MyRst.Fields("kmvon")
+			Else
+				xAnzahlFehler = xAnzahlFehler + 1
+			End If
+		End If
+		If CDbl(pASFOrtKmbis.Data) > CDbl(MyRst.Fields("kmbis")) Then
+			If MsgBox(	"Der Wert im 'bis km' darf nicht größer sein als" & vbCrLf & _
+						"der Endkilometer der Strecke." & vbCrLf & vbCrLf & _
+						"Automatisch korrigieren?", vbExclamation + vbYesNo, "Warnung | Frage") = vbYes Then
+				pASFOrtKmbis.Data = MyRst.Fields("kmbis")
+			Else
+				xAnzahlFehler = xAnzahlFehler + 1
+			End If
+		End If
+	End If
+	'/Ü009
+
+End Function
+
+Public Sub ASF_Ortsbezug_checkKm_Query(	ByRef pASFOrtStrasse As SWACTRLSLib.DBRecordSelector, _
+										ByRef pASFDokStrKmVon As SWACTRLSLib.Edit, _
+										ByRef pASFDokStrKmBis As SWACTRLSLib.Edit, _
+										ByRef pASFOrtAStVon As SWACTRLSLib.DBRecordSelector, _
+										ByRef pASFOrtAStBis As SWACTRLSLib.DBRecordSelector)
+'*	Info
+'	inhaltliche Überprüfungen der Felder bei der Suche nach Ortsbezug
+
+'*	Checks
+	If pASFOrtStrasse Is Nothing Then Exit Sub
+	If pASFDokStrKmVon Is Nothing Then Exit Sub
+	If pASFDokStrKmBis Is Nothing Then Exit Sub
+	If pASFOrtAStVon Is Nothing Then Exit Sub
+	If pASFOrtAStBis Is Nothing Then Exit Sub
+
+'*	leere Werte
+	If pASFDokStrKmBis.Data = "" And  pASFDokStrKmVon.Data <> "" Then
+		pASFDokStrKmBis.Data = pASFDokStrKmVon.Data
+	End If
+	If pASFDokStrKmVon.Data = "" And  pASFDokStrKmBis.Data <> "" Then
+		pASFDokStrKmVon.Data = pASFDokStrKmBis.Data
+	End If
+
+'*	Größenvergleich
+	If CDbl(pASFDokStrKmBis.Data) < CDbl(pASFDokStrKmVon.Data) Then
+		If MsgBox(	"Der Wert im 'von km' darf nicht höher sein als" & vbCrLf & _
+					"der Wert im 'bis km'." & vbCrLf & vbCrLf & _
+					"Werte vertauschen?", vbExclamation + vbYesNo, "Warnung | Frage") = vbYes Then
+			Dim xt As String
+			xt = pASFDokStrKmVon.Data
+			pASFDokStrKmVon.Data = pASFDokStrKmBis.Data
+			pASFDokStrKmBis.Data = xt
+			If pASFOrtAStVon.DataCount = 1 And pASFOrtAStBis.DataCount = 1 Then
+				xt = pASFOrtAStVon.Data(0)
+				pASFOrtAStVon.Data(0) = pASFOrtAStBis.Data(0)
+				pASFOrtAStBis.Data(0) = xt
+			End If
+		End If
+	End If
+
+'*	Übereinstimmung mit Straßenzug
+	If pASFOrtStrasse.DataCount = 1 Then
+		If CDbl(pASFDokStrKmVon.Data) < CDbl(pASFOrtStrasse.Recordset.Fields("kmvon")) Then
+			If MsgBox(	"Der Wert im 'von km' darf nicht kleiner sein als" & vbCrLf & _
+						"der Startkilometer der Strecke." & vbCrLf & vbCrLf & _
+						"Korrigieren?", vbExclamation + vbYesNo, "Warnung | Frage") = vbYes Then
+				pASFDokStrKmVon.Data = pASFOrtStrasse.Recordset.Fields("kmvon")
+			End If
+		End If
+		If CDbl(pASFDokStrKmBis.Data) > CDbl(pASFOrtStrasse.Recordset.Fields("kmbis")) Then
+			If MsgBox(	"Der Wert im 'km bis' darf nicht größer sein als" & vbCrLf & _
+						"der Endkilometer der Strecke." & vbCrLf & vbCrLf & _
+						"Korrigieren?", vbExclamation + vbYesNo, "Warnung | Frage") = vbYes Then
+				pASFDokStrKmBis.Data = pASFOrtStrasse.Recordset.Fields("kmbis")
+			End If
+		End If
+	End If
+
+End Sub
+'Diese Funktion gibt der aktiv-Status eines Ortsbezugobjektes zurück. Das Objekt wird dabei eindeutig durch dessen
+'Namen und den Straßenzug identifiziert
+'@param: pObjektName: Name des Objektbezugs
+'@param: pStraßenzugID: ID des Straßenzuges
+'@return: 1: Objekt ist aktiv
+'@return: 0: Objekt ist nicht aktiv
+Public Function ASF_Ortsbezug_ObjektIsActive(ByVal pObjektName, pStraßenzugID As String) As Integer
+
+	Dim xt As String
+
+	ASF_Ortsbezug_ObjektIsActive = 0
+
+	xt  = "Select oo.aktiv FROM OrtsbezugObjekte As OO " & _
+			"INNER JOIN OrtsbezugStraßenzüge AS OS ON OO.StraßenzugID = OS.ID " & _
+			"WHERE 1=1 "
+
+	If pObjektName <> "" Then
+		xt = xt & " AND OO.Name LIKE '%" & pObjektName & "%' "
+	End If
+	If pStraßenzugID <> "" Then
+		xt = xt & " AND OO.StraßenzugID='" & pStraßenzugID & "' "
+	End If
+	openLocalRecordset xt, "ASF_Ortsbezug_ObjektIsActive"
+	With MyRst
+		If Not .EOF Then
+			If Not IsNull(.Fields("Aktiv")) Then
+				ASF_Ortsbezug_ObjektIsActive = .Fields("Aktiv")
+			End If
+		End If
+	End With
+
+End Function
+Public Function ASF_Ortsbezug_getSqlSelectObjekte1(	ByRef pObjekttypID As SWACTRLSLib.CategoryTreeControl, _
+												  	ByRef pStrasseID As String, _
+												  	Optional ByRef pObjektName As SWACTRLSLib.Edit, _
+													Optional ByVal pAktiv As String = "") _
+													As String
+
+'*	Checks
+	If pObjekttypID Is Nothing Then Exit Function
+'Ü006
+'	If pStrasseID ="" Then Exit Function
+'/Ü006
+
+'*	Lokale Objekte
+	Dim xt As String
+
+'*	Business Logik
+'	Rumpfstatement
+'Ü025: Select um das Feld OO.Richtung erweitert
+	xt =	"SELECT OO.Name,[km von],[km bis],OS.Kurzname as Straßenzug,OO.ID,OO.ExternalID, OO.Richtung FROM OrtsbezugObjekte AS OO " & _
+			"INNER JOIN OrtsbezugStraßenzüge AS OS ON OO.StraßenzugID = OS.ID " & _
+			"WHERE 1=1 "
+'/Ü025
+'Ü005
+	'pAktiv sollte grundsätzlich nur 0 oder 1 sein
+	If pAktiv <> "" Then
+		xt = xt + " and aktiv = " + pAktiv
+	End If
+'/Ü005
+'	Objekttyp
+	If pObjekttypID.DataCount = 1 Then
+		If InStr(pObjekttypID.Data(0), pObjekttypID.PathSeparator) = 0 Then
+			xt = xt & " AND OO.ParentCategoryID='" & pObjekttypID.Data(0) & "' "
+		Else
+			xt = xt & " AND OO.ParentCategoryID='" & Mid(pObjekttypID.Data(0), InStrRev(pObjekttypID.Data(0), pObjekttypID.PathSeparator) + 1) & "' "
+		End If
+	End If
+'	Straßenzug
+	If pStrasseID <> "" Then
+		xt = xt & " AND OO.StraßenzugID='" & pStrasseID & "' "
+	End If
+'*	Objekt
+	If Not pObjektName Is Nothing Then
+		If pObjektName.Data <> "" Then
+			'Ü008
+			'falsch war: xt = xt & " AND OO.Name LIKE '% " & pObjektName.Data & "%' "
+			xt = xt & " AND OO.Name LIKE '%" & pObjektName.Data & "%' "
+			'/Ü008
+		End If
+	End If
+'	Sortierung
+	xt = xt & " ORDER BY [km von]"
+
+'*	Rückgabe
+	ASF_Ortsbezug_getSqlSelectObjekte1 = xt
+
+End Function
+
+Public Function ASF_Ortsbezug_getSqlSelectObjekte(	ByRef pObjekttypID As SWACTRLSLib.CategoryTreeControl, _
+												  	ByRef pStrasseID As SWACTRLSLib.DBRecordSelector, _
+												  	ByRef pObjektName As SWACTRLSLib.Edit, _
+													Optional ByVal pAktiv As String="") _
+													As String
+
+
+
+'*	Checks
+	If pObjekttypID Is Nothing Then Exit Function
+	If pStrasseID Is Nothing Then Exit Function
+	If pObjektName Is Nothing Then Exit Function
+
+'Ü006
+	If pStrasseID.DataCount = 0 Then 'kein Straßenzug ausgewählt
+		ASF_Ortsbezug_getSqlSelectObjekte = ASF_Ortsbezug_getSqlSelectObjekte1(pObjekttypID,"",pObjektName, pAktiv)
+	Else
+		'Ü008
+		ASF_Ortsbezug_getSqlSelectObjekte = ASF_Ortsbezug_getSqlSelectObjekte1(pObjekttypID, ASF_Ortsbezug_getStrassenzugIdFromKurzname(pStrasseID.Data(0)),pObjektName, pAktiv)
+		'ASF_Ortsbezug_getSqlSelectObjekte = ASF_Ortsbezug_getSqlSelectObjekte1(pObjekttypID,pStrasseID.Recordset.Fields("ID"),pObjektName)
+		'/Ü008
+	End If
+'	ASF_Ortsbezug_getSqlSelectObjekte = ASF_Ortsbezug_getSqlSelectObjekte1(pObjekttypID,pStrasseID.Recordset.Fields("ID"),pObjektName)
+'/Ü006
+
+End Function
+Public Function ASF_Ortsbezug_getSqlSelectObjektDetails(ByRef pObjekttypID As SWACTRLSLib.CategoryTreeControl, _
+														ByRef pObjektID As SWACTRLSLib.DBRecordSelector) _
+														As String
+
+'*	Checks
+	If pObjekttypID Is Nothing Then Exit Function
+	If pObjektID Is Nothing Then Exit Function
+
+'*	Lokale Objekte
+	Dim xt As String
+
+'*	Business Logik
+'	Rumpfstatement
+	xt =	"SELECT Name FROM OrtsbezugObjektDetails WHERE 1=1 "
+'	Objekttyp/Subtyp
+	If pObjekttypID.DataCount = 1 Then
+		If InStr(pObjekttypID.Data(0), pObjekttypID.PathSeparator) = 0 Then
+			xt = xt & " AND TypSubtypID='" & pObjekttypID.Data(0) & "' "
+		Else
+			xt = xt & " AND TypSubtypID='" & Mid(pObjekttypID.Data(0), InStrRev(pObjekttypID.Data(0), pObjekttypID.PathSeparator) + 1) & "' "
+		End If
+	End If
+'	Objekt
+'	If pObjektID.DataCount > 0 Then
+'		xt = xt & " AND ObjektID='" & pObjektID.Data(0) & "' "
+'	End If
+'	Sortierung
+	xt = xt & " ORDER BY Name"
+
+'*	Rückgabe
+	ASF_Ortsbezug_getSqlSelectObjektDetails = xt
+
+End Function
+
+Public Function ASF_Ortsbezug_getSqlSelectAnschlussstellen(ByRef pDbrsASFOrtStrasse As SWACTRLSLib.DBRecordSelector) As String
+
+'*	Checks
+	If pDbrsASFOrtStrasse Is Nothing Then Exit Function
+
+'*	Lokale Variablen
+	Dim xt As String
+
+'*	Business Logik
+	xt = "SELECT Name,km, id FROM OrtsbezugAnschlussstellen WHERE StraßenzugID = '" & pDbrsASFOrtStrasse.Recordset.Fields("ID") & "' ORDER BY km"
+
+'*	Rückgabe
+	ASF_Ortsbezug_getSqlSelectAnschlussstellen = xt
+
+End Function
+Public Sub ASF_Ortsbezug_copyOrtsbezuege(	ByRef pSource As IDocument, _
+											ByRef pTargetDlg As ArchiveDlg, _
+											Optional ByVal pDuplicateOrtsbezugIndexDocuments As Boolean = True)
+
+'*	Info
+'	kopiert die Ortsbezüge von pSource nach pTarget
+'	dupliziert optional (Standard) die referenzierten Ortsbezug-Indexdokumente,
+'	dann werden dem pTarget die IDs der neuen/duplizierten Indexdokumente übergeben
+
+'*	Checks
+	If pSource Is Nothing Then Exit Sub
+	If pTargetDlg Is Nothing Then Exit Sub
+	On Error GoTo ErrorHandler
+
+'*	lokale Objekte
+	Dim xDescNames(6) As String
+	Dim xDescNamesMax As Integer
+	Dim XSourceDesc As Descriptor
+	Dim XTargetICI As IControlInternal
+	Dim xi,xj As Integer
+	Dim XItaDoc As SWAFRAMELib.ItaDocument
+	Dim oDescDef As DescriptorDefinition
+
+'**	Business Logik
+'*	zu kopierende Deskriptoren
+	xDescNames(0)= "ASF_Dok_Strasse"
+	xDescNames(1)= "ASF_Dok_StrKmVon"
+	xDescNames(2)= "ASF_Dok_StrKmBis"
+	xDescNames(3)= "ASF_Dok_Objekttyp"
+	xDescNames(4)= "ASF_Dok_Objekt"
+	xDescNames(5)= "ASF_Dok_Objektdetail"
+	xDescNames(6)= "ASF_Ort_Ortsbezug_DokId"
+
+'*	prüfen, ob überhaupt Ortsbezüge vorhanden sind
+	Set XSourceDesc = pSource.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(xDescNames(6)).GUID)
+	If XSourceDesc Is Nothing Then Exit Sub
+	If XSourceDesc.ValueCount = 0 Then Exit Sub
+
+'*	Kopieren der Indexdokumente
+	If pDuplicateOrtsbezugIndexDocuments Then
+		Set oDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID")
+		'ASF_Ort_Ortsbezug_DokId
+		Set XSourceDesc = pSource.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(xDescNames(6)).GUID)
+		Set XTargetICI = SER_getIControlInternalByBoundDescriptorName(pTargetDlg, xDescNames(6))
+		For xi = 0 To XSourceDesc.ValueCount - 1
+			Set XItaDoc = Application.System.CreateDocument(enumDocumentType.ItaDocument)
+			With XItaDoc
+				.Copy Application.System.GetDocumentDirect(XSourceDesc.Value(xi)), True, True, True
+				.IndexOnly = True
+
+				'Ü008
+				'Deskriptor ASF_Dok_DokFolderUUID vom Ortsbezug-Dokument entfernen
+				For xj = 0 To XItaDoc.Descriptors.Count - 1
+					If XItaDoc.Descriptors.Item(xj).DescriptorDefinition.GUID = oDescDef.GUID Then
+						XItaDoc.Descriptors.Remove(xj)
+						GoTo commit
+					End If
+				Next xj
+				'/Ü008
+commit:
+				.Commit
+			End With
+			XTargetICI.AddData XItaDoc.DocumentID
+		Next xi
+		xDescNamesMax = 5
+	Else
+		xDescNamesMax = 6
+	End If
+
+'*	Rest der Werte einfach kopieren
+	For xi = 0 To xDescNamesMax
+		Set XSourceDesc = pSource.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(xDescNames(xi)).GUID)
+		If Not XSourceDesc Is Nothing Then
+			Set XTargetICI = SER_getIControlInternalByBoundDescriptorName(pTargetDlg, xDescNames(xi))
+			For xj = 0 To XSourceDesc.ValueCount - 1
+'Ü014
+				On Error Resume Next
+'/Ü014
+				XTargetICI.AddData(XSourceDesc.Values(xj))
+			Next
+		End If
+	Next
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler beim Kopieren der Ortsbezüge!", "ASF_Ortsbezug_copyOrtsbezuege()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+End Sub
+
+
+
+'************************************************************************
+'*	PSP/PROJEKT-BEZUG
+'************************************************************************
+
+
+Public Function ASF_Projekt_getSqlSelectPSPElement(	ByRef pICIPNr As IControlInternal, _
+													ByRef pICIPBez As IControlInternal) _
+													As String
+
+'*	checks
+	If IsMissing(pICIPNr) Then Exit Function
+	If IsMissing(pICIPBez) Then Exit Function
+
+'*	Lokale Objekte
+	Dim xt As String
+
+'*	Business Logik
+'	Rumpfstatement
+'Ü028
+	xt = "SELECT * FROM SAP_BW_KOST_PSP WHERE 1=1 "
+'/Ü028
+'	Projektnummer
+	If pICIPNr.DataCount > 0 Then
+		xt = xt & " AND [PSP/Kostenstelle] LIKE '%" & pICIPNr.GetData(0) & "%' "
+	End If
+'	Projekbezeichnung
+	If pICIPBez.DataCount > 0 Then
+		xt = xt & " AND Name LIKE '%" & pICIPBez.GetData(0) & "%' "
+	End If
+'	Order By
+	xt = xt & " ORDER BY [PSP/Kostenstelle]"
+
+'*	Rückgabe
+	ASF_Projekt_getSqlSelectPSPElement = xt
+
+End Function
+
+
+'************************************************************************
+'*	IMMOBILIEN
+'************************************************************************
+'Ü011
+Public Function ASF_Immo_getSqlSelectKatastralgemeinde(	ByRef pICIBundesland As IControlInternal, _
+														ByRef pICIKGNr As IControlInternal, _
+														ByRef pICIKGName As IControlInternal, _
+														ByRef pICIKGPolBezGemeinde As IControlInternal) _
+														As String
+
+'/Ü011
+'*	Checks
+	If IsMissing(pICIBundesland) Then Exit Function
+	If IsMissing(pICIKGNr) Then Exit Function
+	If IsMissing(pICIKGName) Then Exit Function
+	'Ü011
+	If IsMissing(pICIKGPolBezGemeinde) Then Exit Function
+	'/Ü011
+
+'*	Lokale Objekte
+	Dim xt As String
+
+'*	Business Logik
+'	Rumpfstatement
+	xt = "SELECT * FROM OrtsbezugKatastralgemeinden WHERE 1=1 "
+'	Bundesland
+	If pICIBundesland.DataCount > 0 Then
+		xt = xt & " AND Bundesland='" & pICIBundesland.GetData(0) & "' "
+	End If
+'	KGNummer
+	If pICIKGNr.DataCount > 0 Then
+		xt = xt & " AND KGNummer LIKE '%" & pICIKGNr.GetData(0) & "%' "
+	End If
+'	KGName
+	If pICIKGName.DataCount > 0 Then
+		xt = xt & " AND KGName LIKE '%" & pICIKGName.GetData(0) & "%' "
+	End If
+	'Ü011
+'	KGPolBezirk
+	If pICIKGPolBezGemeinde.DataCount > 0 Then
+		xt = xt & " AND PGName LIKE '%" & pICIKGPolBezGemeinde.GetData(0) & "%' "
+	End If
+'/Ü011
+'	Order By
+	xt = xt & " ORDER BY KGNummer"
+
+'*	Rückgabe
+	ASF_Immo_getSqlSelectKatastralgemeinde = xt
+
+End Function
+
+
+
+'************************************************************************
+'*	ASFINAG Inplace Hilfe
+'************************************************************************
+
+Public Sub ASF_global_doHilfeAnzeigen(ByVal pURLorFileName As String)
+
+'*	Info
+'	Öffnet entweder eine Datei in der zugehörigen Anwendung oder öffnet einen Link im IExplorer
+
+'*	Checks
+	If pURLorFileName = "" Then Exit Sub
+
+'*	Lokale Objekte
+	Dim XAXW As ActiveXWindow
+	Dim XBrowser As Object
+	Dim IeAppli As Object
+	Dim THandle As Long
+
+
+'**	Business Logik
+	If Left(pURLorFileName, 7) = "http://" Then
+		'Ü027
+		Set IeAppli = CreateObject("InternetExplorer.Application")
+		IeAppli.Visible = True
+		IeAppli.Navigate2 pURLorFileName
+		'/Ü027
+	Else
+	'*	ShellExecute
+		Call ShellExecute(0, "Open", pURLorFileName, "", "", 1)
+	End If
+
+End Sub
+
+
+
+'************************************************************************
+'*	ASFINAG Geschäftspartner/Ansprechpartner
+'************************************************************************
+
+Public Sub ASF_GP_doSaveGP(ByRef pASFGP As ASF_Geschaeftspartner)
+
+	Dim XRst As ADODB.Recordset
+	Dim xt As String
+	xt = 	"SELECT NEWID() AS ID"
+	Set XRst = ASF_DMS_Daten.Execute(xt)
+	pASFGP.ID = XRst.Fields("ID")
+	xt =	"INSERT INTO Geschäftspartner (ID,GPName,APName,[Straße],Land,PLZ,Ort) " & _
+			"VALUES ('"& pASFGP.ID & "','" & pASFGP.gpname & "','" & pASFGP.apname & "','" & pASFGP.Strasse & "','" & pASFGP.land & "','" & pASFGP.PLZ & "','" & pASFGP.ort & "')"
+	Set XRst = ASF_DMS_Daten.Execute(xt)
+
+End Sub
+
+
+
+'************************************************************************
+'*	GRUNDSTÜCKS-BEZUG
+'************************************************************************
+
+Public Sub ASF_Grundstueck_initDialogAndObjects(	ByRef pRLGrundstueck As ResultList, _
+													ByRef pRLGrundstueckLE As ResultListLanguageExtension, _
+													ByRef pCCResultList As ControlContainer, _
+													ByVal pResultDlgDefinitionName As String, _
+													ByVal pQueryDatabaseName As String, _
+													ByVal pRangeStartDate As String, _
+													ByRef pMvASFDokGrundstueckDokId As MultivalueEdit)
+
+'*	Info
+'	Initialisiert die Resultlist der zugeordneten Grundstücke sowie
+'	die Objekte zum Grundstücks-Bezug am Dialog
+
+'*	Checks
+	If IsMissing(pRLGrundstueck) Then Exit Sub
+	If IsMissing(pRLGrundstueckLE) Then Exit Sub
+	If pCCResultList Is Nothing Then Exit Sub
+	If pResultDlgDefinitionName = "" Then Exit Sub
+	If pQueryDatabaseName = "" Then Exit Sub
+	If pRangeStartDate = "" Then Exit Sub
+	If pMvASFDokGrundstueckDokId Is Nothing Then Exit Sub
+
+'*	Lokale Objekte
+	Dim XQuery As Query
+	Dim xl As Long
+
+'**	Business Logik
+'*	Controls initialisieren
+	Set pRLGrundstueck = pCCResultList.Control
+	Set pRLGrundstueckLE = pCCResultList.Control
+	With pRLGrundstueck
+		Set .System = Application.System
+		Set .ResultDlgDefinition = Application.MetaData.ResultDlgDefinitions.ItemByName(pResultDlgDefinitionName)
+		.ShowGroupPanel = False
+		.ToolbarVisible = False
+	End With
+'*	zugeordnete Ortsbezüge laden
+	Set XQuery = Application.System.CreateQuery
+	With XQuery
+		.Databases.Add Application.System.QueryDatabases.ItemByName(pQueryDatabaseName)
+		.RangeStart = pRangeStartDate
+		.RangeEnd = Format(Now, "YYYYMMDD")
+		.HitLimit = 100
+		.SQLStatement = "SELECT * WHERE 1=0"
+		Set pRLGrundstueck.Resultset = .Execute
+	End With
+	For xl = 0 To pMvASFDokGrundstueckDokId.DataCount - 1
+		pRLGrundstueck.Resultset.AppendDocument(Application.System.GetDocumentDirect(pMvASFDokGrundstueckDokId.GetData(xl)))
+	Next
+
+End Sub
+
+Public Sub ASF_Grundstueck_loadGrundstueckeFromResultsetToControls(	ByRef pResultset As SWAFRAMELib.IResultset, _
+																	ByRef pMvASFDokBundesland As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvASFDokKGNummer As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvASFDokKGName As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvASFDokGrundstueckNr As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvASFDokPolbezirkName As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvASFDokGrundstueckDokId As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvASFDokEinlagezahl As SWACTRLSLib.MultivalueEdit, _
+																	ByRef pMvASFDokGrundbuchnr As SWACTRLSLib.MultivalueEdit)
+
+'*	Info
+'	lädt die Daten der Grundstücke aus einem Resultset in die Multivalue-Felder der Grundstücke des Dokuments
+
+'*	Checks
+	If pResultset Is Nothing Then Exit Sub
+	If pMvASFDokBundesland Is Nothing Then Exit Sub
+	If pMvASFDokKGNummer Is Nothing Then Exit Sub
+	If pMvASFDokKGName Is Nothing Then Exit Sub
+	If pMvASFDokGrundstueckNr Is Nothing Then Exit Sub
+	If pMvASFDokPolbezirkName Is Nothing Then Exit Sub
+	If pMvASFDokGrundstueckDokId Is Nothing Then Exit Sub
+	If pMvASFDokEinlagezahl Is Nothing Then Exit Sub
+	If pMvASFDokGrundbuchnr Is Nothing Then Exit Sub
+
+'*	Lokale Objekte
+	Dim xl As Long
+	Dim xt As String
+	Dim xt2 As String
+	Dim XDesc As Descriptor
+
+'**	Business Logik
+'*	Inhalte löschen
+	pMvASFDokBundesland.ResetContent
+	pMvASFDokKGNummer.ResetContent
+	pMvASFDokKGName.ResetContent
+	pMvASFDokGrundstueckNr.ResetContent
+	pMvASFDokPolbezirkName.ResetContent
+	pMvASFDokGrundstueckDokId.ResetContent
+	pMvASFDokEinlagezahl.ResetContent
+	pMvASFDokGrundbuchnr.ResetContent
+'*	Inhalte laden
+
+'Ü016
+	On Error Resume Next
+'/Ü016
+	For xl = 0 To pResultset.TotalCount - 1
+		'Bundesland
+		pMvASFDokBundesland.AddData SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Bundesland")
+		'KGNummer
+		pMvASFDokKGNummer.AddData SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_KG_Nummer")
+		'KGName
+		pMvASFDokKGName.AddData SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_KG_Name")
+		'GrundstücksNr
+		pMvASFDokGrundstueckNr.AddData SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Grundstueck_Nr")
+		'PolbezirkName
+		pMvASFDokPolbezirkName.AddData SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_PolBezirk_Name")
+		'Einlagezahl
+		pMvASFDokEinlagezahl.AddData SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Einlagezahl")
+		'Grundbuchnr
+		pMvASFDokGrundbuchnr.AddData SER_getFirstDescriptorValueByName(pResultset.Document(xl).Descriptors, "ASF_Grundstueck_GrundbuchNr")
+		'DokId
+		pMvASFDokGrundstueckDokId.AddData pResultset.Document(xl).DocumentID
+	Next
+
+End Sub
+'Ü004
+Public Function ASF_getStraßenzugIDByKurzName(ByVal pStraßenzugKurzName As String) As String
+
+'*	Lokale Objekte
+	Dim xt As String
+'*	Business Logik
+	xt = "SELECT ID FROM OrtsbezugStraßenzüge where Kurzname = '" + pStraßenzugKurzName + "'"
+	openLocalRecordset xt, "ASF_getStraßenzugIDByKurzName"
+	With MyRst
+		If Not .EOF Then
+			ASF_getStraßenzugIDByKurzName = .Fields("ID")
+		End If
+	End With
+
+End Function
+'/Ü004
+
+'************************************************************************
+'*	ASFINAG Security
+'************************************************************************
+
+'Ü003
+Public Function ASF_security_initMvASFZugriff(ByRef pMvASFZugriff As MultivalueEdit) As Boolean
+
+'*	Checks
+	If pMvASFZugriff Is Nothing Then Exit Function
+
+'*	Lokale Objekte
+	Dim x() As String
+	Dim xl As Long
+
+'**	Business Logik
+'*	Zugriff OUs und Gruppen
+	pMvASFZugriff.ResetContent
+'	OUs
+	ASF_loadFullOUNameToArray(x)
+	For xl = 0 To UBound(x)
+		pMvASFZugriff.AddData x(xl)
+	Next
+'	Gruppen
+	SER_getGroupMemberArray(x)
+	For xl = 0 To UBound(x)
+		pMvASFZugriff.AddData x(xl)
+	Next
+
+'	Admin
+	If Application.System.User.Role = "admins" Then
+		pMvASFZugriff.ResetContent
+	End If
+
+'	Gesamtzugriff
+	If ASF_security_isUserGroupMember("Gesamtzugriff ausgen. Personal") Then
+		pMvASFZugriff.ResetContent
+	End If
+
+End Function
+'/Ü003
+
+
+
+'************************************************************************
+'*	PERFORMANCE-MESSUNGEN
+'************************************************************************
+
+'Ü005
+Private Sub initPerformanceTest()
+
+	If Application.System.User.User = "PerformanceTest" Then
+		ASF_Performance_writePerformanceLogEntry "'PerformanceTest' Benutzer angemeldet."
+		ASF_Performance_writePerformanceLogEntry "System=" & Application.System.Name
+		ASF_Performance_writePerformanceLogEntry "Computer=" & Environ("COMPUTERNAME")
+		ASF_Performance_writePerformanceLogEntry "Windows User=" & Environ("USERDOMAIN") & "\" & Environ("USERNAME")
+		initDocViewer
+	End If
+
+End Sub
+
+Public Sub ASF_Performance_writePerformanceLogEntry(ByVal pEntry As String)
+
+	Open Environ("USERPROFILE") & "\Desktop\DOXiS4 winCube Performance Log.txt" For Append As #98
+	Print #98, Format(Now, "YYYY-MM-DD hh:mm:ss") & vbTab & Format(Timer, "00000.00") & vbTab & pEntry
+	Close #98
+
+End Sub
+
+Private Sub Application_OnDocumentVerb(ByVal Document As SWAFRAMELib.IDocument, ByVal Verb As winCube.enumVerb, ByRef bHandled As Boolean)
+
+	If Application.System.User.User = "PerformanceTest" Then
+		ASF_Performance_writePerformanceLogEntry "Anzeige eines Informations-Objektes in winCube von externer Anwendung ausgelöst."
+		ASF_Performance_writePerformanceLogEntry "Document-Type=" & Str(Document.Type)
+		ASF_Performance_writePerformanceLogEntry "Document-id=" & Document.DocumentID
+	End If
+
+End Sub
+
+Private Sub initDocViewer()
+
+	Dim XAXW As ActiveXWindow
+	Set XAXW = Application.CreateActiveXWindow(Application.MetaData.ActiveXWindowDefinitions.ItemByName("AXWViewer").GUID, wtNone)
+	Dim XDV As DocViewer
+
+	With XAXW
+		.Sizeable = True
+		.Open wsModeless
+		.Left = 0
+		.Top = 0
+		.Width = 10
+		.Height = 10
+		.ShowWindow csHide
+		.CreateControl("SwaView2.DocViewer.1")
+		Set XDV = .Control(0).Control
+	End With
+	Set XDV.Document = Application.System.GetDocumentDirect("SD03ASF247f7d8df5-ae86-4795-9910-b527981e0b5d182011-03-03T13:16:08.474Z015")
+	XAXW.Close
+
+End Sub
+
+'/Ü005
+Public Function ASF_getCategoryIdByParentCategoryShortNameAndCategoryShortName(ByVal pPCSN As String, ByVal pCSN As String) As String
+
+'*	lokale Objekte
+	Dim xt As String
+'*	Business Logik
+	xt =	"SELECT * FROM Kategorien WHERE CategoryShortName = '" & pCSN & "' AND " & _
+			"ParentCategoryID = (SELECT CategoryID FROM Kategorien WHERE CategoryShortName = '" & pPCSN & "')"
+	openLocalRecordset xt, "ASF_getCategoryIdByParentCategoryShortNameAndCategoryShortName"
+	With MyRst
+		If Not .EOF Then
+			ASF_getCategoryIdByParentCategoryShortNameAndCategoryShortName = .Fields("CategoryID")
+		End If
+	End With
+
+End Function
+

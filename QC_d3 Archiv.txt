@@ -1,0 +1,79 @@
+Default
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Query Dialog/ D3 Archiv
+'*	Autor	:	?
+'*	Datum	:	?
+'*  Überarbeitung Ü001:  02.02.2011/ Christian Aigner, SER: Dlg_OnClose hinzugefügt als Workarounf für SER internen Mantis-Call 23133
+'*	Überarbeitung Ü002	:	16.11.2012/ Guido Bachmayr, SER: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+'*
+'************************************************************************
+
+	Option Explicit
+Private Sub Dlg_OnClose()
+	'Ü001: Workaround wg. SER internen Mantis-Call 23133
+	ASFErsteller.SetFocus
+End Sub
+Private Sub Dlg_OnExecuted(ByVal Results As SWAFRAMELib.IResultset, ByVal Succeeded As Boolean)
+	'Ü001: Workaround wg. SER internen Mantis-Call 23133
+	If Results Is Nothing Then
+		ASFErsteller.SetFocus
+		Exit Sub
+	End If
+	If Results.AvailableCount = 0 Then
+		ASFErsteller.SetFocus
+	End If
+End Sub
+
+Private Sub Dlg_OnClearedContent()
+	initValues
+End Sub
+Private Sub Dlg_OnInit()
+	ASF_InitErsteller(dbrsAbleger)     'Ü002
+	initValues
+	If Application.System.User.Role = "admins" Then
+		Classname.Visible = True
+	End If
+End Sub
+
+Private Sub sbASFFachthema_OnSelectionChanged()
+	If sbASFThema.Data <> ""   And sbASFFachthema.Data <> "" Then
+		Call ASF_loadValuesFromDBToSelectionBox("select distinct left(subthema,30) as subthema from d3beschlagwortung where thema = '" +sbASFThema.Data + "' And fachthema ='" + sbASFFachthema.Data + "'", "subthema",sbASFSubthema,True )
+	End If
+End Sub
+
+Private Sub sbASFThema_OnSelectionChanged()
+
+	If sbASFThema.Data <> "" Then
+		Call ASF_loadValuesFromDBToSelectionBox("select distinct left(fachthema,30) as fachthema from d3beschlagwortung where thema = '" +sbASFThema.Data + "'", "fachthema",sbASFFachthema,True )
+	End If
+End Sub
+
+
+'Ü002: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+Private Sub btnAbleger_OnClicked()
+	ASF_AblegerOpenDlg(dbrsAbleger, Ableger)
+End Sub
+
+Private Sub dbrsAbleger_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsAbleger.DataCount > 0 Then
+			Ableger.Data= dbrsAbleger.Data(0)
+		End If
+	End If
+End Sub
+'/Ü002
+
+Private Sub initValues()
+
+'*	Lokale Objekte
+
+	Call ASF_security_initMvASFZugriff(MvASFZugriff)
+'**
+'*	Thema-Startwerte
+	Call ASF_loadValuesFromDBToSelectionBox("select distinct left(thema,30) as thema from d3beschlagwortung", "thema",sbASFThema,True)
+
+End Sub
+
+

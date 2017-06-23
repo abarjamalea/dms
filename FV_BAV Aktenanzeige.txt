@@ -1,0 +1,170 @@
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Folder Tree View/ BAV Aktenanzeige
+'*	Autor	:	Christian Aigner, SER Solutions Österreich GmbH
+'*	Datum	:	02.04.2013
+'*	Ü001	:	24.06.2013	Christian Aigner, SER	Event FolderViewWindow_OnAddDocument hinzugefügt
+'*	Ü002	:	03.03.2015  Guido Bachmayr, SER: MultiDok-Ablage auch für D&D auf Aktenregister implementieren (OTRS 1012450)
+'*  Ü003    :   02.10.2015  Guido Bachmayr, SER: MultiDok-Ablage: Bei File-Drop wird das Zielregister auch selektiert (OTRS 1012450)
+'************************************************************************
+Option Explicit
+
+Const cGIS001_Link1 = "http://gis.asbnet.at/GIS/externalcall.jsp?project=gis&Query=km&KeyName=RT&keyvalue="
+Const cGIS001_Link2 = "&m_from=
+Const cGIS001_Link3 = "&m_to=
+Private Declare Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" (ByVal hwnd As Long, ByVal lpOperation As String, ByVal lpFile As String, ByVal lpParameters As String, ByVal lpDirectory As String, ByVal nShowCmd As Long) As Long
+
+Dim WithEvents MyFEW As FilingEnvironmentWindow
+Private Sub FolderViewWindow_OnAddDocument(ByRef Handled As Boolean)
+
+'In die Aktenregister 'Aufgaben', 'Arbeitsaufträge', 'Arbeitsaufträge aus SAP'
+' oder 'Auftragsannahme-WF' dürfen keine Dokumente abgelegt werden.
+	If Not checkRight(FolderTreeView.SelectedNode) Then
+		Application.ShowMessage "Sie haben kein Recht, in diesem Register ein Dokument abzulegen!"
+		Handled = True
+		Exit Sub
+	End If
+
+	Set ASF_aktuelle_Akte = FolderTreeView.Document
+	'2011-08-03 GBA Korrektur CR37 (Reihenfolge der Befehle)
+	Application.Globals.Item ("ASF_Aktuelles_Register") = FolderTreeView.SelectedNode
+	Application.Globals.Item ("ASF_Aktuelle_FolderViewWindow") = FolderViewWindow
+
+'	Set MyFEW = Application.OpenEnvironment2(Application.MetaData.FilingEnvironments.ItemByName("Dokument").GUID, True)
+	'Handled = True
+End Sub
+
+Private Sub FolderViewWindow_OnElementAdded(ByVal Element As Object, ByVal ParentNode As Object)
+	If FolderTreeView.FocusedNode.ID <> ParentNode.ID Then
+		Set FolderTreeView.FocusedNode= ParentNode				'GBA 2015-12-03
+	End If
+End Sub
+
+Private Sub FolderViewWindow_OnFileDrop(ByRef FileNames() As String, ByVal Node As Object, ByRef Handled As Boolean)   '* Ü002
+	Set ASF_aktuelle_Akte = FolderTreeView.Document
+
+	Set FolderTreeView.SelectedNode = Node			'Ü003 02.10.2015 GBA
+	Set FolderTreeView.FocusedNode = Node
+
+	'2011-08-03 GBA Korrektur CR37 (Reihenfolge der Befehle)
+	Application.Globals.Item ("ASF_Aktuelles_Register") = FolderTreeView.SelectedNode
+	Application.Globals.Item ("ASF_Aktuelle_FolderViewWindow") = FolderViewWindow
+End Sub
+
+Private Sub FolderViewWindow_OnFileDrop2(ByRef Files() As Object, ByVal Node As Object, ByRef Handled As Boolean)   '* Ü002
+
+	Exit Sub
+	'*********************************************** OnFileDrop UND OnFileDrop2 sind nicht nötig! GBA 2015-12-02   Ü003
+
+	Set ASF_aktuelle_Akte = FolderTreeView.Document
+	'2011-08-03 GBA Korrektur CR37 (Reihenfolge der Befehle)
+	Application.Globals.Item ("ASF_Aktuelles_Register") = FolderTreeView.SelectedNode
+	Application.Globals.Item ("ASF_Aktuelle_FolderViewWindow") = FolderViewWindow
+End Sub
+
+Private Sub FolderViewWindow_OnElementAdd(ByVal LinkType As Long, ByVal LinkSource As Variant, ByVal ParentNode As Object, ByRef Handled As Boolean)
+
+'In die Aktenregister 'Aufgaben', 'Arbeitsaufträge', 'Arbeitsaufträge aus SAP'
+' oder 'Auftragsannahme-WF' dürfen keine Elemente abgelegt werden.
+	If Not checkRight(FolderTreeView.SelectedNode) Then
+		Application.ShowMessage "Sie haben kein Recht, in diesem Register ein Dokument abzulegen!"
+		Handled = True
+		Exit Sub
+	End If
+End Sub
+'Diese Fkt. prüft, ob ein Aktenregister das Register 'Aufgaben', 'Arbeitsaufträge', 'Arbeitsaufträge aus SAP'
+' oder 'Auftragsannahme-WF' ist
+
+Private Function checkRight(pSelectedNode As CNode) As Boolean
+
+	checkRight = True
+	If pSelectedNode.ID = "52842791-94a6-49ac-838b-71cc01b7a81b" Or _
+			pSelectedNode.ID = "29bda2d7-2b6f-4f3c-9eff-f19a6158d3a7" Or _
+			pSelectedNode.ID = "7b8da2f0-4f54-40c5-9be4-afac0d63ac6d" Or _
+			pSelectedNode.ID = "66dd082a-5b3b-4d37-aafa-6db4df1f7367" Then
+		checkRight = False
+	End If
+End Function
+
+Private Sub FolderViewWindow_OnRibbonBarInitialized()
+
+	Dim XRC As RibbonCategory
+	Dim XRP As RibbonPanel
+	Dim mySecurityObject As SecurityModule
+
+	Set mySecurityObject = Application.System.SecurityModule
+
+	Set XRC = FolderViewWindow.RibbonBar.CategoryByName("Akte")
+	If XRC Is Nothing Then Set XRC = FolderViewWindow.RibbonBar.CategoryByName("Record")		'GBA 2014-10-29 Ü001  CR6, Tr7
+	If Not XRC Is Nothing Then
+		Set XRP = XRC.AddPanel("IDweitere", "weitere Funktionen")
+		If Not XRP Is Nothing Then
+			If mySecurityObject.CheckRight (bfRight03 ,"DMS Dokumente","ASF - Funktionsrechte") Then
+				XRP.AddElement rtButton, "ID_GISLink", "GIS", "Öffnet die Koordinaten des Dokuments im GIS System", 54,54
+			End If
+		End If
+	End If
+
+End Sub
+
+Private Sub FolderViewWindow_OnRibbonElementClicked(ByVal ElementID As String, ByRef Handled As Boolean)
+Dim sGISLink As String
+	Dim sStrecke As String
+	Dim sKM As String
+	Dim toKM As String
+	Dim XDocTypes(2) As String
+	Dim myResultlist As IResultList
+	Dim myOrtsbezüge() As ItaDocument
+	Dim myDescriptorDefStr As DescriptorDefinition
+	Dim myDescriptorDefKmVon As DescriptorDefinition
+	Dim myDescriptorDefKmBis As DescriptorDefinition
+
+
+	Dim myNode As CNode
+	Select Case ElementID
+		Case "ID_GISLink"
+			sStrecke = ""
+			sKM = ""
+
+			myOrtsbezüge() = getOrtsbezügeForDocument(FolderTreeView.Document.InternalDescriptors.ItemByName("UUID").Value(0))
+
+			If Not ArrayIsInitialized(myOrtsbezüge) Then
+			    	Application.ShowMessage "Das Dokument besitzt keinen Streckenbezug, kein GIS Aufruf möglich!"
+					Exit Sub
+			End If
+
+			Set myDescriptorDefStr = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_Straße")
+			Set myDescriptorDefKmVon = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmVon")
+			Set myDescriptorDefKmBis = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmBis")
+
+	If Not myOrtsbezüge(0).Descriptors.ItemByGUID(myDescriptorDefStr.GUID) Is Nothing Or _
+			myOrtsbezüge(0).Descriptors.ItemByGUID(myDescriptorDefKmVon.GUID) Is Nothing Or _
+			myOrtsbezüge(0).Descriptors.ItemByGUID(myDescriptorDefKmBis.GUID) Is Nothing Then
+
+				Dim i As Integer
+				For i = 0 To UBound(myOrtsbezüge()) - 1
+					If Not i = UBound(myOrtsbezüge()) - 1 Then
+					sStrecke = sStrecke + myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefStr.GUID).Value(0) + ";"
+					sKM = sKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmVon.GUID).Value(0),",",".") + ";"
+					toKM = toKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmBis.GUID).Value(0),",",".") + ";"
+					Else
+					sStrecke = sStrecke + myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefStr.GUID).Value(0)
+					sKM = sKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmVon.GUID).Value(0),",",".")
+					toKM = toKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmBis.GUID).Value(0),",",".")
+					End If
+				Next
+	End If
+'/Ü013
+			If Trim(sStrecke) <> "" And Trim(sKM) <> "" Then
+    			sGISLink = cGIS001_Link1 + sStrecke + cGIS001_Link2 + sKM + cGIS001_Link3 + toKM
+    			'Application.ShowMessage "GIS Link: " + sGISLink
+				ShellExecute FolderViewWindow.hWnd,"open",sGISLink,"","",0
+
+    		Else
+    			Application.ShowMessage "Das Dokument besitzt keinen Streckenbezug, kein GIS Aufruf möglich!"
+    		End If
+	End Select
+
+End Sub
+

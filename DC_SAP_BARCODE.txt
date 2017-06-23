@@ -1,0 +1,157 @@
+Default
+'#Reference {87D28511-6B43-101C-92CE-10005AF5DF4D}#1.1#0#c:\programme\sap\frontend\sapgui\wdtaocx.ocx#SAP Table Factory#SAPTableFactoryCtrl
+'#Reference {5B076C00-2F26-11CF-9AE5-0800096E19F4}#5.0#0#c:\programme\sap\frontend\sapgui\wdtfuncs.ocx#SAP Remote Function Call Control#SAPFunctionsOCX
+Option Explicit
+
+'Referenzen:
+'SAP Remote Function Call Control 5.0
+'SAP Table Factory 1.0
+
+'*******************************************************
+'SEKTION MIT KONFIGURIERBAREN KONSTANTEN
+
+'Anmeldung am SAP
+
+Const SapAddr   = "rms-vm-sap6.sst.local"
+Const SapSysNr  = "3"
+Const SapClient = "800"
+Const SapUser   = "tuser"
+Const SapWord   = "tuser12"
+Const SapLang   = "D"
+
+'*******************************************************
+
+Const MsgTitel = "SAP Barcode-Ablage"
+
+Private SAPRFC As SAPFunctions
+Private BARCOD As Function
+Private BCTABL As Table
+Private BCTROW As Row
+Private myDocType As String
+
+Private Sub Dlg_OnDocumentChanged(newDoc As SWAFRAMELib.IDocument)
+	Dim did As String
+	Dim MyUtil As New SWATOOLSLib.Utilities
+
+	contRep.SelectedItem = 0
+
+	did = "Y1" & Format(Now, "yyyymmdd")
+	did = did & MyUtil.GenerateUniqueString
+	docId.Data		 = did
+	compId.Data		 = "data"
+	pVersion.Data 	 = "0045"
+	compDateC.Data   = Format(Now, "yyyy-mm-dd")
+	compDateM.Data   = Format(Now, "yyyy-mm-dd")
+	compTimeC.Data   = Format(Now, "hh:nn:ss")
+	compTimeM.Data   = Format(Now, "hh:nn:ss")
+	docProt.Data	 = "ud"
+
+End Sub
+
+Private Sub Dlg_OnInit()
+
+		If Not SapConnection Then
+		MsgBox "Es ist keine Verbindung zum SAP-System vorhanden.", vbCritical, MsgTitel
+	End If
+
+	contRep.SetStringMatrix Application.MetaData.StringMatrices.ItemByName("ContentRepositories"), 0, 0
+
+End Sub
+
+Private Sub Dlg_OnDebugResume()
+	Call Dlg_OnInit()
+End Sub
+
+Private Sub Dlg_OnClose()
+	Set BCTROW = Nothing
+	Set BCTABL = Nothing
+	Set BARCOD = Nothing
+	If Not SAPRFC Is Nothing Then SAPRFC.Connection.Logoff
+	Set SAPRFC = Nothing
+End Sub
+
+Private Sub Dlg_OnExecute(Doc As SWAFRAMELib.IDocument, Continue As Boolean)
+
+	Continue = False
+
+	If SAPRFC Is Nothing Then
+		MsgBox "Es ist keine Verbindung zum SAP-System vorhanden.", vbCritical, MsgTitel
+		Exit Sub
+	End If
+
+	If Barcode.Data = "" Then
+		MsgBox "Bitte geben Sie einen Barcode ein.", vbCritical, MsgTitel
+		Barcode.SetFocus
+		Exit Sub
+	End If
+
+	Dim did As String
+
+	If Not Doc.Archived Then
+
+		Doc.Database = GetFilingDatabaseFromContentRep(contRep.Data)
+
+		Dim mydoc As SWAFRAMELib.ItaDocument
+		Set mydoc = Doc
+		ContentType.Data = mydoc.Representations(0).MimeType
+
+	End If
+
+	Continue = True
+
+End Sub
+
+
+Private Sub Dlg_OnExecuted(Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean)
+
+	Application.Globals.Remove("OnExecutedProblem")
+
+	If Not Succeeded Then Exit Sub
+
+	Set BCTROW = BCTABL.Rows.Add
+	BCTROW("BARCODE") 		= Barcode.Data
+	BCTROW("ARCHIV_ID") 	= contRep.Data
+	BCTROW("ARC_DOC_ID")	= docId.Data
+	BCTROW("AR_DATE")		= Date
+	BCTROW("DOC_TYPE") 		= myDocType
+
+	If BARCOD.Call Then Exit Sub
+
+	MsgBox "Beim Übermitteln des Barcodes an SAP ist ein Fehler aufgetreten.", vbCritical, BARCOD.Exception
+	Application.Globals("OnExecutedProblem") = BARCOD.Exception
+
+End Sub
+
+Private Function SapConnection() As Boolean
+
+	If SAPRFC Is Nothing Then
+
+		Set SAPRFC = CreateObject("SAP.Functions")
+
+		With SAPRFC.Connection
+        	.UseSAPLogonIni 	= False
+         	.ApplicationServer 	= SapAddr
+         	.SystemNumber 		= SapSysNr
+         	.Client 			= SapClient
+         	.User 				= SapUser
+         	.Password 			= SapWord
+         	.Language 			= SapLang
+      	End With
+
+		If Not SAPRFC.Connection.Logon(0, True) Then
+        	Set SAPRFC = Nothing
+        	SapConnection = False
+        	Exit Function
+      	End If
+
+	End If
+
+	If BARCOD Is Nothing Then
+		Set BARCOD = SAPRFC.Add("ARCHIV_BARCODE_INSERT_RFC")
+		Set BCTABL = BARCOD.Tables("BARCODE_ENTRYS")
+	End If
+
+	SapConnection = True
+
+End Function
+

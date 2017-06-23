@@ -1,0 +1,11 @@
+Option Explicit
+
+Private Sub FilingEnvironmentWindow_OnDocumentExecuted(ByVal Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean, ByRef Handled As Boolean)
+
+	If Succeeded Then
+		resetAllControls(FilingEnvironmentWindow.ArchiveViewWindow.ArchiveDlg)
+		FilingEnvironmentWindow.Close
+	End If
+
+End Sub
+

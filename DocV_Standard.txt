@@ -1,0 +1,460 @@
+Option Explicit
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	DocViewer / Standard
+'*	erstellt am / von	:	unbekannt/ unbekannt
+'*	Überarbeitung Ü001	:	10.02.2011, Christian Aigner, SER: Wenn ein Dokument mit mehreren Teildokumenten bearbeitet wird, wird die winCube-Standardmeldung durch eine Scripting-Meldung überschrieben
+'*	Überarbeitung Ü002	:	10.03.2011, Markus D. Hartbauer, SER: Performance-Logbuch Einträge
+'*	Überarbeitung Ü003	:	21.09.2011	Christian Aigner, SER: Beim Öffnen der Schlüsseländerungsmaske wird geprüft, ob winCube im Offline-Modus ist. In diesem Fall wird die Maske nicht geöffnet, weil keine Serververbindungen geöffnet werden könnnen.
+'*	Überarbeitung Ü004	:	02.11.2011	Christian Aigner, SER: CR 49 (Poststück aus Viewer erstellen)
+'*	Überarbeitung Ü005	:	03.11.2011	Christian Aigner, SER: Textänderung, wenn ein Dokument, bestehend aus mehreren Teildokumenten, bearbeitet werden soll
+'*	Überarbeitung Ü006	:	10.11.2011	Günther F. Schinko, SER: CR 58 - Viewer oder Originalapplikation
+'*	Überarbeitung Ü007	:	25.01.2012	Christian Aigner, SER: OTRS-Ticket#1007944
+'*	Beschreibung OTRS-Ticket#1007944
+'*	Bisherige Funktionalität (lt. Fr. Bruckberger):
+'*	Compound Dokumente müssen ja ausgecheckt werden, dann kann die jeweilige Datei, die bearbeitet werden muss,
+'*	in der Originalanwendung geöffnet und bearbeitet werden und beim Speichern wird diese zurückgespeichert.
+'*	Jetzt ist es aber so, dass die Dateien nur schreibgeschützt geöffnet werden, auch wenn das Dokument zuvor ausgecheckt wurde und
+'*	das Dokument kann nur über umständliches „lokal Speichern, alte Datei löschen, neue importieren, einchecken“ aktualisiert werden.
+'*	Überarbeitung Ü008	:	24.04.2012	Günther F.Schinko, SER: noch nicht produktiv gesetzt (s. Testsystem
+'*  Überarbeitung Ü009	:	05.11.2012	Christian Aigner, SER: Fehlerbehebung bei 'Inhalt ersetzen'. Fehler ist bei winCube 6.02P2 aufgetreten
+'*	Überarbeitung Ü010 	: 	24.03.2015 Michael Lämmle, SER: Erweiterung des Statusaufdruckes. Nun auch für "ungültig" und "in Prüfung"
+'*	Überarbeitung Ü011 	: 	27.10.2015 Michael Lämmle, SER: Aufdruck auf allen Seiten.
+'*	Überarbeitung Ü012  :   02.03.2016 Klaus Grundwald, SER: Beim Erstellen eines Poststücks den Deskriptor "Poststück" am Basisdokument auf "True" setzen
+'************************************************************************
+
+'* Gis Aufruf
+	Dim sGISLink As String
+	Dim sStrecke As String
+	Dim sKM As String
+	Dim toKM As String
+	Dim XDocTypes(2) As String
+	Dim myResultlist As IResultList
+	Dim myOrtsbezüge() As ItaDocument
+	Dim myDescriptorDefStr As DescriptorDefinition
+	Dim myDescriptorDefKmVon As DescriptorDefinition
+	Dim myDescriptorDefKmBis As DescriptorDefinition
+	Const cGIS001_Link1 = "http://gis.asbnet.at/GIS/externalcall.jsp?project=gis&Query=km&KeyName=RT&keyvalue="
+	Const cGIS001_Link2 = "&m_from=
+	Const cGIS001_Link3 = "&m_to=
+	Private Declare Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" (ByVal hwnd As Long, ByVal lpOperation As String, ByVal lpFile As String, ByVal lpParameters As String, ByVal lpDirectory As String, ByVal nShowCmd As Long) As Long
+
+Option Explicit
+
+Private Sub DocViewer_OnAppToolClicked2(ByVal AppTool As Long, ByVal pItaDocument As Object, ByRef Handled As Boolean)
+
+	Dim strErr As String
+	Dim dokBezeichnung As String
+	Dim myDoc As ItaDocument
+	Dim myActiveRep As Representation
+
+
+	Set myDoc = DocViewer.Document
+
+	On Error GoTo fError
+	Select Case AppTool
+		Case 3,7,8		'Versenden als Dokument,Verknüpfung,PDF
+			If Not SER_getDocumentAccessForUser(myDoc) Then
+				Handled = True
+				Application.ShowError "Sie haben nicht die Berechtigung, dieses Dokument zu bearbeiten!","DocViewer Standard: DocViewer_OnAppToolClicked2"
+				Exit Sub
+			Else
+				Handled = False
+			End If
+			If SER_write_audittrail(myDoc)=False Then
+				Handled=True
+			Else
+				Handled = False
+			End If
+		Case 4,5,2
+			If Not SER_getDocumentAccessForUser(myDoc) Then
+				Handled = True
+				Application.ShowError "Sie haben nicht die Berechtigung, dieses Dokument zu bearbeiten!","DocViewer Standard: DocViewer_OnAppToolClicked2"
+			Else
+				Handled = False
+			End If
+
+
+
+		'Ü001
+		Case 23   'Dokument auschecken
+			If ASF_CheckDokStatus(myDoc,"P", strErr) Then
+				Application.ShowError "Das Dokument darf nicht ausgecheckt werden, weil es im Status 'in Prüfung' ist!","DocViewer Standard: DocViewer_OnAppToolClicked2",,,strErr
+				Handled = True
+				Exit Sub
+			End If
+			If Not SER_getDocumentAccessForUser(myDoc) Then
+				Handled = True
+				Application.ShowError "Sie haben nicht die Berechtigung, dieses Dokument auszuchecken!","DocViewer Standard: DocViewer_OnAppToolClicked2"
+			End If
+			If Not ASF_CheckDocument4Edit(Nothing, myDoc) Then
+				Handled = True
+				Exit Sub
+			End If
+		Case 13  'Dokument bearbeiten
+			If ASF_CheckDokStatus(myDoc,"P", strErr) Then
+				Application.ShowError "Das Dokument darf nicht ausgecheckt werden, weil es im Status 'in Prüfung' ist!","DocViewer Standard: DocViewer_OnAppToolClicked2",,,strErr
+				Handled = True
+				Exit Sub
+			End If
+			If Not SER_getDocumentAccessForUser(myDoc) Then
+				Handled = True
+				Application.ShowError "Sie haben nicht die Berechtigung, dieses Dokument auszuchecken!","DocViewer Standard: DocViewer_OnAppToolClicked2"
+			End If
+			If Not ASF_CheckDocument4Edit(Nothing, myDoc) Then
+				Handled = True
+				Exit Sub
+			Else
+				If Not myDoc Is Nothing Then
+					If Not myDoc.Representations (DocViewer.ActiveRepresentation) Is Nothing Then
+						Set myActiveRep = myDoc.Representations (DocViewer.ActiveRepresentation)
+						If Not myActiveRep Is Nothing Then
+							If myActiveRep.PartDocuments.Count > 1 Then
+'Ü005
+								Application.ShowMessage "Dieses Dokument hat mehrere Teildokumente. " + vbLf + vbCr + _
+									"Zur Bearbeitung eines Teildokuments müssen Sie das Dokument zunächst auschecken. Anschließend selektieren Sie das zu bearbeitende Teildokument in der Miniaturen-Ansicht und drücken den Knopf 'Mit Originalanwendung'!" + vbLf + vbCr + _
+									"Ihre Änderungen sind erst dann gespeichert, nachdem das Teildokument in der Originalanwendung gespeichert und das Dokument eingecheckt wurde!"
+								Handled = True
+'/Ü005
+							End If
+						End If
+					End If
+				End If
+			End If
+			'/Ü001
+		'Ü003
+		Case 12 'Schlüsseländerungsmaske öffnen
+			If CStr(Application.System.ConnectionType ) = 32 Then
+				Application.ShowMessage "Im Offline-Modus kann die Schlüsseländerungsmaske nicht angezeigt werden!"
+				Handled = True
+			End If
+
+		'/Ü003
+	End Select
+	Exit Sub
+finish:
+	Set myDoc = Nothing
+	Set myActiveRep = Nothing
+fError:
+	Application.ShowError "Es ist ein fehler aufgetreten!",,,"DocViewer/Standard: DocViewer_OnAppToolClicked2",Err.Description
+	GoTo finish
+End Sub
+'Beim Drucken von Dokumenten mit Dokumentstatus = ungültig,Entwurf, In Prüfung wird ein Bannertext mitgedruckt
+'Ü010
+Private Sub DocViewer_OnPrintPage(ByVal Page As Long, ByVal hDC As Long)
+
+	Dim myDoc As ItaDocument
+    Dim waterMarkText(3) As String
+    Dim descValue(3) As String
+    Dim dokStatus As String
+    Dim arrmatrix() As String
+    Dim whichText As Long
+
+    On Error GoTo fErrorHandler
+
+	Set myDoc = DocViewer.Document
+
+	'Auslesen konfigurierter Wert für 'ungültig' aus der Globalen Werteliste
+	If SER_getKeyValueFromStringMatrixByName("ASF_Dok_Status","ungültig",arrmatrix,False )Then
+		descValue(0) = Trim(arrmatrix(0))
+		Else
+		Application.ShowError("Werteliste 'ASF_Dok_Status/ungültig' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+	If SER_getKeyValueFromStringMatrixByName("ASF_Dok_Status","Entwurf",arrmatrix,False ) Then
+		descValue(1) = Trim(arrmatrix(0))
+		Else
+		Application.ShowError("Werteliste 'ASF_Dok_Status/ungültig' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+	If SER_getKeyValueFromStringMatrixByName("ASF_Dok_Status","in Prüfung",arrmatrix,False ) Then
+		descValue(2) = Trim(arrmatrix(0))
+	Else
+		Application.ShowError("Werteliste 'ASF_Dok_Status/ungültig' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+
+	'Auslesen konfigurierter Wert für den Bannertext
+	If SER_getKeyValueFromStringMatrixByName("ASF_Bannerdruck","Text1",arrmatrix,False )Then
+		waterMarkText(0) = Trim(arrmatrix(1))
+	Else
+		Application.ShowError("Werteliste 'ASF_Bannerdruck/Text' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+
+	If SER_getKeyValueFromStringMatrixByName("ASF_Bannerdruck","Text2",arrmatrix,False )Then
+		waterMarkText(1) = Trim(arrmatrix(1))
+	Else
+		Application.ShowError("Werteliste 'ASF_Bannerdruck/Text' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+
+	If SER_getKeyValueFromStringMatrixByName("ASF_Bannerdruck","Text3",arrmatrix,False )Then
+		waterMarkText(2) = Trim(arrmatrix(1))
+
+
+	Else
+		Application.ShowError("Werteliste 'ASF_Bannerdruck/Text' nicht/falsch konfiguriert")
+		Exit Sub
+	End If
+
+	'Ermitteln Deskriptor ASF_Dok_Status
+	dokStatus =Trim(SER_getFirstDescriptorValueByName(myDoc.Descriptors, "ASF_Dok_Status"))
+	Dim i As Integer
+	For i = 0 To UBound(descValue)
+
+
+	If dokStatus = descValue(i) Then
+		'Ü011
+		'If Page = 1 Then
+		'/Ü011
+		    'Define the font object
+		    Dim Font As New stdole.StdFont
+		    Dim DispFont As stdole.IFontDisp
+		    Set DispFont = Font
+		    'DispFont.Underline = True
+		    DispFont.Name = "Arial"
+		    DispFont.Size = 12
+
+		    DocViewer.TextOut hDC, waterMarkText(i), Font, 50, 50, True, RGB(120, 120, 120)
+		'End If
+	End If
+	Next
+'/Ü010
+	Exit Sub
+fErrorHandler:
+	Application.ShowError "Beim Aufbringen des Bannerdrucks ist ein Fehler aufgetreten!",,,,Err.Description
+End Sub
+
+'Ü002
+
+Private Sub DocViewer_OnDocumentChanged(ByVal newVal As Object)
+
+	Dim mydoc As ItaDocument
+	Dim myActiveRep As Representation
+	Dim i As Integer
+
+	On Error GoTo fError
+
+	'Ü006
+	Call SER_start_viewer4document(newVal,ViewerWindow)
+	'/Ü006
+
+	If Application.System.User.User = "PerformanceTest" Then
+		ASF_Performance_writePerformanceLogEntry "Dokument wurde geladen/ist jetzt in der Anzeige."
+	End If
+
+   'Ü007
+	Set mydoc = DocViewer.Document
+	If Not mydoc Is Nothing Then
+'Ü009
+		If mydoc.Representations.Count > 0 Then
+'/Ü009
+			If Not mydoc.Representations (DocViewer.ActiveRepresentation) Is Nothing Then
+				Set myActiveRep = mydoc.Representations (DocViewer.ActiveRepresentation)
+				If Not myActiveRep Is Nothing Then
+					If myActiveRep.PartDocuments.Count > 1 Then
+						For i = 0 To  myActiveRep.PartDocuments.Count - 1
+							SetAttr myActiveRep.PartDocuments(i).DataObject.fileName,vbNormal
+						Next
+					End If
+				End If
+			End If
+		End If
+	End If
+	'/Ü007
+finish:
+	Set mydoc = Nothing
+	Set myActiveRep = Nothing
+	Exit Sub
+fError:
+	Application.ShowError "Es ist ein fehler aufgetreten!",,,"DocViewer/Standard: DocViewer_OnDocumentChanged",Err.Description
+	GoTo finish
+End Sub
+
+
+
+
+
+Private Sub ViewerWindow_OnReplaceContent(ByRef Handled As Boolean)
+	Dim strErr As String
+	Dim mydoc As ItaDocument
+
+	Set mydoc = DocViewer.Document
+
+	If ASF_CheckDokStatus(ViewerWindow.DocViewer.Document,"P", strErr) Then
+				Application.ShowError "Das Dokument darf nicht ausgecheckt werden, weil es im Status 'in Prüfung' ist!","DocViewer Standard: DocViewer_OnAppToolClicked2",,,strErr
+				Handled = True
+				Exit Sub
+			End If
+			If Not SER_getDocumentAccessForUser(ViewerWindow.DocViewer.Document) Then
+				Handled = True
+				Application.ShowError "Sie haben nicht die Berechtigung, dieses Dokument auszuchecken!","DocViewer Standard: DocViewer_OnAppToolClicked2"
+			End If
+
+			If Not ASF_CheckDocument4Edit(Nothing, mydoc) Then
+				Handled = True
+				Exit Sub
+			End If
+End Sub
+
+Private Sub ViewerWindow_OnRibbonBarInitialized()
+
+	Dim XRP As RibbonPanel
+	Dim XRC As RibbonCategory
+	Dim mySecurityObject As SecurityModule
+	Set mySecurityObject = Application.System.SecurityModule
+
+	On Error GoTo fError
+
+	If Application.System.User.User = "PerformanceTest" Then
+		Set XRP = ViewerWindow.RibbonBar.Category(0).AddPanel("IDSystemTools", "System-Tools")
+		XRP.AddElement(rtButton, "IDOpenExternalWithLog", "Mit Originalanwendung (Log)", "Öffnet die aktuelle Datei mit der Originalanwendung. Schreibt Performance-Logbuch-Einträge mit.", 74,74)
+	End If
+
+'Ü004
+    Set XRC = ViewerWindow.RibbonBar.CategoryByName("Dokumentanzeige")
+    If XRC Is Nothing Then
+    	Set XRC = ViewerWindow.RibbonBar.Category(0)
+    End If
+	If XRC.PanelByID("ADMIN01") Is Nothing Then
+	    XRC.AddPanel("ADMIN01", "Administrative Funktionen")
+		If mySecurityObject.CheckRight (bfRight07 ,"DMS Dokumente", "ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_CreatePoststück", "Poststück erstellen", "Erstellt aus dem ausgewählten Dokument ein Poststück", 64,64
+		End If
+		If mySecurityObject.CheckRight (bfRight05 ,"DMS Dokumente","ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_GetWebLink", "WebLink kopieren", "kopiert das Dokument als WebLink in die Zwischenablage", 48,48
+		End If
+		If mySecurityObject.CheckRight (bfRight03 ,"DMS Dokumente","ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_GISLink", "GIS", "Öffnet die Koordinaten des Ortsbezugs in GIS", 54,54
+		End If
+	End If
+'/Ü004
+finish:
+	Set XRP = Nothing
+	Set XRC = Nothing
+	Set mySecurityObject = Nothing
+	Exit Sub
+fError:
+	GoTo finish
+End Sub
+
+Private Sub ViewerWindow_OnRibbonElementClicked(ByVal ElementID As String, ByRef Handled As Boolean)
+
+	Select Case ElementID
+	Case "IDOpenExternalWithLog"
+		ASF_Performance_writePerformanceLogEntry "Dokument in Originalanwendung öffnen angefordert."
+		DocViewer.StartExternalApplication
+		ASF_Performance_writePerformanceLogEntry "Dokument in Originalanwendung geöffnet."
+	Case "ID_CreatePoststück"
+		If MsgBox ("Soll aus diesem Dokument ein Poststück erstellt werden?",vbYesNo,"Frage") =vbYes Then
+			If ASF_CreatePoststück(ViewerWindow.DocViewer.Document) = True Then
+				'<Ü012>
+				'--> Erfolgreich
+				Dim xDoc As ItaDocument
+				Dim xDesc As Descriptor
+				Dim xDescDef As DescriptorDefinition
+
+				'Error-Handling einschalten
+				On Error GoTo ErrHandler
+
+				'Dokument vom Viewer holen
+				Set xDoc = ViewerWindow.DocViewer.Document
+
+				'Deskriptor "Poststück" auf 'True' festlegen
+				Set xDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Poststueck")
+				If xDescDef Is Nothing Then
+					'Fehlermeldung anzeigen
+					Application.ShowError "Beim Erstellen des Poststücks ist ein Fehler aufgetreten!","DocViewer/Standard: ViewerWindow_OnRibbonElementClicked",,0,"The descriptor definition for item 'ASF_Poststueck' could not be loaded!"
+					Exit Sub
+				End If
+
+				'Deskriptor "Poststück" holen
+				Set xDesc = xDoc.Descriptors.ItemByGUID(xDescDef.GUID)
+				If xDesc Is Nothing Then Set xDesc = xDoc.Descriptors.AddNewByGUID(xDescDef.GUID)
+
+				'vorhandene Werte entfernen
+				xDesc.RemoveValues
+
+				'True als neuen Wert festlegen
+				xDesc.AddValue(True)
+
+				'Änderungen speichern
+				If xDoc.isDirty Then xDoc.Commit
+
+				'Fertig
+				Exit Sub
+
+			ErrHandler:
+				'Fehlermeldung anzeigen
+				Application.ShowError "Beim Erstellen des Poststücks ist ein Fehler aufgetreten!","DocViewer/Standard: ViewerWindow_OnRibbonElementClicked",,Err.Number,Err.Description
+				Err.Clear
+				'</Ü012>
+			End If
+		End If
+	Case "ID_GetWebLink"
+			ASF_GetWebLink (DocViewer.Document)
+		Case "ID_GISLink"
+			sStrecke = ""
+			sKM = ""
+
+			myOrtsbezüge() = getOrtsbezügeForDocument(DocViewer.Document.InternalDescriptors.ItemByName("UUID").Value(0))
+
+			If Not ArrayIsInitialized(myOrtsbezüge) Then
+			    	Application.ShowMessage "Das Dokument besitzt keinen Streckenbezug, kein GIS Aufruf möglich!"
+					Exit Sub
+			End If
+
+			Set myDescriptorDefStr = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_Straße")
+			Set myDescriptorDefKmVon = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmVon")
+			Set myDescriptorDefKmBis = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmBis")
+
+	If Not myOrtsbezüge(0).Descriptors.ItemByGUID(myDescriptorDefStr.GUID) Is Nothing Or _
+			myOrtsbezüge(0).Descriptors.ItemByGUID(myDescriptorDefKmVon.GUID) Is Nothing Or _
+			myOrtsbezüge(0).Descriptors.ItemByGUID(myDescriptorDefKmBis.GUID) Is Nothing Then
+
+				Dim i As Integer
+				For i = 0 To UBound(myOrtsbezüge()) - 1
+					If Not i = UBound(myOrtsbezüge()) - 1 Then
+					sStrecke = sStrecke + myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefStr.GUID).Value(0) + ";"
+					sKM = sKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmVon.GUID).Value(0),",",".") + ";"
+					toKM = toKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmBis.GUID).Value(0),",",".") + ";"
+					Else
+					sStrecke = sStrecke + myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefStr.GUID).Value(0)
+					sKM = sKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmVon.GUID).Value(0),",",".")
+					toKM = toKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmBis.GUID).Value(0),",",".")
+					End If
+				Next
+	End If
+'/Ü013
+			If Trim(sStrecke) <> "" And Trim(sKM) <> "" Then
+    			sGISLink = cGIS001_Link1 + sStrecke + cGIS001_Link2 + sKM + cGIS001_Link3 + toKM
+    			'Application.ShowMessage "GIS Link: " + sGISLink
+				ShellExecute ViewerWindow.hWnd,"open",sGISLink,"","",0
+
+    		Else
+    			Application.ShowMessage "Das Dokument besitzt keinen Streckenbezug, kein GIS Aufruf möglich!"
+    		End If
+	End Select
+
+End Sub
+'/Ü002
+
+Private Sub ViewerWindow_OnUserToolClick(ByVal ToolID As String, ByRef Handled As Boolean)
+	Select Case ToolID
+	Case 25292
+		Dim strErr As String
+
+	If ASF_CheckDokStatus(ViewerWindow.DocViewer.Document,"P", strErr) Then
+				Application.ShowError "Das Dokument darf nicht ausgecheckt werden, weil es im Status 'in Prüfung' ist!","DocViewer Standard: DocViewer_OnAppToolClicked2",,,strErr
+				Handled = True
+				Exit Sub
+			End If
+			If Not SER_getDocumentAccessForUser(ViewerWindow.DocViewer.Document) Then
+				Handled = True
+				Application.ShowError "Sie haben nicht die Berechtigung, dieses Dokument auszuchecken!","DocViewer Standard: DocViewer_OnAppToolClicked2"
+			End If
+	End Select
+End Sub
+

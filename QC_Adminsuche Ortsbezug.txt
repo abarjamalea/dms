@@ -1,0 +1,44 @@
+Default
+Option Explicit
+
+Private Sub cmdOpenKeyChange_OnClicked()
+	Dim xDoc As IDocument
+
+	If tbDocId.Data <> "" Then
+		Set xDoc = Application.System.GetDocumentDirect(CStr(tbDocId.Data))
+		If xDoc Is Nothing Then Exit Sub
+		Application.OpenKeyChange(xDoc)
+	End If
+End Sub
+
+Private Sub Dlg_OnExecuteQueryObject(ByVal Query As SWAFRAMELib.Query)
+	Dim sUUID As String
+	Dim iPos As Integer
+	Dim posOrderby As Integer
+	Dim sQuery As String
+	Dim sOrderBy As String
+
+	If Trim(tbDocId.Data) = "" Then Exit Sub
+
+	iPos = InStr(5,tbDocId.Data,"24")
+	If iPos < 5 Then Exit Sub
+
+	sUUID = Mid(tbDocId.Data,iPos+2,36)
+
+	posOrderby = InStr(1, Query.SQLStatement,"ORDER BY")
+	If posOrderby < 1 Then
+		If Query.SQLStatement = "" Then
+			Query.SQLStatement &= " SELECT * WHERE UUID ='" & sUUID & "'"
+		Else
+			Query.SQLStatement &= " AND UUID ='" & sUUID & "'"
+		End If
+
+	Else
+		sQuery = Trim(Left(Query.SQLStatement,posOrderby-1))
+		sOrderBy = Trim(Mid(Query.SQLStatement,posOrderby))
+
+		sQuery &= " AND UUID ='" & sUUID & "'"
+		Query.SQLStatement = Trim(sQuery) & " " & Trim(sOrderBy)
+	End If
+End Sub
+

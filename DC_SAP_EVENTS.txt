@@ -1,0 +1,64 @@
+Default
+'#Reference {87D28511-6B43-101C-92CE-10005AF5DF4D}#1.1#0#c:\programme\sap\frontend\sapgui\wdtaocx.ocx#SAP Table Factory#SAPTableFactoryCtrl
+'#Reference {5B076C00-2F26-11CF-9AE5-0800096E19F4}#5.0#0#c:\programme\sap\frontend\sapgui\wdtfuncs.ocx#SAP Remote Function Call Control#SAPFunctionsOCX
+Option Explicit
+
+Const MsgTitel = "Ablage winCube Events"
+
+Private myDocType As String
+
+Private Sub Dlg_OnClose()
+	Application.Globals.Remove("SAPFilingDlg")
+End Sub
+
+Private Sub Dlg_OnDocumentChanged(ByVal newDoc As SWAFRAMELib.IDocument)
+
+	Dim did As String
+	Dim MyUtil As New SWATOOLSLib.Utilities
+
+	contRep.SelectedItem = 0
+
+	did = "Y1" & Format(Now, "yyyymmdd")
+	did = did & MyUtil.GenerateUniqueString
+	docId.Data		 = did
+	compId.Data		 = "data"
+	pVersion.Data 	 = "0045"
+	compDateC.Data   = Format(Now, "yyyy-mm-dd")
+	compDateM.Data   = Format(Now, "yyyy-mm-dd")
+	compTimeC.Data   = Format(Now, "hh:nn:ss")
+	compTimeM.Data   = Format(Now, "hh:nn:ss")
+	docProt.Data	 = "ud"
+
+End Sub
+
+Private Sub Dlg_OnInit()
+	Application.Globals("SAPFilingDlg") = Dlg
+
+	contRep.SetStringMatrix Application.MetaData.StringMatrices.ItemByName("ContentRepositories"), 0, 0
+End Sub
+
+Private Sub Dlg_OnExecute(Doc As SWAFRAMELib.IDocument, Continue As Boolean)
+
+	Continue = False
+
+	If Not Doc.Archived Then
+		Doc.Database = GetFilingDatabaseFromContentRep(contRep.Data)
+
+		Dim mydoc As SWAFRAMELib.ItaDocument
+		Set mydoc = Doc
+		ContentType.Data = mydoc.Representations(0).MimeType
+
+	End If
+
+	If Not Doc.Database Is Nothing Then
+		Continue = True
+	End If
+End Sub
+
+Private Sub Dlg_OnExecuted(Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean)
+	If Succeeded Then
+		Application.UserData1 = docId.Data
+		Application.UserData2 = ""
+	End If
+End Sub
+

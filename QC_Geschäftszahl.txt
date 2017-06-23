@@ -1,0 +1,99 @@
+Default
+Option Explicit
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:Query Dialog/ GZ Suche
+'*	erstellt am / von	:	13.01.2011 / Barbara Bruckberger, ASFINAG
+'*  Überarbeitung Ü001  :   02.02.2011/ Christian Aigner, SER: Dlg_OnClose hinzugefügt als Workarounf für SER internen Mantis-Call 23133
+'*	Überarbeitung Ü012	:	16.11.2012/ Guido Bachmayr, SER: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+'*
+'************************************************************************
+
+	Option Explicit
+
+
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+Private Sub Dlg_OnClose()
+	'Ü001: Workaround wg. SER internen Mantis-Call 23133
+	ASFGeschaeftszahl.SetFocus
+End Sub
+
+Private Sub Dlg_OnExecuted(ByVal Results As SWAFRAMELib.IResultset, ByVal Succeeded As Boolean)
+	Ü001: 'Workaround wg. SER internen Mantis-Call 23133
+	If Results Is Nothing Then
+		ASFGeschaeftszahl.SetFocus
+		Exit Sub
+	End If
+	If Results.AvailableCount = 0 Then
+		ASFGeschaeftszahl.SetFocus
+	End If
+End Sub
+Private Sub Dlg_OnDebugResume()
+	initValues
+End Sub
+
+Private Sub Dlg_OnExecute(ByRef Continue As Boolean)
+
+	Dim errMsg As String
+
+	If ASF_security_isUserGroupMember ("Personalisten") Then
+	'If SER_PersonIsMemberOfGroup(Application.System.User.User, Application.System.User.Role, _
+	'								Application.System.User.Unit, "Personalisten", errMsg) Then
+		QueryResultWindow.QueryDlg.Databases.Add (Application.System.QueryDatabases.ItemByName("PERSONAL"))
+	Else
+		If errMsg <> "" Then
+			Application.ShowError "Bei der Prüfung der Gruppenzugehörigkeit des Benutzers ist ein Fehler aufgetreten!","Query Dialog/ Alle Dokumente Dlg_OnExecute",,,errMsg
+			Continue = False
+		End If
+	End If
+
+End Sub
+
+Private Sub Dlg_OnInit()
+	initValues
+End Sub
+
+Private Sub Dlg_OnClearedContent()
+	initValues
+End Sub
+
+
+'Ü002: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+Private Sub btnAbleger_OnClicked()
+	ASF_AblegerOpenDlg(dbrsAbleger, Ableger)
+End Sub
+
+Private Sub dbrsAbleger_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsAbleger.DataCount > 0 Then
+			Ableger.Data= dbrsAbleger.Data(0)
+		End If
+	End If
+End Sub
+'/Ü002
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub initValues()
+
+'*	Lokale Objekte
+
+'**	Business Logik
+'*	Zugriff OUs und Gruppen
+	Call ASF_security_initMvASFZugriff(MvASFZugriff)
+
+	ASF_InitErsteller(dbrsAbleger)     'Ü002
+
+End Sub
+Private Sub CmdHilfe_OnClicked()
+
+	ASF_global_doHilfeAnzeigen("https://intranet.asfinag.at/index.aspx#Module/Wiki/Wiki.html?ID=3")
+
+End Sub
+

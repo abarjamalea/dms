@@ -1,0 +1,683 @@
+Default
+'#Reference {B3FC9758-FFE6-4EE5-A95A-B4662532FF1C}#1.0#0#C:\PROGRA~2\SER\COMPON~1\Swa\WFWORK~2.DLL#wfWorkflowDialogs 1.0 Type Library#WFWFDLGSLib
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Archive Dialog/ Poststück ohne Dokumente
+'*	Autor	:	Markus D. Hartbauer, SER Solutions Österreich GmbH
+'*	angepasst:	Günther F. Schinko, SER Solutions Österreich GmbH
+'*	Datum	:	31.01.2011
+'*
+'************************************************************************
+
+'Ü*001	SER/Günther F. Schinko	2011/02/11	Bei ausgehenden Dokumenten ist Workflow optional
+'Ü*002	ASFINAG/Barbara Bruckberger 2011/03/28	Beim Starten des Workflows wird zusätzlich zur ID auch der Standort übernommen
+'Ü*003	SER/Günther F. Schinko	2011/08/17	CR 50: Neuanlage Geschäftspartner
+'Ü*004	SER/Günther F. Schinko	2011/11/24	CR 67: Ähnlichkeitssuche Geschäftspartner
+'Ü*005	SER/Günther F. Schinko	2012/10/23	CR 5 Tranche 4: Kein WFL, wenn PK nicht ausgewählt wurde
+'Ü*006	SER/Günther F. Schinko	2012/10/30	CR 5 Tranche 4: Wenn Dokument vorhanden, muss Empfänger ausgewählt werden
+'Ü*007	SER/Günther F. Schinko	2012/10/30	Fehler Ü006 behoben
+'Überarbeitung Ü008	:	28.02.2013/ Christian Aigner & Günther Schinko, SER: Problem "doppelte Doc-ID's"
+'DMS-471 Wagner		:	23.03.2017: Postbuch soll nach Archivierung geschlossen werden, "Ende:" (goto) wird verschoben
+
+	Option Explicit
+
+
+'************************************************************************
+'*	Globale Objekte
+'************************************************************************
+
+'*	Geschäftspartner speichern
+	Dim MyGP As ASF_Geschaeftspartner
+	Dim MyGPSpeichern As Boolean
+
+
+Private Sub setPostControlsKeepValue(Dlg As ArchiveDlg)
+
+	Dim myStringMatrix As StringMatrix
+	Dim myControl As IControlInternal
+	Set myStringMatrix = Application.MetaData.StringMatrices.ItemByName("ASF_Post_WerteBeibhalten")
+
+	If myStringMatrix Is Nothing Then
+		Application.ShowMessage("Die Werteliste 'ASF_Post_WerteBeibhalten' wurde nicht gefunden")
+		Exit Sub
+	End If
+
+	Dim i As Integer
+	For i = 0 To myStringMatrix.RowCount - 1
+		Set myControl = Dlg.ControlByName(myStringMatrix.Value(i,0))
+		myControl.KeepValues = True
+	Next
+
+End Sub
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+
+Private Sub chkBeschlagwortung_OnClicked()
+	If chkBeschlagwortung.Checked Then
+		setPostControlsKeepValue(Dlg)
+	Else
+		Dim i As Integer
+		Dim myControl As IControlInternal
+		On Error Resume Next
+		For i = 0 To Dlg.ControlCount - 1
+			Set myControl = Dlg.Control(i)
+			myControl.KeepValues = False
+		Next
+	End If
+End Sub
+
+Private Sub cmdClearGeschaeftspartner_OnClicked()
+	initControls
+	initValues
+	'Ü*004
+	DbrsGeschaeftspartner.ResetContent
+	'/Ü*004
+	ASFGPGPName.Clear
+	ASFGPAPName.Clear
+	ASFGPOrt.Clear
+	ASFGPPLZ.Clear
+	ASFGPStrasse.Clear
+	DbrsASFGPLand.ResetContent
+
+	ASFGPGPName_OnValueChanged
+
+End Sub
+
+'*Ü003
+Private Sub CmdGPnew_OnClicked()
+
+		Dim errmsg As String
+		If ASF_newGP(Dlg,MyGP,errmsg) = True Then
+
+
+		End If
+
+
+End Sub
+'/*Ü003
+
+
+
+
+Private Sub DbrsGeschaeftspartner_OnDialogOpen(ByRef Continue As Boolean)
+	If DbrsGeschaeftspartner.DataCount=0 Then initValues
+End Sub
+
+
+Private Sub Dlg_OnDebugResume()
+	Call SER_GSCtrace("----------------------------------------------")
+	Call SER_GSCtrace("DEBUG")
+	ASFGPGPName_OnValueChanged
+
+	'initControls
+	'initValues
+
+End Sub
+
+
+Private Sub Dlg_OnInit()
+
+	initControls
+
+	Call SER_GSCtrace("INIT")
+
+	'*	Einordnung
+	initValueErsteller	  							'GBA 2011-04-12 CR12
+	initValueAbteilung								'GBA 2011-04-12 CR12
+
+End Sub
+
+'* Batchcontentcontrol
+
+
+Private Sub Dlg_OnClose()
+
+   	Call SER_GSCtrace("CLOSE")
+End Sub
+
+'*
+
+
+Private Sub Dlg_OnDocumentChanged(ByVal newDoc As SWAFRAMELib.IDocument)
+
+	'Datenbank hinzufügen, wenn noch nicht vorhanden
+	'If newDoc.Database Is Nothing Then newDoc.Database = Application.System.FilingDatabases.ItemByName("Postbuch")
+
+'	If Not newDoc.Archived Then initValues
+	'ChkVersionVeroeffentlichen.Checked = True
+	'ChkVersionVeroeffentlichen.ResetDirtyStatus
+
+	initValueErsteller	  							'GBA 2011-04-12 CR12
+	initValueAbteilung								'GBA 2011-04-12 CR12
+	initValues
+
+	''Ü009
+	'If newDoc.Archived Then
+	'	Dim ii As Long
+	'	If ASFAbteilung.DataCount > 0 Then
+	'		For ii = 0 To ASFAbteilung.DataCount -1
+	'			CtcASFAbteilung.AddData ASFAbteilung.GetData(ii)
+	'		Next ii
+	'	End If
+	'End If
+	'/Ü009
+
+resetAllControls(Dlg)
+
+End Sub
+
+Private Sub Dlg_OnExecute(ByVal Doc As SWAFRAMELib.IDocument, ByRef Continue As Boolean)
+
+	On Error GoTo ErrorHandler
+
+
+'*	BCC
+	Dim myDoc As ItaDocument
+	Set myDoc = Doc
+
+	Call SER_GSCtrace("Archive")
+
+	'**	Business Logik
+	'If ASFAnlassdatum.Data > Now Then
+		'Application.ShowMessage "Das Briefdatum darf nicht in der Zukunft liegen!"
+		'Continue = False
+		'Exit Sub
+	'End If
+
+'*	Geschäftspartner
+	ASFGPGPName_OnValueChanged
+	If DbrsASFGPLand.DataCount = 0 Then
+		Application.ShowMessage "Bitte wählen Sie das Land des Geschäftspartners aus."
+		Continue = False
+		Exit Sub
+	End If
+
+	Call SER_GSCtrace("Gpartner: " & DbrsGeschaeftspartner.SQLQuery & Chr(13) &  CStr(DbrsGeschaeftspartner.DataCount) & " / " & _
+		ASFGPGPName.Data + " / " & ASFGPAPName.Data)
+	If DbrsGeschaeftspartner.DataCount = 0 And (ASFGPGPName.Data <> "" Or ASFGPAPName.Data <> "") Then
+		Select Case	MsgBox(	"Neuer Geschäftspartner/Ansprechpartner eingegeben." & vbCrLf & vbCrLf & _
+							"Speichern?", vbQuestion + vbYesNoCancel, "Frage")
+			Case vbCancel
+				Continue = False
+				Exit Sub
+			Case vbYes
+				With MyGP
+					.GPName = ASFGPGPName.Data
+					.APName = ASFGPAPName.Data
+					.Strasse = ASFGPStrasse.Data
+					.Land = DbrsASFGPLand.Data(0)
+
+					.PLZ = ASFGPPLZ.Data
+					.Ort = ASFGPOrt.Data
+				End With
+				MyGPSpeichern = True
+		End Select
+	End If
+
+
+'*	Workflow
+
+	'*Ü005
+	'	If ChkVersionVeroeffentlichen.Checked And Empfaenger.Data = "" Then
+	'		Err.Raise 1000, "Weiterleitung", "Es wurde kein Empfänger ausgewählt."
+	'		Exit Sub
+	'	End If
+	'Ü006
+	'If mydoc.Representations.Count > 0 And mydoc.Representations(0).PartDocuments.Count > 0 Then
+	'	If Empfaenger.Empty Then
+	'		Err.Raise 1000, "Weiterleitung", "Es wurde kein Empfänger ausgewählt."
+	'		Exit Sub
+	'	End If
+	'End If
+	'/Ü006
+
+	'Ü007
+	If myDoc.Representations.Count > 0 Then
+		If myDoc.Representations(0).PartDocuments.Count > 0 Then
+			If Empfaenger.Empty Then
+				Err.Raise 1000, "Weiterleitung", "Es wurde kein Empfänger ausgewählt."
+				Exit Sub
+			End If
+		End If
+	End If
+	'/Ü007
+
+	Call SER_GSCtrace("----------------------------------------------")
+	Call SER_GSCtrace("Archiviere Dokument ...")
+
+
+
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler beim Speichern des Dokuments!", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in Dlg_OnExecute()", 0
+	Continue = False
+End Sub
+
+
+
+
+Private Sub mdx4BCC_OnArchiveITADocument(ByRef oDocument As Object, ByRef bHandled As Boolean)
+	Call SER_GSCtrace("Archive")
+
+		'**	Business Logik
+	If ASFAnlassdatum.Data > Now Then
+		'Application.ShowMessage "Das Briefdatum darf nicht in der Zukunft liegen!"
+		'Continue = False
+		oDocument.Note="Das Briefdatum darf nicht in der Zukunft liegen!"
+		oDocument.Rejected=True
+
+		bHandled=True
+		Exit Sub
+	End If
+
+'*	Geschäftspartner
+	ASFGPGPName_OnValueChanged
+	Call SER_GSCtrace("Gpartner: " & DbrsGeschaeftspartner.SQLQuery & Chr(13) &  CStr(DbrsGeschaeftspartner.DataCount) & " / " & _
+		ASFGPGPName.Data + " / " & ASFGPAPName.Data)
+	If DbrsGeschaeftspartner.DataCount = 0 And (ASFGPGPName.Data <> "" Or ASFGPAPName.Data <> "") Then
+		Select Case	MsgBox(	"Neuer Geschäftspartner/Ansprechpartner eingegeben." & vbCrLf & vbCrLf & _
+							"Speichern?", vbQuestion + vbYesNoCancel, "Frage")
+			Case vbCancel
+				'Continue = False
+				oDocument.Note="Abbruch bei Partneranlage"
+				oDocument.Rejected=True
+				bHandled=True
+				Exit Sub
+			Case vbYes
+				With MyGP
+					.GPName = ASFGPGPName.Data
+					.APName = ASFGPAPName.Data
+					.Strasse = ASFGPStrasse.Data
+					.Land = DbrsASFGPLand.Data(0)
+
+					.PLZ = ASFGPPLZ.Data
+					.Ort = ASFGPOrt.Data
+				End With
+				MyGPSpeichern = True
+		End Select
+	End If
+
+'*	Workflow
+	If ChkVersionVeroeffentlichen.Checked And Empfaenger.Data = "" Then
+		'Err.Raise 1000, "Weiterleitung", "Es wurde kein Empfänger ausgewählt."
+		oDocument.Note="Es wurde kein Empfänger ausgewählt."
+		oDocument.Rejected=True
+		bHandled=True
+		Exit Sub
+	End If
+	'mdx4BCC.UpdateDocumentMetadata
+
+	Application.StatusBarInfoText = "Archiviere Dokument ..."
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler beim Speichern des Dokuments!", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in Dlg_OnExecute()", 0
+	'Continue = False
+	oDocument.Note="Fehler beim Speichern des Dokuments!" & Chr(13) & CStr(Err.Number) & Err.Description
+	oDocument.Rejected=True
+	bHandled=True
+End Sub
+
+
+
+Private Sub Dlg_OnExecuted(ByVal Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean)
+	Dim myDoc As ItaDocument
+	Set myDoc = Doc
+	Call SER_GSCtrace("Executed")
+'*	Checks
+'Ü008
+	If Not Succeeded Then
+		If Not ASFDokID.Empty Then ASFDokID.Data = ASF_IDs_getNextDocId()
+		GoTo ende
+	End If
+
+	'If Not Succeeded Then GoTo Ende
+
+'/Ü008
+
+'*	Geschäftspartner
+	If MyGPSpeichern Then
+		ASF_GP_doSaveGP(MyGP)
+		MyGPSpeichern = False
+	End If
+	Call SER_GSCtrace("Workflow")
+	Call SER_GSCtrace("----------------------------------------------")
+
+'Ü*001
+If UCase(SbASFDokArt.Data) = "AUSGANG" And Empfaenger.Data = "" Then GoTo ende
+'
+'Ü*005
+If Empfaenger.Data="" Then GoTo ende
+'*	Workflow
+	Application.StatusBarInfoText = "Erzeuge Vorgang ..."
+	Dim XWFPI As wfProcessInstance
+	Dim XDescs(2,1) As String
+	XDescs(0,0) = "PI_NAME": XDescs(0,1) = ASFBezeichnung.Data
+	XDescs(1,0) = "PI_ASF_DOK_ID": XDescs(1,1) = ASFDokID.Data
+'*Ü*002
+	XDescs(2,0) = "PI_ASF_STANDORT": XDescs(2,1) = SbASFStandort.Data
+'*/Ü*002
+	Set XWFPI = SER_wf_createWFPIwithDescriptorsAndDoc("ASF Postverteilung", XDescs, Doc,,,)
+	XWFPI.Refresh
+	SER_wf_releaseWFWI XWFPI.WorkItems(0), "Poststück bearbeiten", Empfaenger.Data
+
+'Pos
+
+
+
+
+'Ü009 Verknüptes Doc finden und Deskriptor auftragen.
+If Not myDoc Is Nothing Then
+	If Not myDoc.DocumentLinks Is Nothing Then
+		If Not myDoc.DocumentLinks.Count = 0 Then
+
+			If myDoc.Representations.Count >= 1 Then
+				If myDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Poststueck").GUID) Is Nothing Then
+					myDoc.Descriptors.AddNewByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Poststueck").GUID).AddValue(True)
+			Else
+				If Not myDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Poststueck").GUID).ValueCount > 0 Then
+				myDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Poststueck").GUID).AddValue(True)
+				End If
+			End If
+		End If
+
+
+			If Not myDoc.DocumentLinks.Item(0).Document.Descriptors.ItemByGUID("444469dc-5ffd-4096-82cf-f95c675dd818") Is Nothing Then
+				myDoc.DocumentLinks.Item(0).Document.Descriptors.ItemByGUID("444469dc-5ffd-4096-82cf-f95c675dd818").ChangeValue(0,True)
+			Else
+				myDoc.DocumentLinks.Item(0).Document.Descriptors.AddNewByGUID("444469dc-5ffd-4096-82cf-f95c675dd818").AddValue(True)
+			End If
+			myDoc.DocumentLinks.Item(0).Document.Commit
+		End If
+	End If
+End If
+
+	myDoc.Commit
+	Application.ShowMessage "Das Poststück wurde gepeichert (und weitergeleitet)!"
+	resetAllControls(Dlg)
+
+	'/Ü009
+'*	Aufräumen
+'SWA DMS-471
+Ende:
+	If chkBeschlagwortung.Checked Then
+ 		'GoTo Ende
+	Else
+		Application.StatusBarInfoText = ""
+		ArchiveViewWindow.Close
+		Exit Sub
+	End If
+
+	Application.StatusBarInfoText = ""
+
+End Sub
+
+
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+
+
+Private Sub btnASFErsteller_OnClicked()
+	ASF_ErstellerOpenDlg(dbrsASFErsteller, ASFErsteller)
+End Sub
+
+Private Sub dbrsASFErsteller_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsASFErsteller.DataCount > 0 Then
+			ASFErsteller.Data= dbrsASFErsteller.Data(0)
+		End If
+	End If
+End Sub
+
+'**********************************
+'*	FRAME 'Poststück'
+'**********************************
+
+Private Sub mdx4BCC_OnReleaseStart(ByRef Continue As Boolean)
+Call SER_GSCtrace("Release Start")
+End Sub
+
+Private Sub SbASFDokArt_OnSelectionChanged()
+
+	Select Case SbASFDokArt.Data
+		Case "Eingang"
+			With ChkVersionVeroeffentlichen
+				'*Ü005
+				'.Checked = True
+				.Checked = False
+				'
+				'.Enabled = False
+				.Enabled = True
+				.FireOnValueChanged
+			End With
+		Case "Ausgang"
+			With ChkVersionVeroeffentlichen
+				.Checked = False
+				.Enabled = True
+				.FireOnValueChanged
+			End With
+		Case Else
+			With ChkVersionVeroeffentlichen
+				.Checked = False
+				.Enabled = True
+				.FireOnValueChanged
+			End With
+	End Select
+
+End Sub
+
+
+'**********************************
+'*	FRAME 'Geschäftspartner'
+'**********************************
+
+Private Sub DbrsGeschaeftspartner_OnDialogClosed(ByVal OKButton As Boolean)
+
+	'If OKButton And DbrsGeschaeftspartner.DataCount > 0 Then
+	If OKButton Then
+		If DbrsGeschaeftspartner.DataCount > 0 Then
+			With DbrsGeschaeftspartner.Recordset
+				ASFGPGPName.Data = SER_getDBFieldSafe(.Fields("Firma"))
+				ASFGPAPName.Data = SER_getDBFieldSafe(.Fields("Ansprechpartner"))
+				ASFGPStrasse.Data = SER_getDBFieldSafe(.Fields("Strasse"))
+				DbrsASFGPLand.ResetContent
+				DbrsASFGPLand.AddData SER_getDBFieldSafe(.Fields("Land"))
+				ASFGPPLZ.Data = SER_getDBFieldSafe(.Fields("PLZ"))
+				ASFGPOrt.Data = SER_getDBFieldSafe(.Fields("Ort"))
+			End With
+		Else
+			initValues
+		End If
+	Else
+		initValues
+	End If
+
+End Sub
+
+
+
+Private Sub ASFGPGPName_OnValueChanged()
+
+	With DbrsGeschaeftspartner
+		.SQLQuery = getGPSqlSelect
+		.RetrieveData
+		Call SER_GSCtrace(.SQLQuery + "/" + CStr(.DataCount))
+	End With
+
+End Sub
+
+Private Sub ASFGPAPName_OnValueChanged()
+
+	With DbrsGeschaeftspartner
+		.SQLQuery = getGPSqlSelect
+		.RetrieveData
+	End With
+
+End Sub
+
+Private Sub ASFGPStrasse_OnValueChanged()
+
+	With DbrsGeschaeftspartner
+		.SQLQuery = getGPSqlSelect
+		.RetrieveData
+	End With
+
+End Sub
+
+Private Sub ASFGPLand_OnValueChanged()
+
+	With DbrsGeschaeftspartner
+		.SQLQuery = getGPSqlSelect
+		.RetrieveData
+	End With
+
+End Sub
+
+Private Sub ASFGPPLZ_OnValueChanged()
+
+	With DbrsGeschaeftspartner
+		.SQLQuery = getGPSqlSelect
+		.RetrieveData
+	End With
+
+
+	If Not DbrsGeschaeftspartner.Recordset.eof Or Not DbrsGeschaeftspartner.Recordset.bof  Then
+		DbrsGeschaeftspartner.Recordset.MoveFirst
+		ASFGPOrt.Data = DbrsGeschaeftspartner.Recordset.Fields("Ort")
+		ASFGPPLZ.Data = DbrsGeschaeftspartner.Recordset.Fields("PLZ")
+	End If
+
+
+End Sub
+
+Private Sub ASFGPOrt_OnValueChanged()
+
+	With DbrsGeschaeftspartner
+		.SQLQuery = getGPSqlSelect
+		.RetrieveData
+	End With
+
+
+
+End Sub
+
+Private Function getGPSqlSelect() As String
+
+	Dim xt As String
+	xt =	"SELECT GPName as Firma,APName as Ansprechpartner,[Straße],PLZ,Ort,Land,ID " & _
+			"FROM Geschäftspartner " & _
+			"WHERE 1=1 "
+
+	'Ü*004
+	If ASFGPGPName.Data <> "" Then xt = xt & "AND GPName LIKE '%" & ASFGPGPName.Data & "%' "
+	If ASFGPAPName.Data <> "" Then xt = xt & "AND APNAme LIKE '%" & ASFGPAPName.Data & "%' "
+	If ASFGPStrasse.Data <> "" Then xt = xt & "AND [Straße] LIKE '%" & ASFGPStrasse.Data & "%' "
+	If DbrsASFGPLand.DataCount > 0 Then xt = xt & "AND Land LIKE '%" & DbrsASFGPLand.Data(0) & "%' "
+	If ASFGPPLZ.Data <> "" Then xt = xt & "AND PLZ LIKE '%" & ASFGPPLZ.Data & "%' "
+	If ASFGPOrt.Data <> "" And ASFGPPLZ.Data = "" Then xt = xt & "AND Ort LIKE '%" & ASFGPOrt.Data & "%' "
+	'/Ü*004
+	xt = xt & "ORDER BY GPName,APName"
+	getGPSqlSelect = xt
+
+End Function
+
+
+
+
+'**********************************
+'*	FRAME 'Vorgang starten'
+'**********************************
+
+Private Sub CmdEmpfaengerWaehlen_OnClicked()
+
+'*	Lokale Objekte
+	Dim XwfPS As New WFWFDLGSLib.wfParticipantSelect
+	Dim XWFReceivers As wfReceivers
+
+'**	Business Logik
+'*	wählen
+	With XwfPS
+        .Caption = "Empfänger-Auswahl"
+        .InformationText = "Wählen Sie den Empfänger."
+        .SelectMode = wfPS_SM_SingleSelect
+        .DisplayMode = wfPS_DM_Combined
+        Set XWFReceivers = .Show(Application.wfSession)
+    End With
+    If  XWFReceivers.Count > 0 Then
+		Empfaenger.Data = XWFReceivers.Item(0).Name
+    End If
+
+End Sub
+
+
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub initControls()
+
+'*	Datenbankverbindung
+	DbrsGeschaeftspartner.ConnectionString = ASF_DMS_Daten.ConnectionString
+	DbrsGeschaeftspartner.ResetDirtyStatus
+
+	ASF_InitErsteller(dbrsASFErsteller)		'GBA 2011-08-18 CR12
+
+	If Not Application.System.User.Role = "admins" Then
+		SbASFGesellschaft.Data = Left(Application.System.User.Unit,InStr(1,Application.System.User.Unit," ") - 1)
+	End If
+
+End Sub
+
+Private Sub initValues()
+
+If Not chkBeschlagwortung.Checked Then
+'*	Geschäftspartner rücksetzen
+	With DbrsGeschaeftspartner
+		.SQLQuery = getGPSqlSelect
+		.RetrieveData
+		.ResetDirtyStatus
+	End With
+End If
+
+'*	Herkunft
+	initValueErsteller	  							'GBA 2011-04-12 CR12
+	initValueAbteilung 								'GBA 2011-04-12 CR12
+
+	If Not Dlg.Document.Archived Then
+		ASFDokID.Data = ASF_IDs_getNextDocId()
+	End If
+
+End Sub
+
+
+Private Sub initValueErsteller
+	If ASFErsteller.Data= "" Then
+		ASFErsteller.Data= Application.System.User.User				'GBA 2011-04-12 CR12
+	End If
+End Sub
+
+Private Sub initValueAbteilung
+	'If Application.System.User.User = "SERbachmayr" Then Stop
+	If ASFAbteilung.DataCount = 0 Then
+		'CtcASFAbteilung.ResetContent								'GBA 2011-04-12 CR12
+		ASFAbteilung.AddData Application.System.User.Unit
+		'If Application.System.User.Unit= "" And Application.System.User.User = "SERbachmayr" Then CtcASFAbteilung.AddData "HLD QM"
+	End If
+End Sub
+
+Private Sub CmdASFDokidAnfordern_OnClicked()
+	If ASFDokID.Empty Then
+			ASFDokID.Data = ASF_IDs_getNextDocId()
+		End If
+End Sub
+Private Sub CmdASFGeschaeftszahlAnfordern_OnClicked()
+	ASF_IDs_doFillGeschaeftszahl_showCompetingDateDialog(ASFGeschaeftszahl, ASFAnlassdatum, "Anlassdatum")
+End Sub
+
+

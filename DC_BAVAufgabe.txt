@@ -1,0 +1,831 @@
+Default
+'#Reference {420B2830-E718-11CF-893D-00A0C9054228}#1.0#0#C:\Windows\SysWOW64\scrrun.dll#Microsoft Scripting Runtime#Scripting
+'#Reference {00020905-0000-0000-C000-000000000046}#8.6#0#C:\Program Files (x86)\Microsoft Office\Office15\MSWORD.OLB#Microsoft Word 15.0 Object Library#Word
+'#Reference {B3FC9758-FFE6-4EE5-A95A-B4662532FF1C}#1.0#0#C:\PROGRA~2\SER\COMPON~1\Swa\WFWORK~2.DLL#wfWorkflowDialogs 1.0 Type Library#WFWFDLGSLib
+Option Explicit
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Archive Dialog (Document)/ BAVAufgabe
+'*	Autor	:	Christian Aiger, SER Solutions Österreich GmbH
+'*	Datum	:	11.03.2013
+'*	Ü001	:	13.08.2013  Christian Aigner, SER: Sub cmdPerioden_onClicked hinzugefügt
+'*	Ü002	:	9.12.2014	Michael Lämmle, SER: Vorlaufszeitberechnung per Kalenderauswahl. Automatischer Eintrag in das Vorlaufsfeld.
+'*	Ü003 	:	11.06.2015	Christian Aigner, SER:	CR10 Tranche 7: BAV-Akte wird mit dem BAV-Annahme-WF versendent
+'*	Ü004	:	20.10.2015  Christian Aigner, SER: CR 17 Tranche 9
+'*	Ü005	:	09.03.2016  Christian Aigner, SER: CR 25 Tranche 10 Drucken BAV-Aufgaben
+'************************************************************************
+Dim myASF_BAV_Akte As ItaFolder
+Private Const DESC_GESCHÄFTSZAHL_AUFGABE As String ="ASF_BAV_Aufgabe_ID"
+Private Const DESC_GESCHÄFTSZAHL_AKTE As String ="ASF_BAV_Geschaeftsfall_ID"
+Private Const DESC_VERANTWORTLICHER As String = "ASF_Verantwortlicher"
+Private Const WF_DESC_VERANTWORTLICHER As String = "PI_VERANTWORTLICHER"
+Private Const WF_DESC_GESCHÄFTSFALL As String = "PI_ASF_BAV_GESCHAEFTSFALL_ID"
+Private Const DESC_GESCHÄFTSFALL As String = "ASF_BAV_Geschaeftsfall_ID"
+Private Const DESC_FÄLLIGKEITSDATUM As String = "ASF_Faelligkeitsdatum"
+Private Const WF_DESC_FÄLLIGKEITSDATUM As String = "PI_FAELLIGKEITSDATUM"
+Private Const WF_DESC_STATUS As String = "PI_ASF_Vorgang_Status"
+Private Const WF_DESC_AUFGABENTITEL As String = "PI_NAME"
+Private Const DESC_AUFGABENTITEL As String = "ASF_BAV_Titel"
+Private Const WF_DESC_AUFGABENBESCHREIBUNG As String = "AUFGABENBESCHREIBUNG"
+Private Const DESC_AUFGABENBESCHREIBUNG As String = "ASF_BAV_Kommentar
+Private Const DESC_ERSTELLER As String = "ASF_Ersteller
+Private Const WF_DESC_EINMELDER As String = "PI_ASF_BAV_Einmelder"
+
+Private Const ACTIVITY_WORKFLOW_PRÜFEN As String = "prüfen"
+Private Const ACTIVITY_WORKFLOW_ERSTELLEN As String = "erstellen"
+
+Private Const STATUS_ANGELEGT As String ="0"
+Private Const STATUS_ABGESCHLOSEN As String ="3"
+
+'Ü003
+Private Const KATEGORIE_A As String = "MOVE: Aufgabe während Projektabwicklung"
+'/Ü003
+
+Dim g_geschäftszahlAufgabe As String
+'Ü001
+Dim WithEvents myTerminperiodenArchiveWindow As ArchiveWindow
+'/Ü001
+'Ü005
+Dim bavVorlagen As VariantMap
+'/Ü005
+Dim gArchiveDlgAkte As ArchiveDlg
+
+Dim myStatusDesc As String
+
+Private Sub ArchiveViewWindow_OnClose()
+	Application.Globals.Remove ("BAVAkte4Aufgabe")
+	Set myASF_BAV_Akte = Nothing
+End Sub
+'Ü002
+Private Sub ASFBAVVorlaufArbeitsauftrag_OnValueChanged()
+VorlaufDateChooser.Clear
+End Sub
+'Ü/002
+
+Private Sub ASFFaelligkeitsdaten_OnDialogClosed(ByVal OKButton As Boolean)
+
+	If OKButton Then
+		Call SER_BAV_checkFälligkeitsdatum(ASFFaelligkeitsdaten, dateChecker)
+	End If
+End Sub
+'Ü003
+Private Sub ASFKategorie_OnSelectionChanged()
+	cmdSelectVerantwortlicher.Enabled  = True
+	If ASFKategorie.Data = KATEGORIE_A Then
+		ASFVerantwortlicher.Data ="MOVE Projektleitung"
+		cmdSelectVerantwortlicher.Enabled  = False
+	End If
+End Sub
+'/Ü003
+Private Sub btnASFErsteller_OnClicked()
+	ASF_ErstellerOpenDlg(dbrsASFErsteller, ASFErsteller)
+End Sub
+'Ü002
+Private Sub CalcVorlauf_OnClicked()
+
+	If Not ASFFaelligkeitsdaten Is Nothing And Not VorlaufDateChooser.Empty Then
+
+		If Not ASFFaelligkeitsdaten.DataCount = 0 Then
+
+			Dim refDatum As Date
+			Dim choosedDatum As Date
+			Dim dateDif As Long
+
+			choosedDatum = VorlaufDateChooser.Data
+
+			Dim i As Integer
+			Dim tmpDif As Long
+			Dim correctRef As Date
+
+			refDatum = Format(ASFFaelligkeitsdaten.GetData(0),"0000-00-00")
+			dateDif = GetWkDay(choosedDatum,refDatum)
+
+			For i = 0 To ASFFaelligkeitsdaten.DataCount - 1
+
+				refDatum = Format(ASFFaelligkeitsdaten.GetData(i),"0000-00-00")
+				tmpDif = GetWkDay(choosedDatum, refDatum)
+
+				If dateDif >= tmpDif Then
+					dateDif = tmpDif
+					correctRef = refDatum
+				End If
+
+			Next
+
+			If dateDif <= 0 Then
+				MsgBox "Für die Vorlaufsdatumsberechnung muss das ausgewählte Datum vor dem " & correctRef & " liegen. Bitte korrigieren!"
+				VorlaufDateChooser.Clear
+
+					Else
+					ASFBAVVorlaufArbeitsauftrag.Data = Abs(dateDif)
+
+			End If
+
+			Else
+				MsgBox "Bitte mindestens ein Fälligkeitsdatum eingeben"
+				VorlaufDateChooser.Clear
+		End If
+End If
+
+End Sub
+Private Function GetWkDay (ByVal vonDatum As Date, ByVal bisDatum As Date) As Long
+	Dim n As Long
+	Dim i As Long
+	Dim d As Date
+	Dim s As Long
+	Dim w As Long
+
+n = DateDiff("d", vonDatum, bisDatum)
+For i = 0 To n
+	d = DateAdd("d",i,vonDatum)
+	w = Weekday(d)
+	If w <> 7 And w <> 1 Then s = s + 1
+Next
+
+GetWkDay = s - 1
+End Function
+'/Ü002
+'Ü001
+
+Private Sub cmdPerioden_OnClicked()
+
+	Dim myDoc As ItaDocument
+
+	Set myDoc = Application.System.CreateDocument(TDocumentType.ItaDocument)
+	Set myTerminperiodenArchiveWindow = Application.OpenIndexOnlyKeyChange (myDoc,Application.MetaData.ArchiveDocClasses.ItemByName ("BAVAufgabe").GUID, "Terminserie")
+	If Not myTerminperiodenArchiveWindow Is Nothing Then
+		If ASFPeriode.Data <> "" Then
+			myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("ASFPeriode").Data = ASFPeriode.Data
+		End If
+		If Not ASFBAVStartdatum.Empty Then
+			myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("ASFBAVStartdatum").Data = ASFBAVStartdatum.Data
+		End If
+		If Not ASFBAVEnddatum.Empty Then
+			myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("ASFBAVEnddatum").Data = ASFBAVEnddatum.Data
+		End If
+
+		If txtWiederholenXPerioden.Data <> "" Then
+			myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("txtWiederholenXPerioden").Data = txtWiederholenXPerioden.Data
+		End If
+		If txtEndedNachXTerminen.Data <> "" Then
+			myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("txtEndedNachXTerminen").Data = txtEndedNachXTerminen.Data
+		End If
+
+
+		myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("txtEndedNachXTerminen").Enabled = False
+		myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("ASFBAVEnddatum").Enabled = False
+		If txtEndedNachXTerminen.Data <> "" Then
+			myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("chkEndedNachXTerminen").Checked = True
+			myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("txtEndedNachXTerminen").Enabled = True
+		Else
+			myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("chkEndetAm").Checked = True
+			myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("ASFBAVEnddatum").Enabled = True
+		End If
+
+	End If
+
+End Sub
+'/Ü001
+'Ü005
+'Diese Fkt. ermöglicht das Drucken von BAV-Aufgaben, indem eine entsprechende Vorlage (Vorlagendeinition 'BAV Aufgabe') geöffnet wird und Kopfdaten, Ortsbezüge sowie
+'Grundstücksbezüge aus der BAV-Aufgabe in die Vorlage übertragen werden
+Private Sub cmdShowDetails_OnClicked()
+	Dim oDocumentTemplate As DocumentTemplate
+	Dim oDocTemplate As ItaDocument
+	Dim strPath2Template As String
+	Dim wordApp As Word.Application
+	Dim wordTemplate As New Word.Document
+	Dim oContentControl As Word.ContentControl
+	Dim bavAkte As ItaFolder
+	Dim myResultSet As IResultset
+	Dim i As Integer
+	Dim oBavAufgabe As ItaDocument
+	Dim oQuellDocument As ItaDocument
+	Dim registerQuellDocument As CNode
+	Dim tmpValue As String
+	Dim arrDescriptors(5,1) As String
+	Dim arrGrundstücksDescriptors(30,1) As String
+	Dim arrOrtsbezugsDescriptors(100,1) As String
+	Dim oOrtsbezug As ItaDocument
+	Dim oGrundstuecksBezug As ItaDocument
+	Dim strKmVon As String
+	Dim strKmBis As String
+	Dim strObjekttyp As String
+	Dim strRichtung As String
+	Dim strAstVon As String
+	Dim strAstBis As String
+	Dim strStraßenzug As String
+	Dim asfDokGrundstueckDokId() As Variant
+	Dim strKgName As String
+	Dim strKgNr As String
+	Dim strGrundstruecksNr As String
+	Dim grundstückeCount As Integer
+	Dim ortsbezugsCount As Integer
+	Dim strTypSubtyp As String
+	Dim strObjekt As String
+	Dim strDetail As String
+	Dim myContentControls As New VariantMap
+	Dim statusBarText As String
+	Dim bavPeriode() As String
+	Dim bavDokId As String
+
+	On Error GoTo fError
+
+	statusBarText = "Drucke BAV-Arbeitsauftrag...: "
+	cmdShowDetails.Enabled = False
+	statusBarText = "Drucke BAV-Aufgabe..."
+	Application.StatusBarInfoText = statusBarText
+	Set oDocumentTemplate = Application.MetaData.DocumentTemplates.ItemByName ("BAV Aufgabe")
+	If oDocumentTemplate Is Nothing Then
+		Application.ShowError "Zur DokId " + oDocumentTemplate.Reference + " existiert kein Dokument!", Err.Source,,, Err.Description
+		Exit Sub
+	End If
+	Set oDocTemplate = Application.System.GetDocumentDirect(oDocumentTemplate.Reference)
+	If oDocTemplate Is Nothing Then
+		Application.ShowError "Zur DokId " + oDocumentTemplate.Reference + " existiert kein Dokument!", Err.Source,,, Err.Description
+		Exit Sub
+	End If
+	Set oDocTemplate = ASF_getLastVersionOfDocument(oDocTemplate.GetDocumentVersionInfo)
+	If oDocTemplate.DocumentID <> oDocumentTemplate.Reference Then
+		oDocumentTemplate.Reference = oDocTemplate.DocumentID
+		oDocumentTemplate.Commit
+	End If
+
+	Application.StatusBarInfoText = statusBarText & "Exportiere Word-Vorlage aus Doxis!"
+	strPath2Template = Application.ExportDocumentToFile (oDocTemplate)
+	Set wordApp = New Word.Application
+	Set wordTemplate = wordApp.Documents.Open strPath2Template
+	If bavVorlagen Is Nothing Then
+		Set bavVorlagen = New VariantMap
+	End If
+	'Word-App cachen, damit die Word-App beim Schließen der BAV-Aufgabe geschlossen und die Vorlage aus dem Dateisystem gelöscht werden kann
+	bavVorlagen.Insert strPath2Template, wordApp
+
+	'Inhaltssteuerelemente aus der Word-Vorlage cachen
+	Application.StatusBarInfoText = statusBarText & "Übernehme Inhaltssteuerelemente aus der Word-Vorlage!"
+	For i = 1 To wordTemplate.ContentControls.Count
+		myContentControls.Insert (wordTemplate.ContentControls.Item(i).Tag, wordTemplate.ContentControls.Item(i))
+	Next
+
+
+	Application.StatusBarInfoText = statusBarText & "Ermittle BAV-Akte zur BAV-Aufgabe!"
+	'Die BAV-Akte zu dieser BAV-Aufgabe ermitteln
+	Set oBavAufgabe = Dlg.Document
+	Set myResultSet = oBavAufgabe.GetReferencingDocuments ()
+	If Not myResultSet Is Nothing Then
+		For i = 0 To myResultSet.TotalCount - 1
+			If myResultSet.Document(i).Type = enumDocumentType.ItaFolder Then
+				Set bavAkte = myResultSet.Document(i)
+				If Not bavAkte Is Nothing Then  'Prüfen, ob die Aufgaben-ID mit der Geschäftsfall-ID der Akte zusammen passt
+					If Not bavAkte.Descriptors.ItemByGUID ("b5530175-1730-42a2-b5d3-7436ab60bc01") Is Nothing Then
+						If bavAkte.Descriptors.ItemByGUID ("b5530175-1730-42a2-b5d3-7436ab60bc01").ValueCount > 0 Then
+							bavDokId = bavAkte.Descriptors.ItemByGUID ("b5530175-1730-42a2-b5d3-7436ab60bc01").Value (0)
+							If Left(ASFBAVAufgabenID.Data, Len(bavDokId)) = bavDokId  Then
+								Exit For
+							Else
+								Set bavAkte = Nothing
+							End If
+						Else
+							Set bavAkte = Nothing
+						End If
+					Else
+						Set bavAkte = Nothing
+					End If
+				End If
+			End If
+		Next
+	End If
+
+	Application.StatusBarInfoText = statusBarText & "Ermittle Kopfdaten der BAV-Aufgabe!"
+	'Deskriptormapping: Deskriptoren werden auf Tags im Word-Vorlagendokument geschrieben.
+	arrDescriptors(1,0) = "TitelDerAufgabe"
+	arrDescriptors(1,1) = ASFTitel.Data
+	arrDescriptors(2,0) = "AufgabenBeschreibung"
+	arrDescriptors(2,1) = ASFKommentar.Data
+	arrDescriptors(3,0) = "Periode"
+	If ASFPeriode.Data <> "" Then
+		If SER_getKeyValueFromStringMatrixByName("ASF_BAV_Perioden", ASFPeriode.Data, bavPeriode, False) Then
+			arrDescriptors(3,1) = bavPeriode(1)
+		End If
+	End If
+	arrDescriptors(4,0) = "Startdatum"
+	If Not ASFBAVStartdatum.Empty  Then
+		arrDescriptors(4,1) = Format (ASFBAVStartdatum.Data, "yyyy.mm.dd")
+	End If
+	arrDescriptors(5,0) = "Enddatum"
+	If Not ASFBAVEnddatum.Empty Then
+		arrDescriptors(5,1) = Format(ASFBAVEnddatum.Data, "yyyy.mm.dd")
+	End If
+	'Kopfdaten ausgeben
+	Application.StatusBarInfoText = statusBarText & "Schreibe Kopfdaten in in die Word-Vorlage!"
+	For i = 1 To 5
+		If arrDescriptors(i,1) <> "" Then
+			Set oContentControl = myContentControls.ItemByKey (arrDescriptors(i,0))
+			If Not oContentControl Is Nothing Then
+				oContentControl.LockContents = False
+				oContentControl.Range.Text = arrDescriptors(i,1)
+				oContentControl.LockContents = True
+			End If
+		End If
+	Next
+	'Grundstücksbezüge und Ortsbezüge der BAV-Akte in die Word-Vorlage übernehmen
+	Call ASF_ShowDetailsBAV(bavAkte, myContentControls, statusBarText)
+	Application.StatusBarInfoText = "Drucke BAV-Aufgabe...: Öffne die Word-Vorlage!"
+	wordApp.Visible = True
+	wordApp.Activate
+	wordApp.WindowState = wdWindowStateMinimize
+	wordApp.WindowState = wdWindowStateMaximize
+	wordApp.WindowState = wdWindowStateNormal
+finish:
+	cmdShowDetails.Enabled = True
+	Application.StatusBarInfoText = ""
+	Set oDocumentTemplate = Nothing
+	Set oDocTemplate = Nothing
+	Set oContentControl = Nothing
+	Set bavAkte = Nothing
+	Set myResultSet = Nothing
+	Set oBavAufgabe = Nothing
+	Set oQuellDocument = Nothing
+	Set registerQuellDocument = Nothing
+	Set oOrtsbezug = Nothing
+	Set oGrundstuecksBezug = Nothing
+	On Error Resume Next
+	wordTemplate.Save
+	Set wordApp = Nothing
+	Set wordTemplate = Nothing
+	Set myContentControls = Nothing
+	Application.StatusBarInfoText = ""
+	Exit Sub
+fError:
+	Application.ShowError "Beim Drucken der BAV-Aufgabe ist ein Fehler aufgetreten!", "Archive Dialog (Document)/BAVAufgabe / cmdPrint_OnClicked",,,Err.Description
+	GoTo finish
+End Sub
+'/Ü005
+
+Private Sub cmdSelectVerantwortlicher_OnClicked()
+
+	Dim XWFReceivers As wfReceivers
+	Dim XWFReceiver As wfReceiver
+	Dim XwfPS As New WFWFDLGSLib.wfParticipantSelect
+	Dim XWFGroupWorkBaskets As wfReceivers
+
+	Set XWFGroupWorkBaskets = ASF_wf_getGroupWorkBasketsAsWfReceiver()
+'**	Business Logik
+'*	wählen
+	With XwfPS
+        .Caption = "Auswahl Umsetzungsverantwortlicher"
+        .InformationText = "Wählen Sie die den Umsetzungsverantwortlichen für die Aufgabe aus!"
+        .SelectMode = wfPS_SM_SingleSelect
+        .DisplayMode = wfPS_DM_Combined
+        .OrgElementType = etWfWorkBasket
+        Set .Receivers = XWFGroupWorkBaskets
+	    Set XWFReceivers = .Show(Application.wfSession)
+
+	    If Not XWFReceivers Is Nothing Then
+	    	If XWFReceivers.Count > 0 Then
+	    		ASFVerantwortlicher.Data = XWFReceivers.Item (0).Name
+	    	End If
+	    End If
+    End With
+
+    Set XWFReceivers = Nothing
+    Set XwfPS = Nothing
+End Sub
+
+Private Sub dbrsASFErsteller_OnDialogClosed(ByVal OKButton As Boolean)
+		If OKButton Then
+		If dbrsASFErsteller.DataCount > 0 Then
+			ASFErsteller.Data = dbrsASFErsteller.Data(0)
+		End If
+	End If
+End Sub
+'Ü005
+Private Sub Dlg_OnClose()
+	Dim i As Integer
+	Dim wordApp As New Word.Application
+	Dim fs As New FileSystemObject
+	Dim j As Integer
+
+	On Error Resume Next
+
+	'Beim Schließen der Maske alle geöffneten Dokumentvorlagen schließen und Temp-Dateien löschen.
+	If Not bavVorlagen Is Nothing Then
+		For i = 0 To bavVorlagen.Count - 1
+			Set wordApp = bavVorlagen.Item (i)
+			wordApp.Quit
+			Set wordApp = Nothing
+			Err.Clear
+			Wait 0.5
+			fs.DeleteFile bavVorlagen.Key(i)
+			j = 0
+			Do While Err.Number <> 0 And j < 5
+				Err.Clear
+				Wait 0.5
+				fs.DeleteFile bavVorlagen.Key(i)
+				j = j + 1
+			Loop
+		Next
+	End If
+End Sub
+'/Ü005
+Private Sub Dlg_OnDebugResume()
+	'MsgBox subtractBusinessDays("2013.06.25", 33)
+End Sub
+
+Private Sub Dlg_OnDocumentChanged(ByVal newDoc As SWAFRAMELib.IDocument)
+
+	If Not newDoc.Archived  Then
+		If myASF_BAV_Akte Is Nothing Then
+			Application.ShowMessage ("Es ist keine BAV-AKTE ausgewählt!")
+		End If
+		'Ermitteln der Geschäftszahl für die Aufgabe.
+		ASFBAVAufgabenID.Data = getGeschäftszahlAufgabe()
+		ASFErsteller.Data = Application.System.User.User
+	Else
+On Error Resume Next
+	Dim myRibbonPanel As RibbonPanel
+	Set myRibbonPanel = ArchiveViewWindow.RibbonBar.Category(0).AddPanel ("advFunctions","erweiterte Funktionen",-1)
+	Dim mySecModule As SecurityModule
+	Set mySecModule = Application.System.SecurityModule
+	myRibbonPanel.AddElement(rtButton,"showOrtsbezug","Ortsbezug anzeigen","Zeigt den zugehörigen Ortsbezug der BAV-Akte an",3,3)
+
+
+	myStatusDesc =  "ASF_Status"
+
+	If Dlg.Document.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(myStatusDesc).GUID).Value(0) <> 3 Then
+		If mySecModule.CheckRight(bfRight11,"DMS Dokumente","ASF - Funktionsrechte") Then
+			myRibbonPanel.AddElement(rtButton,"setInactiv","Aufgabe(n) abschließen","Setzt den Aufgaben-Status auf abgeschlossen.",86,86)
+		End If
+	End If
+	End If
+End Sub
+Private Sub Dlg_OnInit()
+
+	If Application.Globals.Exists ("BAVAkte4Aufgabe") Then
+		Set myASF_BAV_Akte = Application.Globals.Item("BAVAkte4Aufgabe")
+	End If
+	If LCase(Application.System.User.Role) = "admins" Then
+		ASFBAVErinnerungsdaten.Visible = True
+	End If
+	ASF_InitErsteller(dbrsASFErsteller)
+	If ArchiveViewWindow.DisplayMode = enumDisplayMode.dmView Then
+		cmdPerioden.Enabled = False
+		cmdSelectVerantwortlicher.Enabled = False
+		dbrsASFErsteller.Enabled = False
+'Ü004
+		CalcVorlauf.Enabled = False
+		VorlaufDateChooser.Enabled = False
+'/Ü004
+	End If
+End Sub
+Private Sub Dlg_OnExecute(ByVal Doc As SWAFRAMELib.IDocument, ByRef Continue As Boolean)
+
+	Dim i As Integer
+	Dim geschäftszahlAufgabe As String
+	Dim tempGeschäftszahlAufgabe As String
+	Dim geschaeftszahlAkte As String
+
+	On Error Resume Next
+
+'Ü003
+	If ASFKategorie.Data = KATEGORIE_A Then
+		If MsgBox ("Aufgrund der gewählten Kategorie wird kein Aufgabenannahme-Workflow gestartet " + _
+						"und die Aufgabe sofort auf abgeschlossen gesetzt!" + vbCrLf + _
+						"Wollen Sie fortfahren?", vbYesNo, "Frage") = vbNo Then
+			Continue = False
+			Exit Sub
+		End If
+		ASFStatus.Data  = STATUS_ABGESCHLOSEN
+	End If
+'/Ü003
+
+	'Wenn das Häkchen 'Beschlagwortung beibehalten' ausgewählt ist, werden die Werte in den Feldern beibehalten
+	For i = 0 To Dlg.ControlCount - 1
+		Dlg.Control(i).KeepValues  = cbKeepValues.Checked
+	Next
+
+	On Error GoTo fError
+	If Not checkValues Then
+		Continue = False
+	Else
+		ASFGeaendertAm.Data = Now
+
+		'Ü002
+		'Wird bei schließen des Periodenfensters nun aufgerufen
+		'Fälligkeitstermine aus Startdatum, Endedatum und Periode usw. berechnen
+		'If  SER_BAV_calcFälligkeitstermine(ASFBAVStartdatum,ASFBAVEnddatum, ASFPeriode, _
+		'				txtEndedNachXTerminen, txtWiederholenXPerioden, ASFFaelligkeitsdaten) Then
+		'/Ü002
+
+			'Erinnerungstermine aus den Fälligkeitsdaten und Vorlauf berechnen (Erinnerungsdatum = Fälligkeitsdatum - Vorlauf)
+			If  SER_BAV_calcErinnerungstermine(ASFFaelligkeitsdaten, ASFBAVErinnerungsdaten, ASFBAVVorlaufArbeitsauftrag.Data) Then
+
+				'Prüfen, ob bereits eine Aufgabe mit dieser Geschäftszahl existiert
+				geschaeftszahlAkte = SER_getFirstDescriptorValueByName(myASF_BAV_Akte.Descriptors,DESC_GESCHÄFTSZAHL_AKTE,True)
+				tempGeschäftszahlAufgabe = g_geschäftszahlAufgabe
+				geschäftszahlAufgabe = geschaeftszahlAkte + "_" + tempGeschäftszahlAufgabe
+				While ASF_BAV_AufgabeExists(DESC_GESCHÄFTSZAHL_AKTE, geschäftszahlAufgabe,"20130801","IndexOnly")
+					tempGeschäftszahlAufgabe = CStr(CInt(tempGeschäftszahlAufgabe) + 1)
+					geschäftszahlAufgabe = geschaeftszahlAkte +"_" + tempGeschäftszahlAufgabe
+				Wend
+				ASFBAVAufgabenID.Data = geschäftszahlAufgabe
+				g_geschäftszahlAufgabe = tempGeschäftszahlAufgabe
+			Else
+				Continue = False
+			End If
+		'End If
+	End If
+
+	Exit Sub
+fError:
+	Application.ShowError "Bei der Ablage ist ein Fehler aufgetreten!",Err.Source,,Err.Number, Err.Description
+End Sub
+
+Private Sub Dlg_OnExecuted(ByVal Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean)
+
+	Dim folderNodeID As String
+	Dim myBAVAkteNode As CNode
+	Dim errMsg As String
+	Dim myDescDef As DescriptorDefinition
+	Dim pIDescriptors(6,2) As String
+	Dim myPI As wfProcessInstance
+
+	On Error GoTo fErrorLinkDocument
+
+	If Succeeded Then
+		'Aufgabe zur Akte hinzufügen
+		If Not myASF_BAV_Akte Is Nothing Then
+			folderNodeID = "52842791-94a6-49ac-838b-71cc01b7a81b" 'Dokument wird in das Register 'Aufgaben' eingefügt
+			Set myBAVAkteNode =SER_getCNodebyNodeID(myASF_BAV_Akte.Nodes, folderNodeID)
+			If myBAVAkteNode Is Nothing Then
+				Application.ShowError "Es ist ein Fehler beim Hinzufügen der Aufgabe zur BAV-Akte aufgetreten!","Archive Dialog (Document)/BAVAufgabe Dlg_OnExecuted",,,"Das Register mit der ID " + folderNodeID +" existiert nicht!"
+			Else
+				If Not SER_addDocumentToRecord(Doc, myASF_BAV_Akte, myBAVAkteNode, errMsg) Then
+					Application.ShowError "Es ist ein Fehler beim Hinzufügen der Aufgabe zur BAV-Akte aufgetreten!","Archive Dialog (Document)/BAVAufgabe Dlg_OnExecuted",,,errMsg
+				End If
+			End If
+
+'Ü003
+			'Keinen Aufgabenannahmen-WF starten bei einer bestimmten Kategorie
+			If ASFKategorie.Data <> KATEGORIE_A Then
+'/Ü003
+
+				'Aufgabenannahme-WF starten und an den Umsetzungsverantwortlichen zum Prüfen senden.
+				'Deskriptoren vom Dokument auf den Vorgang übertragen
+
+				Set myDescDef = Application.wfSession.DescriptorDefinitions.ItemByNameWF (WF_DESC_VERANTWORTLICHER)
+				If Not myDescDef Is Nothing Then
+					pIDescriptors(0,0) = myDescDef.GUID
+					pIDescriptors(0,1) = SER_getFirstDescriptorValueByName(Doc.Descriptors, DESC_VERANTWORTLICHER, True)
+				End If
+
+				Set myDescDef = Application.wfSession.DescriptorDefinitions.ItemByNameWF (WF_DESC_GESCHÄFTSFALL)
+				If Not myDescDef Is Nothing Then
+					pIDescriptors(1,0) = myDescDef.GUID
+					pIDescriptors(1,1) = SER_getFirstDescriptorValueByName(Doc.Descriptors, DESC_GESCHÄFTSFALL, True)
+				End If
+
+				Set myDescDef = Application.wfSession.DescriptorDefinitions.ItemByNameWF (WF_DESC_FÄLLIGKEITSDATUM)
+				If Not myDescDef Is Nothing Then
+					pIDescriptors(2,0) = myDescDef.GUID
+					pIDescriptors(2,1) = Format(SER_getNextFälligkeitsdatum(Doc.Descriptors, DESC_FÄLLIGKEITSDATUM, True),"yyyy.mm.dd")
+				End If
+
+				Set myDescDef = Application.wfSession.DescriptorDefinitions.ItemByNameWF (WF_DESC_STATUS)
+				If Not myDescDef Is Nothing Then
+					pIDescriptors(3,0) = myDescDef.GUID
+					pIDescriptors(3,1) = STATUS_ANGELEGT
+				End If
+
+				Set myDescDef = Application.wfSession.DescriptorDefinitions.ItemByNameWF (WF_DESC_AUFGABENTITEL)
+				If Not myDescDef Is Nothing Then
+					pIDescriptors(4,0) = myDescDef.GUID
+					pIDescriptors(4,1) = Replace(SER_getFirstDescriptorValueByName(Doc.Descriptors, DESC_AUFGABENTITEL, True), vbCrLf, " ")
+				End If
+
+				Set myDescDef = Application.wfSession.DescriptorDefinitions.ItemByNameWF (WF_DESC_AUFGABENBESCHREIBUNG)
+				If Not myDescDef Is Nothing Then
+					pIDescriptors(5,0) = myDescDef.GUID
+					pIDescriptors(5,1) = Replace(SER_getFirstDescriptorValueByName(Doc.Descriptors, DESC_AUFGABENBESCHREIBUNG, True), vbCrLf, " ")
+				End If
+
+				Set myDescDef = Application.wfSession.DescriptorDefinitions.ItemByNameWF (WF_DESC_EINMELDER)
+				If Not myDescDef Is Nothing Then
+					pIDescriptors(6,0) = myDescDef.GUID
+					pIDescriptors(6,1) = SER_getFirstDescriptorValueByName(Doc.Descriptors, DESC_ERSTELLER, True)
+				End If
+	'Ü003
+				Set myPI = SER_wf_createWFPIwithDescriptorsAndDoc("ASF_BAV_Aufgabenannahme",pIDescriptors,myASF_BAV_Akte)
+	'/Ü003
+				'Aufgabenannahme zum Prüfen an den Umsetzungsverantwortlichen leiten
+				SER_wf_releaseWFWI(myPI.WorkItems(0), ACTIVITY_WORKFLOW_PRÜFEN, pIDescriptors(0,1) )
+
+				'Vorgang in die Aufgabenakte verknüpfen
+				If Not myPI Is Nothing Then
+					folderNodeID = "66dd082a-5b3b-4d37-aafa-6db4df1f7367" 'Dokument wird in das Register 'Auftragsannahme-WF' eingefügt
+					Set myBAVAkteNode =SER_getCNodebyNodeID(myASF_BAV_Akte.Nodes, folderNodeID)
+					If myBAVAkteNode Is Nothing Then
+						Application.ShowError "Es ist ein Fehler beim Hinzufügen der Aufgabe zur BAV-Akte aufgetreten!","Archive Dialog (Document)/BAVAufgabe Dlg_OnExecuted",,,"Das Register mit der ID " + folderNodeID +" existiert nicht!"
+					Else
+						If Not SER_addPIToRecord(myPI, myASF_BAV_Akte, myBAVAkteNode, errMsg) Then
+							Application.ShowError "Es ist ein Fehler beim Hinzufügen der Aufgabe zur BAV-Akte aufgetreten!","Archive Dialog (Document)/BAVAufgabe Dlg_OnExecuted",,,errMsg
+						End If
+					End If
+				End If
+			End If
+'/Ü003
+
+			'Zähler fur die Anzahl der Aufgaben in der Akte erhöhen.
+			Call SER_SETDescriptorValue(myASF_BAV_Akte,DESC_GESCHÄFTSZAHL_AUFGABE, g_geschäftszahlAufgabe,True)
+			myASF_BAV_Akte.Commit
+
+			Call Application.ShowMessageBox (ArchiveViewWindow.hWnd, "ACHTUNG!!!! " + vbCrLf + _
+									"Bitte markieren Sie im zur Aufgabe gehörigen Quelldokument die entsprechende Handlungsverpflichtung (Spruchpunkt etc.) " + _
+									"mittels Annotation und verlinken sie das Dokument danach mit der Aufgabe!" +  vbCrLf + _
+									"Gehen Sie dabei wie folgt vor: " + vbCrLf + _
+									"Öffnen Sie das Quelldokument aus dem Register 'Quelldokument' der BAV-Akte und markieren die entsprechende Textstelle " + vbCrLf + _
+									"mit dem Annotationstyp 'Marker'. Diesen finden Sie in der winCube-Menüleiste in der Gruppe 'Annotationen'!" + vbCrLf + _
+									"Öffnen Sie anschließend in der Dokumentenanzeige des Quelldokuments die Ansicht 'Verknüpfungen'." + vbCrLf + _
+									"Diese finden Sie am unteren Ende der Dokumentenanzeige." + vbCrLf + _
+									"Selektieren Sie nun in der BAV-Akte das Register 'Aufgaben' und wählen die betreffende Aufgabe aus." + vbCrLf + _
+									"Ziehen Sie die Aufgabe mittels drag&drop in die Liste der Verknüpfungen des Quelldokuments." + vbCrLf + _
+									"Zuletzt speichern Sie das Quelldokument!","Information")
+			If Not cbKeepValues.Checked Then
+				ArchiveViewWindow.Close
+			End If
+		End If
+	End If
+finished:
+	Set myBAVAkteNode = Nothing
+	Set myDescDef = Nothing
+	Set myPI = Nothing
+	Exit Sub
+fErrorLinkDocument:
+	Application.ShowError "Beim Verlinken der Aufgabe mit dem BAV-Dokument ist ein Fehler aufgetreten!","Archive Dialog (Document)/BAVAufgabe Dlg_OnExecuted",,,Err.Description
+	GoTo finished
+End Sub
+Public Function SER_getCNodebyNodeID(ByRef myCNodes As FolderManager.CNodes, _
+								  ByVal inNodeID As String) As FolderManager.CNode
+'*	Infos
+'	liefert ein CNode-Objekt per NodeID zurück
+
+'*	lokale Variablen
+    Dim xCount As Long
+    Dim xInd As Long
+
+'*	Business Logik
+'	geht rekursiv durch alle Knoten & deren Unterknoten
+    xCount = myCNodes.Count
+    For xInd = 0 To xCount - 1
+        If myCNodes(CLng(xInd)).ID = inNodeID Then
+            Set SER_getCNodebyNodeID = myCNodes(CLng(xInd))
+            Exit Function
+        Else
+            Set SER_getCNodebyNodeID = SER_getCNodebyNodeID(myCNodes(CLng(xInd)).ChildNodes, inNodeID)
+            If Not SER_getCNodebyNodeID Is Nothing Then
+                Exit Function
+            End If
+        End If
+    Next xInd
+    Set SER_getCNodebyNodeID = Nothing
+
+End Function
+ Private Function checkValues As Boolean
+
+ 	checkValues = False
+
+ 	If Not  SER_BAV_checkFälligkeitsdatum(ASFFaelligkeitsdaten, dateChecker, Empty) Then
+ 		Exit Function
+ 	End If
+
+ 	If ASFPeriode.Data = "" Then
+ 		If ASFFaelligkeitsdaten.DataCount = 0 Then
+ 			Application.ShowMessage "Sie müssen mindestens ein Fälligkeitsdatum angeben!"
+ 			Exit Function
+ 		End If
+ 	End If
+ 	checkValues = True
+ End Function
+Private Function getGeschäftszahlAufgabe() As String
+
+	Dim geschäftszahlAkte As String
+	Dim geschäftszahlAufgabe As String
+
+	myASF_BAV_Akte.Update
+	geschäftszahlAkte = SER_getFirstDescriptorValueByName(myASF_BAV_Akte.Descriptors,DESC_GESCHÄFTSZAHL_AKTE,True)
+
+	'Ermitteln der Geschäftszahl für die Aufgabe. Diese leitet sich aus der Anzahl der Aufgaben zu dieser Akte ab.
+	'Die Anzahl der Aufgaben zu diesem Geschäftsfall ist auf der Akte im Deskriptor 'ASF_BAV_Aufgabe_ID' gespeichert
+	g_geschäftszahlAufgabe = SER_getFirstDescriptorValueByName(myASF_BAV_Akte.Descriptors,DESC_GESCHÄFTSZAHL_AUFGABE,True)
+	If g_geschäftszahlAufgabe = "" Then
+		MsgBox "Bitte Akte vor der Aufgabenanlage speichern. Die Aufgabenanlage wird abgebrochen."
+		ArchiveViewWindow.Close
+		Exit Function
+	End If
+
+	g_geschäftszahlAufgabe = CStr(CInt(g_geschäftszahlAufgabe) + 1)
+
+	getGeschäftszahlAufgabe = geschäftszahlAkte + "_" + g_geschäftszahlAufgabe
+End Function
+Public Function SER_getNextFälligkeitsdatum	(ByRef pDescriptors As SWAFRAMELib.Descriptors, _
+													ByVal pDescriptorName As String, _
+													Optional ByVal returnEmptyStringIfMissing As Boolean = True) As Variant
+
+	Dim myDescriptor As Descriptor
+	Dim i As Integer
+	Dim lastFälligkeitsdatum As String
+
+	If IsMissing(pDescriptors) Then Exit Function
+	If returnEmptyStringIfMissing Then
+		SER_getNextFälligkeitsdatum = ""
+		On Error Resume Next
+	End If
+	Set myDescriptor = pDescriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(pDescriptorName).GUID)
+	If Not myDescriptor Is Nothing Then
+		If myDescriptor.ValueCount > 0 Then
+			lastFälligkeitsdatum  =  myDescriptor.Value (0)
+		End If
+		For i = 1 To myDescriptor.ValueCount - 1
+			If lastFälligkeitsdatum > myDescriptor.Value (i) Then
+				lastFälligkeitsdatum = myDescriptor.Value (i)
+			End If
+		Next
+	End If
+	SER_getNextFälligkeitsdatum = lastFälligkeitsdatum
+End Function
+
+Private Sub myTerminperiodenArchiveWindow_OnClose()
+	If myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("ASFPeriode").Data <> "" Then
+		ASFPeriode.Data = myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("ASFPeriode").Data
+	Else
+		ASFPeriode.Data = ""
+	End If
+	If Not myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("ASFBAVStartdatum").Empty Then
+		ASFBAVStartdatum.Data = myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("ASFBAVStartdatum").Data
+	Else
+		ASFBAVStartdatum.Clear
+	End If
+	If Not myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("ASFBAVEnddatum").Empty Then
+		ASFBAVEnddatum.Data = myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("ASFBAVEnddatum").Data
+	Else
+		ASFBAVEnddatum.Clear
+	End If
+	If myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("txtWiederholenXPerioden").Data <> "" Then
+		txtWiederholenXPerioden.Data = myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("txtWiederholenXPerioden").Data
+	Else
+		txtWiederholenXPerioden.Clear
+	End If
+	If myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("txtEndedNachXTerminen").Data <> "" Then
+		txtEndedNachXTerminen.Data = myTerminperiodenArchiveWindow.ArchiveDlg.ControlByName ("txtEndedNachXTerminen").Data
+	Else
+		txtEndedNachXTerminen.Clear
+	End If
+	'Ü002
+	'Fälligkeitstermine aus Startdatum, Endedatum und Periode usw. berechne
+	SER_BAV_calcFälligkeitstermine(ASFBAVStartdatum,ASFBAVEnddatum, ASFPeriode, _
+						txtEndedNachXTerminen, txtWiederholenXPerioden, ASFFaelligkeitsdaten)
+	'/Ü002
+End Sub
+
+Private Sub ArchiveViewWindow_OnRibbonElementClicked(ByVal ElementID As String, ByRef Handled As Boolean)
+
+ If ElementID = "showOrtsbezug" Then
+	Dim myFolder As ItaFolder
+	Dim myquery As Query
+	Dim myresultset As IResultset
+	Dim myFolderView As FolderViewWindow
+	Dim myTab As TabbedDlgControl
+
+	Set myquery = Application.System.CreateQuery
+
+	With myquery
+		.Databases.Add(Application.System.QueryDatabases.ItemByName("BAVAKten"))
+		.SQLStatement = "Select * where ASF_BAV_Geschaeftsfall_ID = " +Left(ArchiveViewWindow.ArchiveDlg.Document.Descriptors.ItemByGUID("b5530175-1730-42a2-b5d3-7436ab60bc01").Value(0),InStr(1,ArchiveViewWindow.ArchiveDlg.Document.Descriptors.ItemByGUID("b5530175-1730-42a2-b5d3-7436ab60bc01").Value(0),"_")-1)
+		.RangeStart = "01011990"
+		Set myresultset = .Execute
+	End With
+
+	If Not myresultset Is Nothing Then
+		If Not myresultset.AvailableCount = 0 Then
+			Set myFolderView = Application.OpenFolder(myresultset.Document(0))
+			Set myTab = myFolderView.ArchiveWindow.ArchiveDlg.ControlByName("TabDlg")
+			myTab.ActiveTab = 1
+		End If
+	End If
+ End If
+
+ If ElementID = "setInactiv" Then
+
+	If MsgBox("Der Status dieser Aufgabe wird auf abgeschlossen gesetzt."& vbCrLf & "Es werden dadurch keine Arbeitsaufträge mehr erstellt. Möchten Sie fortfahren?",vbOkCancel + vbQuestion,"Aufgabe abschließen") = 2 Then
+		Exit Sub
+	Else
+			Dlg.Document.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(myStatusDesc).GUID).ChangeValue(0,3)
+			Dlg.Document.Commit
+
+	MsgBox("Aufgabe wurde abgeschlossen.", vbInformation,"Erfolgreich")
+
+	End If
+End If
+End Sub
+

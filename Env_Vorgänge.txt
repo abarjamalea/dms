@@ -1,0 +1,13 @@
+Option Explicit
+Option Explicit
+Dim WithEvents myTimer As SWATOOLSLib.SwaTimer
+
+Private Sub FilingEnvironmentWindow_OnInit()
+	Set myTimer = New SWATOOLSLib.SwaTimer
+	myTimer.SetTimer(250)
+End Sub
+
+Private Sub myTimer_OnTimer()
+	Application.UIContext.UICommand(FilingEnvironmentWindow.hWnd,26500)
+	myTimer.StopTimer
+End Sub

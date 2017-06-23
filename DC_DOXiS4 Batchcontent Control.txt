@@ -1,0 +1,56 @@
+Default
+'#Reference {FF6FA417-903D-4A9F-BDA5-83F2DD4E4DB1}#3.0#0#C:\Programme\SER\Components\DX4BCC\DOXiS4BatchControl.ocx#DOXiS4 Batchcontent Control#dx4BatchContentControl
+Option Explicit
+' -------------------------------------------------------------------------------
+' Maskentyp:	Archive Dialog Skript für DOXiS4-BCC
+' Name          dx4bcc
+' Date          16.12.2008 / SER, QS
+' Version       V04.02
+' Bemerkung:    #Reference DOXiS4BatchControl.ocx  DOXiS4 Batchcontent Control
+' --------------------------------------------------------------------------------
+Private WithEvents mdx4BCC As dx4BatchContentControl.BatchContent
+
+Private Sub Dlg_OnClose()
+	If Not mBCControl Is Nothing Then
+   		Set mBCControl.ItaSystem=Nothing
+   		Set mBCControl.ArchiveDlg=Nothing
+   		Set mBCControl.DocViewer=Nothing
+   		Set mBCControl=Nothing
+   	End If
+End Sub
+
+Private Sub Dlg_OnDebugResume()
+ Call Dlg_OnInit
+End Sub
+Private Sub Dlg_OnExecute(Doc As SWAFRAMELib.IDocument, Continue As Boolean)
+  mBCControl.ReleaseDocuments
+End Sub
+
+Private Sub Dlg_OnInit()
+
+ 	Application.Globals("ActiveDlg") = Dlg
+ 	Application.Globals("ActiveArchiveView") = ArchiveViewWindow
+	Set mdx4BCC = BCControl.Control
+ 	Call DOXiS4BCC_InitArchive
+
+End Sub
+
+Private Sub mdx4BCC_OnArchivedITADocument(ByRef oDocument As Object, ByRef Succeeded As Boolean)
+	MsgBox("Archived Start")
+End Sub
+
+Private Sub mdx4BCC_OnArchiveITADocument(ByRef oDocument As Object, ByRef bHandled As Boolean)
+	MsgBox("Archive Start")
+End Sub
+
+Private Sub mdx4BCC_OnReleaseFinished(ByRef Succeeded As Boolean)
+	MsgBox("Released finished")
+End Sub
+
+Private Sub mdx4BCC_OnReleaseStart(ByRef Continue As Boolean)
+	MsgBox("Release Start")
+End Sub
+
+
+
+

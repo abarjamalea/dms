@@ -1,0 +1,111 @@
+Default
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Archive Dialog/ Grundstück
+'*	Autor	:	Barbara Bruckberger, ASFINAG
+'*	Datum	:	27.10.2010
+'*'*	Überarbeitung Ü001	:	23.11.2011/ Günther F. Schinko, SER: CR 15 - KG verwerfen - Achtung neuen Button
+'*'*	Überarbeitung Ü002	:	24.11.2011/ Günther F. Schinko, SER: CR 65 - Like bei KG
+'*'*	Überarbeitung Ü003	:	24.11.2011/ Günther F. Schinko, SER: CR 15 - Del-Button bei KG
+'*  DMS-463                 :   06.04.2017/ Stephan Wagner, SER: Dialog wird nach dem Speichern geschlossen
+
+'*
+'************************************************************************
+
+	Option Explicit
+
+
+
+Private Sub Dlg_OnExecute(ByVal Doc As SWAFRAMELib.IDocument, ByRef Continue As Boolean)
+	'DMS-463, SWA
+	ArchiveViewWindow.Close
+	'/DMS-463
+End Sub
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+
+Private Sub Dlg_OnDebugResume()
+
+	initControls
+	initValues
+
+End Sub
+
+Private Sub Dlg_OnInit()
+
+	initControls
+
+End Sub
+
+Private Sub Dlg_OnDocumentChanged(ByVal newDoc As SWAFRAMELib.IDocument)
+
+	If Not newDoc.Archived Then initValues
+
+End Sub
+
+
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+Private Sub DbrsKatastralgemeinde_OnDialogOpen(ByRef Continue As Boolean)
+
+	ASF_db_initDbrsWithRecordsetDefinition(DbrsKatastralgemeinde, "OrtsbezugKatastralgemeinden")
+
+	With DbrsKatastralgemeinde
+'Ü002
+		.SQLQuery = ASF_Immo_getSqlSelectKatastralgemeinde(	SbASFBundesland, _
+															ASFKGNummer, _
+															ASFKGName, _
+															ASFOrtPolBezirkName)
+'/Ü002
+		.RetrieveData
+	End With
+
+End Sub
+
+Private Sub DbrsKatastralgemeinde_OnDialogClosed(ByVal OKButton As Boolean)
+
+	With DbrsKatastralgemeinde
+		If OKButton And .DataCount = 1 Then
+			ASFKGNummer.Data = .Recordset.Fields("KGNummer")
+			ASFBezeichnung.Data = .Recordset.Fields("KGNummer") & "_"
+			SbASFBundesland.Data = .Recordset.Fields("Bundesland")
+			ASFKGName.Data = .Recordset.Fields("KGName")
+			ASFOrtPolBezirkName.Data = .Recordset.Fields("PGName")
+		End If
+	End With
+
+End Sub
+
+'Ü003
+Private Sub cmdDelKatastralgemeinde_OnClicked()
+	ASFKGNummer.Clear
+	ASFBezeichnung.Clear
+	SbASFBundesland.Data=""
+	ASFKGName.Clear
+	ASFOrtPolBezirkName.Clear
+
+End Sub
+'/*003
+
+'************************************************************************
+'*	BUSINESS LOGIK
+'************************************************************************
+
+Private Sub initControls()
+
+'*	Datenbankverbindung
+	DbrsKatastralgemeinde.ConnectionString = ASF_DMS_Daten.ConnectionString
+
+End Sub
+
+Private Sub initValues()
+
+
+End Sub
+

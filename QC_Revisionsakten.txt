@@ -1,0 +1,101 @@
+Default
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	Query Dialog/ Revisionsakten
+'*	erstellt am / von	:	28.03.2011/	Barbara Bruckberger, ASFINAG
+'*
+'*	Überarbeitung Ü001	:	16.11.2012/ Guido Bachmayr, SER: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+'*
+'************************************************************************
+
+	Option Explicit
+Private Sub Dlg_OnClose()
+	'Ü002: Workaround wg. SER internen Mantis-Call 23133
+	ASFDokNummer.SetFocus
+End Sub
+
+Private Sub Dlg_OnExecuted(ByVal Results As SWAFRAMELib.IResultset, ByVal Succeeded As Boolean)
+	'Ü002: Workaround wg. SER internen Mantis-Call 23133
+	If Results Is Nothing Then
+		ASFDokNummer.SetFocus
+		Exit Sub
+	End If
+	If Results.AvailableCount = 0 Then
+		ASFDokNummer.SetFocus
+	End If
+End Sub
+
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+
+
+Private Sub Dlg_OnDebugResume()
+	initControls
+	initValues
+End Sub
+
+Private Sub Dlg_OnInit()
+	initControls
+	initValues
+End Sub
+
+Private Sub Dlg_OnClearedContent()
+	initValues
+End Sub
+
+
+
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+'Ü001: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+Private Sub btnAbleger_OnClicked()
+	ASF_AblegerOpenDlg(dbrsAbleger, Ableger)
+End Sub
+
+Private Sub dbrsAbleger_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsAbleger.DataCount > 0 Then
+			Ableger.Data= dbrsAbleger.Data(0)
+		End If
+	End If
+End Sub
+'/Ü001
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub initControls()
+	ASF_InitErsteller(dbrsAbleger)     'Ü001
+End Sub
+
+Private Sub initValues()
+
+
+	'*	Lokale Objekte
+	Dim x() As String
+	Dim xl As Long
+
+'**	Business Logik
+'*	Zugriff OUs und Gruppen
+	Call ASF_security_initMvASFZugriff(MvASFZugriff)
+
+'*	Dokumentklasse einschränken
+	With MvKlasseID
+		.ResetContent
+		.AddData Application.System.FolderTypes.ItemByName("Revisionsakte").GUID
+	End With
+
+End Sub
+Private Sub CmdHilfe_OnClicked()
+
+	ASF_global_doHilfeAnzeigen("https://intranet.asfinag.at/index.aspx#Module/Wiki/Wiki.html?ID=3")
+
+End Sub
+

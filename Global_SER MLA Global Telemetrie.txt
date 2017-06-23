@@ -1,0 +1,26 @@
+'#Reference {B691E011-1797-432E-907A-4D8C69339129}#6.1#0#C:\Program Files (x86)\Common Files\System\ado\msado15.dll#Microsoft ActiveX Data Objects 6.1 Library#ADODB
+Option Explicit
+Public Sub writeTelemetrieData(Object As String, Optional value1 As String = "", Optional value2 As String = "", Optional value3 As String = "", Optional value4 As String = "", Optional value5 As String = "", Optional value6 As String = "", Optional value7 As String = "", Optional value8 As String = "", Optional value9 As String = "", Optional value10 As String = "")
+On Error GoTo fError
+	Dim myConnectionDef As DBConnectionDefinition
+	Dim myConnection As ADODB.Connection
+	Dim oRecSet As ADODB.Recordset
+	Dim myStatement As String
+	Dim table As String
+
+	table = "dbo.Telemetrie"
+
+Set oRecSet = New ADODB.Recordset
+Set myConnection = Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").ADOConnection
+
+myStatement = "INSERT INTO " + table + " VALUES ('" + Format(Now, "ddMMyyyyhhMMss") + "','" + Object + "','" + Replace(value1,"'","''") + "','" + Replace(value2,"'","''") + "','" + Replace(value3,"'","''") + "','" + Replace(value4,"'","''") + "','" + Replace(value5,"'","''") + "','" + Replace(value6,"'","''") + "','" + Replace(value7,"'","''") + "','" + Replace(value8,"'","''") + "','" + Replace(value9,"'","''") + "','" + Replace(value10,"'","''") + "')"
+
+Set oRecSet = myConnection.Execute (myStatement)
+
+Exit Sub
+
+fError:
+Application.ShowMessage("Fehler in Telemetrie Auftrag." + vbCrLf + Error)
+
+End Sub
+

@@ -1,0 +1,13 @@
+Default
+Option Explicit
+
+Private Sub cmdOpenKeyChange_OnClicked()
+	Dim xDoc As IDocument
+
+	If tbDocId.Data <> "" Then
+		Set xDoc = Application.System.GetDocumentDirect(CStr(tbDocId.Data))
+		If xDoc Is Nothing Then Exit Sub
+		Application.OpenKeyChange(xDoc)
+	End If
+End Sub
+

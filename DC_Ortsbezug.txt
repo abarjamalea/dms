@@ -1,0 +1,645 @@
+Default
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Archive Dialog/ Ortsbezug
+'*	Autor	:	Markus D. Hartbauer, SER Solutions ÷sterreich GmbH
+'*	Datum	:	26.08.2010
+'*  ‹001	:   10.2.2011: Christian Aigner, SER: In Dlg_OnDocumentChanged Filter auf Streckenabschnitte in Abh. von Straﬂenzug geladen.
+'*	‹002	:	31.05.2011: Markus D. Hartbauer, SER: DbrsASFOrtObjekt_OnDialogOpen: if-bedingung auskommentiert
+'*  ‹004	:	04.08.2011: Markus D. Hartbauer, SER: ƒnderung des Aufrufs zum Laden der ObjektDetails, wird nun bereits nach erfolgter Objekttyp-Wahl geladen
+'*  ‹005	:	10.10.2013: Christian Aigner, SER: CR Tranche 5 (Erweiterung Ortsbezug). Automatische Vorbelegung der Richtung bei Auswahl eines Objekts, ...
+'*	‹006	:	27.10.2015: Michael L‰mmle, SER: CR Tranche 9 Erweiterung zu  Batchablage/Multiablage
+'************************************************************************
+
+	Option Explicit
+
+	Dim lastVal As String 	'zum Merken der letzten Werte bei KM
+							'(Woraround f¸r doppeltes OnValueChanged-Feuern, SST Mantis #19124
+							'geplante Behebung: wC V06.01, kann dann entfernt werden
+
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+Private Sub Dlg_OnDebugResume()
+	initControls
+	initValues
+End Sub
+
+Private Sub Dlg_OnInit()
+	initControls
+	initValues
+End Sub
+
+Private Sub Dlg_OnDocumentChanged(ByVal newDoc As SWAFRAMELib.IDocument)
+
+	'*	Lokale Objekte
+	Dim straﬂenZugID As String
+	Dim xt As String
+	Dim objektID As String
+
+Stop
+
+'*	Business Logik
+'	Werte in freie Controls zur¸ckladen
+	If newDoc.Archived Then
+
+		If newDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmVon").GUID) Is Nothing Then
+				ASFOrtKmVon.Data = 0.0
+			Else
+				ASFOrtKmVon.Data = newDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmVon").GUID).Value(0)
+			End If
+
+			If newDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmBis").GUID) Is Nothing Then
+				ASFOrtKmBis.Data = 0.0
+			Else
+				ASFOrtKmBis.Data = newDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmBis").GUID).Value(0)
+			End If
+
+		ASFOrtKmVon.ResetDirtyStatus
+		ASFOrtKmBis.ResetDirtyStatus
+		'‹001
+		If DbrsASFOrtStrasse.DataCount > 0 Then
+			straﬂenZugID = ASF_getStraﬂenzugIDByKurzName (DbrsASFOrtStrasse.Data (0))
+			If straﬂenZugID <> "" Then
+				xt = "SELECT Name,km FROM OrtsbezugAnschlussstellen WHERE StraﬂenzugID = '" & straﬂenZugID & "' ORDER BY km"
+				With DbrsASFOrtAStVon
+					.SQLQuery = xt
+					.RetrieveData
+				End With
+				With DbrsASFOrtAStBis
+					.SQLQuery = xt
+					.RetrieveData
+				End With
+			End If
+		End If
+		'/‹001
+		'‹002
+		If straﬂenZugID <> "" Then
+			With DbrsASFOrtObjekt
+'‹005
+				'Nur aktive Objekte anzeigen
+				.SQLQuery = ASF_Ortsbezug_getSqlSelectObjekte1(CtcASFOrtObjekttyp, straﬂenZugID,,1)
+'/‹005
+				.KeyField = "ID"
+				.RetrieveData
+			End With
+			'ObjektDetail
+			ASF_loadValuesFromDBToSelectionBox(ASF_Ortsbezug_getSqlSelectObjektDetails(CtcASFOrtObjekttyp, DbrsASFOrtObjekt ), "Name", SbASFOrtObjektDetail, False)
+			DbrsASFOrtObjekt.ResetDirtyStatus
+		End If
+		'/‹002
+'‹005
+		If ASFOrtObjekt.Data <> "" Then
+			If ASF_Ortsbezug_ObjektIsActive(ASFOrtObjekt.Data, straﬂenZugID) = 0 Then
+				Application.ShowMessage "Das Objekt '" + ASFOrtObjekt.Data + "' ist nicht aktiv. " + vbCrLf + _
+									"ƒnderungen am Ortsbezug sind daher nicht mˆglich!"
+				Dlg.ReadOnly = True
+				DbrsASFOrtObjekt.Enabled = False
+				DbrsASFOrtAStBis.Enabled = False
+				DbrsASFOrtAStVon.Enabled = False
+				DbrsASFOrtStrasse.Enabled = False
+				CtcASFOrtObjekttyp.Enabled = False
+				lblASFOrtObjekt.BackColor = RGB(255,0,0) 'rot
+			End If
+			ASFOrtKmVon.Enabled = False
+			ASFOrtKmBis.Enabled = False
+
+			SbASFOrtRichtung.Enabled = False
+			If LCase(SbASFOrtRichtung.Data) = "un" Or SbASFOrtRichtung.Data = "" Then
+				SbASFOrtRichtung.Enabled = True
+			End If
+		End If
+		lblASFOrtObjekt.Caption = ASFOrtObjekt.Data
+'/‹005
+	End If
+
+	resetAllControls(Dlg)
+
+End Sub
+
+Private Sub Dlg_OnExecute(ByVal Doc As SWAFRAMELib.IDocument, ByRef Continue As Boolean)
+
+Dim myResultList As ResultList
+Dim myResultListInternal As New ControlContainer
+
+Stop
+
+'‹006
+'Mehrfachablage
+If MVObjektHelper.DataCount > 0 Then
+
+	Set myResultList = ArchiveViewWindow.ParentFilingEnvironmentWindow.Tag
+
+	Dim i As Integer
+	Dim myOrtsbezug As ItaDocument
+	Dim OrtsbezugsID As String
+
+	Dim kmvon As Descriptor
+	Dim kmbis As Descriptor
+	Dim objekt As Descriptor
+	Dim objektID As Descriptor
+	Dim detail As Descriptor
+	Dim strassenzug As Descriptor
+	Dim richtung As Descriptor
+	Dim objekttyp As Descriptor
+	Dim objekttypid As Descriptor
+
+	Dim myDB As FilingDatabase
+
+	Set myDB = Application.System.FilingDatabases.ItemByName("IndexOnly")
+	OrtsbezugsID = "333727f2-6203-4e06-b64b-8f1e820de6f1"
+
+	For i = 0 To MVObjektHelper.DataCount - 1
+		Set myOrtsbezug = Application.System.CreateDocument(TDocumentType.ItaDocument)
+		myOrtsbezug.IndexOnly = True
+		Set myOrtsbezug.Database = myDB
+		myOrtsbezug.DocumentTypeGUID = OrtsbezugsID
+
+		Set kmvon = myOrtsbezug.Descriptors.AddNewByGUID("c2f798b4-7270-4504-bd44-81a6ed4af046")
+		Set kmbis = myOrtsbezug.Descriptors.AddNewByGUID("a8c76346-657c-4d8d-875e-cfe5c6d71e0d")
+		Set objekt = myOrtsbezug.Descriptors.AddNewByGUID("cac2b783-7feb-40a6-a659-d8a71cd1293f")
+		Set objektID = myOrtsbezug.Descriptors.AddNewByGUID("01f7a74f-4255-4c8d-b7d7-fede95ba0ab6")
+		Set strassenzug = myOrtsbezug.Descriptors.AddNewByGUID("c7a1aba7-a3af-4525-914b-a72d9ad15228")
+		Set richtung = myOrtsbezug.Descriptors.AddNewByGUID("e2eff56e-7ff8-4e3a-8732-2dcb2a145eef")
+		Set objekttyp = myOrtsbezug.Descriptors.AddNewByGUID("7803b731-932a-4697-bbd7-156f27b0d0e8")
+		Set objekttypid = myOrtsbezug.Descriptors.AddNewByGUID("5b3010aa-66c3-4e53-a6be-233679fdc03e")
+
+		If Not SbASFOrtObjektDetail.SelectedItem = -1 Then
+			Set detail =myOrtsbezug.Descriptors.AddNewByGUID("e4cabd99-77b9-47e2-aede-03ea0305b386")
+			detail.AddValue (SbASFOrtObjektDetail.Data)
+		End If
+
+		If MVvonKMHelper.DataCount > i Then
+			kmvon.AddValue (CDbl(MVvonKMHelper.GetData(i)))
+			kmbis.AddValue (CDbl(MVbisKMHelper.GetData(i)))
+		End If
+		objekt.AddValue (MVObjektHelper.GetData(i))
+		objektID.AddValue (MVObjektIDHelper.GetData(i))
+		strassenzug.AddValue (MVStrasseHelper.GetData(i))
+		richtung.AddValue(MVRichtungsHelper.GetData(i))
+		objekttyp.AddValue(ASFOrtObjekttyp.Data)
+		objekttypid.AddValue(CtcASFOrtObjekttyp.Data(0))
+
+		myOrtsbezug.Commit
+		myResultList.Resultset.AppendDocument(myOrtsbezug)
+
+		myResultListInternal.ModifiedState =True
+
+	Next
+	resetAllControls(Dlg)
+	ArchiveViewWindow.Close
+		Continue = False
+'/‹006
+	Else
+		'Einfachablage
+			'*	Lokale Objekte
+	Dim XDesc As Descriptor
+
+'**	Business Logik
+'*	Plausibilit‰ts-Checks km
+
+	If ASFOrtKmBis.Empty Then
+		ASFOrtKmBis.Data = 0.0
+	End If
+
+	If ASFOrtKmVon.Empty Then
+		ASFOrtKmVon.Data = 0.0
+	End If
+
+	If Not ASF_Ortsbezug_checkKmAutoCorrect_Filing(	ASFOrtKmVon, _
+													ASFOrtKmBis, _
+													DbrsASFOrtAStVon, _
+													DbrsASFOrtAStBis, _
+													DbrsASFOrtStrasse) Then
+		Continue = False
+		Exit Sub
+	End If
+
+'*	km-Werte umrechnen und ¸bernehmen
+
+'	km von
+	Set XDesc = Doc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmVon").GUID)
+	If XDesc Is Nothing Then
+		Doc.Descriptors.AddNewByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmVon").GUID).AddValue(CDbl(ASFOrtKmVon.Data))
+	Else
+		XDesc.RemoveValues
+		XDesc.AddValue(CDbl(ASFOrtKmVon.Data))
+	End If
+
+'	km bis
+	Set XDesc = Doc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmBis").GUID)
+	If XDesc Is Nothing Then
+		Doc.Descriptors.AddNewByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmBis").GUID).AddValue(CDbl(ASFOrtKmBis.Data))
+	Else
+		XDesc.RemoveValues
+		XDesc.AddValue(CDbl(ASFOrtKmBis.Data))
+	End If
+
+End If
+
+End Sub
+
+
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+Private Sub DbrsASFOrtStrasse_OnDialogClosed(ByVal OKButton As Boolean)
+
+'*	Checks
+	If Not OKButton Then Exit Sub
+
+'*	Lokale Objekte
+	Dim xt As String
+
+'*	Business Logik
+'	Anschlussstellen einschr‰nken auf Straﬂenzug
+	xt = "SELECT Name,km, ID FROM OrtsbezugAnschlussstellen WHERE StraﬂenzugID = '" & DbrsASFOrtStrasse.Recordset.Fields("ID") & "' ORDER BY km"
+	With DbrsASFOrtAStVon
+		.SQLQuery = xt
+		.RetrieveData
+	End With
+	With DbrsASFOrtAStBis
+		.SQLQuery = xt
+		.RetrieveData
+	End With
+'	km-von und km-bis laden
+	If DbrsASFOrtStrasse.DataCount = 1 Then
+		ASFOrtKmVon.Data = DbrsASFOrtStrasse.Recordset.fields("kmvon")
+		ASFOrtKmBis.Data = DbrsASFOrtStrasse.Recordset.fields("kmbis")
+	End If
+'	ASt leeren
+	DbrsASFOrtAStVon.ResetContent
+	DbrsASFOrtAStBis.ResetContent
+'	Objektsbezug leeren
+	ASFOrtObjekttyp.Data = ""
+'‹005
+	lblASFOrtObjekt.Caption = ""
+'/‹005
+	CtcASFOrtObjekttyp.ResetContent
+	ASFOrtObjekt.Data = ""
+	DbrsASFOrtObjekt.ResetContent
+	SbASFOrtObjektDetail.Data = ""
+'‹05
+	SbASFOrtRichtung.Enabled = True
+	ASFOrtKmBis.Enabled = True
+	ASFOrtKmVon.Enabled = True
+'/‹05
+
+End Sub
+
+Private Sub DbrsASFOrtAStVon_OnDialogClosed(ByVal OKButton As Boolean)
+
+'*	Checks
+	If Not OKButton Then Exit Sub
+
+'*	Business Logic
+'Text ¸bernehmen
+	ASFOrtAStVon.Data = DbrsASFOrtAStVon.Recordset.Fields("name")
+
+'	kmvon ¸bernehmen
+	ASFOrtKmVon.Data = DbrsASFOrtAStVon.Recordset.Fields("km")
+	ASFOrtKmVon.FireOnValueChanged
+
+End Sub
+
+Private Sub DbrsASFOrtAStBis_OnDialogClosed(ByVal OKButton As Boolean)
+
+'*	Checks
+	If Not OKButton Then Exit Sub
+
+'*	Business Logic
+
+	'Text ¸bernehmen
+	ASFOrtAStBis.Data = DbrsASFOrtAStBis.Recordset.Fields("Name")
+'	kmbis ¸bernehmen
+	ASFOrtKmBis.Data = DbrsASFOrtAStBis.Recordset.Fields("km")
+	ASFOrtKmBis.FireOnValueChanged
+
+End Sub
+
+Private Sub ASFOrtKmVon_OnValueChanged()
+
+'*	Lokale Objekte
+	Dim newVal As String
+'*	Business Logic
+	newVal = Format(CDbl(ASFOrtKmVon.Data), "000.000")
+	If lastVal <> newVal Then
+		lastVal = newVal
+		ASF_Ortsbezug_checkKmAutoCorrect_Filing(ASFOrtKmVon, _
+												ASFOrtKmBis, _
+												DbrsASFOrtAStVon, _
+												DbrsASFOrtAStBis, _
+												DbrsASFOrtStrasse)
+
+	'Text ¸bernehmen
+	If Not DbrsASFOrtAStBis.DataCount = 0 Then
+		DbrsASFOrtAStBis.Recordset.MoveFirst
+		DbrsASFOrtAStBis.Recordset.Find("ID = '" & DbrsASFOrtAStBis.Data(0) & "'")
+		ASFOrtAStBis.Data = DbrsASFOrtAStBis.Recordset.Fields("Name")
+	End If
+
+	If Not DbrsASFOrtAStVon.DataCount = 0 Then
+		DbrsASFOrtAStVon.Recordset.MoveFirst
+		DbrsASFOrtAStVon.Recordset.Find("ID = '" & DbrsASFOrtAStVon.Data(0) & "'")
+		ASFOrtAStVon.Data = DbrsASFOrtAStVon.Recordset.Fields("Name")
+	End If
+
+	End If
+
+End Sub
+
+Private Sub ASFOrtKmBis_OnValueChanged()
+
+'*	Lokale Objekte
+	Dim newVal As String
+'*	Business Logic
+	newVal = Format(CDbl(ASFOrtKmBis.Data), "000.000")
+	If lastVal <> newVal Then
+		lastVal = newVal
+		ASF_Ortsbezug_checkKmAutoCorrect_Filing(ASFOrtKmVon, _
+												ASFOrtKmBis, _
+												DbrsASFOrtAStVon, _
+												DbrsASFOrtAStBis, _
+												DbrsASFOrtStrasse)
+
+		'Text ¸bernehmen
+	'Text ¸bernehmen
+	If Not DbrsASFOrtAStBis.DataCount = 0 Then
+		DbrsASFOrtAStBis.Recordset.MoveFirst
+		DbrsASFOrtAStBis.Recordset.Find("ID = '" & DbrsASFOrtAStBis.Data(0) & "'")
+		ASFOrtAStBis.Data = DbrsASFOrtAStBis.Recordset.Fields("Name")
+	End If
+
+	If Not DbrsASFOrtAStVon.DataCount = 0 Then
+		DbrsASFOrtAStVon.Recordset.MoveFirst
+		DbrsASFOrtAStVon.Recordset.Find("ID = '" & DbrsASFOrtAStVon.Data(0) & "'")
+		ASFOrtAStVon.Data = DbrsASFOrtAStVon.Recordset.Fields("Name")
+	End If
+
+	End If
+
+End Sub
+
+Private Sub CtcASFOrtObjekttyp_OnDialogClosed(ByVal OKButton As Boolean)
+
+'*	Lokale Objekte
+	Dim xt As String
+
+'*	Business Logik
+'	nichts gew‰hlt/Auswahl abgew‰hlt
+	If CtcASFOrtObjekttyp.DataCount = 0 And OKButton Then
+		ASFOrtObjekttyp.Data = ""
+'‹005
+		lblASFOrtObjekt.Caption = ""
+'/‹005
+		ASFOrtObjekt.Data = ""
+		DbrsASFOrtObjekt.ResetContent
+		SbASFOrtObjektDetail.RemoveAll
+	End If
+'	etwas gew‰hlt
+	If CtcASFOrtObjekttyp.DataCount > 0 And OKButton Then
+		ASFOrtObjekttyp.Data = ASF_getCategoryNamePathFromCategoryIdPath(CtcASFOrtObjekttyp.Data(0), CtcASFOrtObjekttyp.PathSeparator)
+		ASFOrtObjekt.Data = ""
+'‹005
+		lblASFOrtObjekt.Caption = ""
+'/‹005
+		With DbrsASFOrtObjekt
+			.SQLQuery = ASF_Ortsbezug_getSqlSelectObjekte(CtcASFOrtObjekttyp, DbrsASFOrtStrasse, ASFOrtObjekt)
+			.KeyField = "ID"
+			.RetrieveData
+		End With
+		'‹004
+		'ObjektDetail
+		SbASFOrtObjektDetail.RemoveAll
+		ASF_loadValuesFromDBToSelectionBox(ASF_Ortsbezug_getSqlSelectObjektDetails(CtcASFOrtObjekttyp, DbrsASFOrtObjekt ), "Name", SbASFOrtObjektDetail, True)
+		'/‹004
+	End If
+
+End Sub
+
+Private Sub ASFOrtObjekt_OnValueChanged()
+
+	With DbrsASFOrtObjekt
+		.SQLQuery = ASF_Ortsbezug_getSqlSelectObjekte(CtcASFOrtObjekttyp, DbrsASFOrtStrasse, ASFOrtObjekt)
+		.KeyField = "ID"
+		.RetrieveData
+	End With
+	SbASFOrtObjektDetail.RemoveAll
+
+End Sub
+
+Public Function CleanString(strSource As String) As String
+
+    On Error GoTo CleanStringErr
+
+    ' convert tabs to spaces first
+    strSource = Replace(strSource, vbTab, " ")
+
+    ' convert all CRLFs to spaces
+    strSource = Replace(strSource, vbCrLf, " ")
+
+    ' Find and replace any occurences of multiple spaces
+    Do While (InStr(strSource, "  "))
+        ' if true, the string still contains double spaces,
+        ' replace with single space
+        strSource = Replace(strSource, "  ", " ")
+    Loop
+
+    ' Remove any leading or training spaces and return
+    ' result
+    CleanString = Trim(strSource)
+    Exit Function
+
+CleanStringErr:
+    ' Insert error-handling code here
+End Function
+
+Private Sub DbrsASFOrtObjekt_OnDialogClosed(ByVal OKButton As Boolean)
+'‹006
+	Dim objectCount As Integer
+	Dim i As Integer
+	ASFOrtObjekt.Clear
+	lblASFOrtObjekt.Caption = ""
+	MVvonKMHelper.ResetContent
+	MVbisKMHelper.ResetContent
+	MVObjektHelper.ResetContent
+	MVRichtungsHelper.ResetContent
+	ASFOrtKmVon.Enabled = True
+	ASFOrtKmBis.Enabled = True
+	SbASFOrtRichtung.Enabled = True
+
+	If OKButton And DbrsASFOrtObjekt.DataCount >= 1 Then
+		With DbrsASFOrtObjekt.Recordset
+			If Not .EOF Then
+				'ObjektName
+
+				If DbrsASFOrtObjekt.DataCount > 1 Then
+
+					SbASFOrtRichtung.Enabled = False
+
+
+						.MoveFirst
+						Do While Not .EOF
+							For i = 0 To DbrsASFOrtObjekt.SelectedRecordCount - 1
+								If DbrsASFOrtObjekt.SelectedRecord(i) = DbrsASFOrtObjekt.Recordset.absoluteposition - 1  Then
+									lblASFOrtObjekt.Caption =lblASFOrtObjekt.Caption + .Fields("Straﬂenzug")+ "-" + .Fields("Name") + " "
+
+									If IsNumeric(Left(.Fields("km von"),1)) And IsNumeric(Left(.Fields("km bis"),1)) Then
+										MVvonKMHelper.AddData(.Fields("km von"))
+										MVbisKMHelper.AddData(.Fields("km bis"))
+									End If
+
+									MVObjektIDHelper.AddData (.Fields("ID"))
+									MVObjektHelper.AddData (.Fields("Name"))
+									MVStrasseHelper.AddData (.Fields("Straﬂenzug"))
+									If IsNull (.Fields("Richtung")) Or .Fields("Richtung") = "" Then
+										MVRichtungsHelper.AddData("UN")
+									Else
+										MVRichtungsHelper.AddData(.Fields("Richtung"))
+									End If
+								End If
+							Next
+						.MoveNext
+						Loop
+
+						DbrsASFOrtStrasse.Enabled = False
+						ASFOrtKmBis.Enabled = False
+						ASFOrtKmVon.Enabled = False
+						DbrsASFOrtAStVon.ResetContent
+						DbrsASFOrtAStBis.ResetContent
+				Else
+'/‹006
+'Falls nur ein Objekt ausgew‰hlt wird. Zeige Infos an.
+'Straﬂenzug
+				Dim myObjektName As String
+				myObjektName = .Fields("Name")
+
+				ASFOrtObjekt.Data = myObjektName
+				lblASFOrtObjekt.Caption = myObjektName
+
+
+
+				If Not IsNull(.Fields("Straﬂenzug")) Then
+					DbrsASFOrtStrasse.ResetContent
+					DbrsASFOrtStrasse.AddData .Fields("Straﬂenzug")
+				End If
+				'km von, ASt von
+				If Not IsNull(.Fields("km von")) Then
+					ASFOrtKmVon.Data = .Fields("km von")
+					ASFOrtKmVon.Enabled = False
+					DbrsASFOrtAStVon.ResetContent
+				End If
+				'km bis, ASt bis
+				If Not IsNull(.Fields("km bis")) Then
+					ASFOrtKmBis.Data = .Fields("km bis")
+					ASFOrtKmBis.Enabled = False
+					DbrsASFOrtAStBis.ResetContent
+				End If
+				'‹005
+				'Richtung
+				SbASFOrtRichtung.Enabled = True
+				If IsNull(.Fields("Richtung")) Then
+					SbASFOrtRichtung.Data = "UN"
+				Else
+					SbASFOrtRichtung.Data = UCase(.Fields("Richtung"))
+					If UCase(.Fields("Richtung")) <> "UN" Then
+						SbASFOrtRichtung.Enabled = False
+					End If
+
+				End If
+				'/‹005
+
+			End If
+
+				'ObjektDetail
+				ASF_loadValuesFromDBToSelectionBox(ASF_Ortsbezug_getSqlSelectObjektDetails(CtcASFOrtObjekttyp, DbrsASFOrtObjekt ), "Name", SbASFOrtObjektDetail, True)
+			End If
+
+
+		End With
+	End If
+
+End Sub
+
+Private Sub DbrsASFOrtObjekt_OnDialogOpen(ByRef Continue As Boolean)
+
+	If ASFOrtObjekttyp.Data ="" Then
+		MsgBox "Bitte w‰hlen Sie einen Typ/Subtyp aus!",vbOkOnly,"Info"
+		Continue = False
+	Else
+
+		If ArchiveViewWindow.ArchiveDlg.Document.Archived Then
+			DbrsASFOrtObjekt.MultiSelect = False
+		End If
+		'‹002
+'		If ASFOrtObjekt.Data ="" Then
+		'/‹002
+'‹005: Nur in der DB als aktiv markierte Objekte werden angezeigt
+			ASFOrtObjekt.Data = ""
+			lblASFOrtObjekt.Caption = ""
+			DbrsASFOrtObjekt.ResetContent
+			With DbrsASFOrtObjekt
+				.UseCheckboxes = True
+				.SQLQuery = ASF_Ortsbezug_getSqlSelectObjekte(CtcASFOrtObjekttyp, DbrsASFOrtStrasse, ASFOrtObjekt, 1)
+'/‹005
+				.KeyField = "ID"
+				.RetrieveData
+			End With
+'		End If
+	End If
+
+End Sub
+
+
+
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub initControls()
+
+'*	Lokale Objekte
+	Dim ICI As IControlInternal
+	Dim xi As Integer
+
+'**	Business Logic
+'*	km-Controls vorbereiten
+	For xi = 0 To 1
+		If xi = 0 Then Set ICI = ASFOrtKmVon
+		If xi = 1 Then Set ICI = ASFOrtKmBis
+		With ICI
+			.DataType = VT_BSTR '8 'vt_bstr
+			.ValueType = vt_free
+			.ViewingFormat = "$-,3.3" 'beliebig bis max. 13.3
+			.ControlDefinition = Nothing
+		End With
+	Next xi
+'*	Dbrs, CTCs vorbereiten
+	With DbrsASFOrtAStVon
+		.ConnectionString = ASF_DMS_Daten.ConnectionString
+	End With
+	With DbrsASFOrtAStBis
+		.ConnectionString = ASF_DMS_Daten.ConnectionString
+	End With
+	With CtcASFOrtObjekttyp
+		.ConnectionString = ASF_DMS_Daten.ConnectionString
+	End With
+	With DbrsASFOrtObjekt
+		.ConnectionString = ASF_DMS_Daten.ConnectionString
+	End With
+	With DbrsASFOrtStrasse
+		.ConnectionString = ASF_DMS_Daten.ConnectionString
+	End With
+
+End Sub
+
+Private Sub initValues()
+
+'*
+
+End Sub
+

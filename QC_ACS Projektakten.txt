@@ -1,0 +1,131 @@
+Default
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	Query Dialog/ AIG Projektakten
+'*	erstellt am / von	:	25.10.2010 / Markus D. Hartbauer, SER
+'*	Überarbeitung Ü001	:	02.02.2011/ Christian Aigner, SER: Dlg_OnClose hinzugefügt als Workarounf für SER internen Mantis-Call 23133
+'*	Überarbeitung Ü002	:	16.11.2012/ Guido Bachmayr, SER: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+'*
+'************************************************************************
+
+	Option Explicit
+
+
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+
+Private Sub Dlg_OnClose()
+	Ü001: 'Workaround wg. SER internen Mantis-Call 23133
+	ASFAIGProjektTyp.SetFocus
+End Sub
+
+Private Sub Dlg_OnExecuted(ByVal Results As SWAFRAMELib.IResultset, ByVal Succeeded As Boolean)
+	Ü001: 'Workaround wg. SER internen Mantis-Call 23133
+	If Results Is Nothing Then
+		ASFAIGProjektTyp.SetFocus
+		Exit Sub
+	End If
+	If Results.AvailableCount = 0 Then
+		ASFAIGProjektTyp.SetFocus
+	End If
+End Sub
+Private Sub Dlg_OnDebugResume()
+	initControls
+	initValues
+End Sub
+
+Private Sub Dlg_OnInit()
+	initControls
+	initValues
+End Sub
+
+Private Sub Dlg_OnClearedContent()
+	initValues
+End Sub
+
+Private Sub Dlg_OnExecuteSQL(ByRef pStatement As String)
+
+End Sub
+
+
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+'Ü002: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+Private Sub btnAbleger_OnClicked()
+	ASF_AblegerOpenDlg(dbrsAbleger, Ableger)
+End Sub
+
+Private Sub dbrsAbleger_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsAbleger.DataCount > 0 Then
+			Ableger.Data= dbrsAbleger.Data(0)
+		End If
+	End If
+End Sub
+'/Ü002
+
+Private Sub btnASFErsteller_OnClicked()
+	ASF_ErstellerOpenDlg(dbrsASFErsteller, ASFErsteller)
+End Sub
+
+Private Sub dbrsASFErsteller_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsASFErsteller.DataCount > 0 Then
+			ASFErsteller.Data= dbrsASFErsteller.Data(0)
+		End If
+	End If
+End Sub
+
+Private Sub DbrsASFProjektNummer_OnDialogOpen(ByRef Continue As Boolean)
+
+	With DbrsASFProjektNummer
+		If .DBRecordsetDefinition.Name = "(leer)" Then
+			.DBRecordsetDefinition = Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").DBRecordsetDefinitions.ItemByName("ProjektPSPElemente")
+		End If
+		.SQLQuery = ASF_Projekt_getSqlSelectPSPElement (ASFProjektNummer, _
+														ASFProjektBezeichnung)
+		.RetrieveData
+	End With
+
+End Sub
+
+Private Sub DbrsASFProjektNummer_OnDialogClosed(ByVal OKButton As Boolean)
+
+	With DbrsASFProjektNummer
+		If OKButton And .DataCount = 1 Then
+			ASFProjektNummer.Data = .Recordset.fields("PSP/Kostenstelle")
+			ASFProjektBezeichnung.Data = .Recordset.Fields("Name")
+		End If
+	End With
+
+End Sub
+
+
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub initControls()
+
+'*	Datenbankverbindung
+	DbrsASFProjektNummer.ConnectionString = ASF_DMS_Daten.ConnectionString
+
+	ASF_InitErsteller(dbrsASFErsteller, dbrsAbleger)     'Ü002
+End Sub
+
+Private Sub initValues()
+'*	Dokumentklasse einschränken
+	With MvKlasseID
+		.ResetContent
+		'Workaround, s. Mantis-Call 0020694
+		.AddData Application.System.FolderTypes.ItemByName("ACS Projektakte").GUID
+	End With
+End Sub
+

@@ -1,0 +1,209 @@
+Default
+'#Reference {87D28511-6B43-101C-92CE-10005AF5DF4D}#1.1#0#c:\programme\sap\frontend\sapgui\wdtaocx.ocx#SAP Table Factory#SAPTableFactoryCtrl
+'#Reference {5B076C00-2F26-11CF-9AE5-0800096E19F4}#5.0#0#c:\programme\sap\frontend\sapgui\wdtfuncs.ocx#SAP Remote Function Call Control#SAPFunctionsOCX
+Option Explicit
+
+'References:
+'SAP Remote Function Call Control 5.0
+'SAP Table Factory 1.0
+
+'*******************************************************
+'SEKTION MIT KONFIGURIERBAREN KONSTANTEN
+
+'Anmeldung am SAP'
+
+Const SapAddr   = "rms-vm-sap6.sst.local"
+Const SapSysNr  = "3"
+Const SapClient = "800"
+Const SapUser   = "tuser"
+Const SapWord   = "tuser12"
+Const SapLang   = "D"
+
+'ID der Voreinstellung für den Business Workflow
+Const PreSet = "Z_CS"
+
+'*******************************************************
+
+Const MsgTitel = "SAPscript Workflow-Ablage"
+
+Dim SetSel As Long
+Dim SAPRFC As SAPFunctions
+Dim WFCONN As Function
+Dim GETPRE As Function
+Dim PRETAB As Table
+
+Private Sub Dlg_OnInit()
+
+	If Not SapConnection Then
+		MsgBox "Es besteht keine Verbindung zum SAP-System.", vbCritical, MsgTitel
+		Exit Sub
+	End If
+
+	Dim i As Integer
+
+	GETPRE.Exports("ID") = PreSet
+	GETPRE.Call
+	Settings.RemoveAll
+	For i = 1 To PRETAB.RowCount
+		Settings.Add PRETAB(i,"OBJECTTEXT") & "  ->  " & PRETAB(i,"STEXT")
+	Next i
+
+	contRep.SetStringMatrix Application.MetaData.StringMatrices.ItemByName("ContentRepositories"), 0, 0
+End Sub
+
+Private Sub Dlg_OnDebugResume()
+	Call Dlg_OnInit()
+End Sub
+
+Private Sub Dlg_OnClose()
+
+	Set WFCONN = Nothing
+	Set PRETAB = Nothing
+	Set GETPRE = Nothing
+	If Not SAPRFC Is Nothing Then SAPRFC.Connection.Logoff
+	Set SAPRFC = Nothing
+
+End Sub
+
+Private Sub Dlg_OnDocumentChanged(newDoc As SWAFRAMELib.IDocument)
+	Dim did As String
+	Dim MyUtil As New SWATOOLSLib.Utilities
+
+	Settings.SelectedItem = SetSel
+	Settings.FireOnValueChanged
+	contRep.SelectedItem = 0
+	SpaeteErfassung.Checked = True
+
+	did = "Y1" & Format(Now, "yyyymmdd")
+	did = did & MyUtil.GenerateUniqueString
+	docId.Data		 = did
+	compId.Data		 = "data"
+	pVersion.Data 	 = "0045"
+	compDateC.Data   = Format(Now, "yyyy-mm-dd")
+	compDateM.Data   = Format(Now, "yyyy-mm-dd")
+	compTimeC.Data   = Format(Now, "hh:nn:ss")
+	compTimeM.Data   = Format(Now, "hh:nn:ss")
+	docProt.Data	 = "ud"
+
+End Sub
+
+Private Sub Settings_OnSelectionChanged()
+	SetSel = Settings.SelectedItem
+
+	If SetSel >= 0 Then
+		AlDokArt.Data = PRETAB(SetSel + 1, "NCITYPE")
+		OrgObj.Data  = PRETAB(SetSel + 1, "OTYPE") & "-" & PRETAB(SetSel + 1, "OBJID")
+	Else
+		AlDokArt.Clear
+		OrgObj.Clear
+	End If
+
+End Sub
+
+Private Sub Settings_OnValueChanged()
+	Call Settings_OnSelectionChanged()
+End Sub
+
+Private Sub Dlg_OnExecute(Doc As SWAFRAMELib.IDocument, Continue As Boolean)
+
+	Continue = False
+
+	If SAPRFC Is Nothing Then
+		MsgBox "Es besteht keine Verbindung zum SAP-System.", vbCritical, MsgTitel
+		Exit Sub
+	End If
+
+	If Settings.Data = "" Then
+		MsgBox "Bitte wählen Sie eine SAP-Workflow Voreinstellung aus.", vbCritical, MsgTitel
+		Settings.SetFocus
+		Exit Sub
+	End If
+
+	Dim did As String
+
+	If Not Doc.Archived Then
+
+		Doc.Database = GetFilingDatabaseFromContentRep(contRep.Data)
+
+		Dim mydoc As SWAFRAMELib.ItaDocument
+		Set mydoc = Doc
+		ContentType.Data = mydoc.Representations(0).MimeType
+
+	End If
+
+	Continue = True
+
+End Sub
+
+
+Private Sub Dlg_OnExecuted(Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean)
+
+	Application.Globals.Remove "OnExecutedProblem"
+
+	If Not Succeeded Then Exit Sub
+
+	With WFCONN
+		.Exports("ARCHIV_ID")  = contRep.Data
+		.Exports("ARC_DOC_ID") = docId.Data
+		.Exports("NCITYPE")	   = AlDokArt.Data
+		.Exports("ORGTYPE")	   = Left(OrgObj.Data, InStr(OrgObj.Data, "-") - 1)
+		.Exports("ORGID")	   =  Mid(OrgObj.Data, InStr(OrgObj.Data, "-") + 1, 99)
+		If SpaeteZuordnung.Checked = True Then
+			' Für Szenario "Ablegen für spätere Zuordnung"
+		 	.Exports("LATE")     = "X"
+		End If
+	End With
+
+	If WFCONN.Call Then Exit Sub
+
+	MsgBox "Archiviert. Es konnte jedoch kein SAP-Workflow gestartet werden.", vbCritical, WFCONN.Exception
+	Application.Globals("OnExecutedProblem") = WFCONN.Exception
+
+End Sub
+
+Private Function SapConnection() As Boolean
+
+	If SAPRFC Is Nothing Then
+
+		Set SAPRFC = New SAPFunctions
+
+      	With SAPRFC.Connection
+         	.UseSAPLogonIni 	= False
+         	.ApplicationServer 	= SapAddr
+         	.SystemNumber 		= SapSysNr
+         	.Client 			= SapClient
+         	.User 				= SapUser
+         	.Password 			= SapWord
+        	.Language 			= SapLang
+      	End With
+
+      	If Not SAPRFC.Connection.Logon(0, True) Then
+         	Set SAPRFC = Nothing
+        	SapConnection = False
+        	Exit Function
+		End If
+
+	End If
+
+	If WFCONN Is Nothing Then
+		Set WFCONN = SAPRFC.Add("Z_SER_WF_CONNECT")
+		Set GETPRE = SAPRFC.Add("Z_SER_GET_PRE_SETTING")
+		Set PRETAB = GETPRE.Tables("PRE")
+	End If
+
+   SapConnection = True
+
+End Function
+
+Private Sub SpaeteErfassung_OnClicked()
+	If SpaeteZuordnung.Checked = True Then
+		SpaeteZuordnung.Checked = False
+	End If
+End Sub
+
+Private Sub SpaeteZuordnung_OnClicked()
+	If SpaeteErfassung.Checked = True Then
+		SpaeteErfassung.Checked = False
+	End If
+End Sub
+

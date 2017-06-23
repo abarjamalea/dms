@@ -1,0 +1,193 @@
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Folder Tree View/ Revisionsakte Aktenanzeige
+'*	Autor	:	Markus D. Hartbauer, SER Solutions Österreich GmbH
+'*	Datum	:	12.11.2015
+'*
+'*	Ü001	:	29.10.2014  Guido Bachmayr, SER: Modif: ExportAllDocs aus Akte + Neuerstellung ExportResultListDocs CR 6, Tranche 7
+'*	Ü002	:	03.03.2015  Guido Bachmayr, SER: MultiDok-Ablage auch für D&D auf Aktenregister implementieren (OTRS 1012450)
+'*  Ü003    :   02.10.2015  Guido Bachmayr, SER: MultiDok-Ablage: Bei File-Drop wird das Zielregister auch selektiert (OTRS 1012450)
+'*	Ü004	:	12.11.2015	Michael Lämmle, SER: Vorbelegung don Nummern und Bezeichnung + RV als Zugriffsdeskriptor
+'************************************************************************
+
+	Option Explicit
+
+	Dim WithEvents MyFEW As FilingEnvironmentWindow
+
+
+'************************************************************************
+'*	Globale Objekte
+'************************************************************************
+'Objekte des ArchiveDlgs für Vorbeschlagwortung Ablage in Register
+Dim myStartCategorySB As SelectionBox
+Dim myCategoryCTC As CategoryTreeControl
+
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+
+
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+
+Private Sub FolderViewWindow_OnAddDocument(ByRef Handled As Boolean)
+	Set ASF_aktuelle_Akte = FolderTreeView.Document
+	'2011-08-03 GBA Korrektur CR37 (Reihenfolge der Befehle)
+	Application.Globals.Item ("ASF_Aktuelles_Register") = FolderTreeView.SelectedNode
+	Application.Globals.Item ("ASF_Aktuelle_FolderViewWindow") = FolderViewWindow
+
+	'Übergabe Nummer und Bezeichnung an Dokument
+	'Ü004
+	Set MyFEW = Application.OpenEnvironment2(Application.MetaData.FilingEnvironments.ItemByName("Dokument").GUID, True)
+	MyFEW.ArchiveViewWindow.ArchiveDlg.ControlByName("TabBeschlagwortung_ASFDokNummer").Data = FolderViewWindow.ArchiveWindow.ArchiveDlg.ControlByName("ASFDokNummer").Data
+	MyFEW.ArchiveViewWindow.ArchiveDlg.ControlByName("TabBeschlagwortung_ASFProjektBezeichnung").Data = FolderViewWindow.ArchiveWindow.ArchiveDlg.ControlByName("ASFBezeichnung").Data
+
+	Set myStartCategorySB = MyFEW.ArchiveViewWindow.ArchiveDlg.ControlByName("TabEinordnung_SbASFStartkategorie")
+	Set myCategoryCTC = MyFEW.ArchiveViewWindow.ArchiveDlg.ControlByName("TabEinordnung_CtcASFKategorie")
+
+	myStartCategorySB.Data = "HLD"
+	myStartCategorySB.FireOnValueChanged
+	myCategoryCTC.AddData("{AF91C100-17C3-4426-9AC0-5444E8BFB9D7}") 'Setze Prüfdokumentation
+	myCategoryCTC.FireOnValueChanged
+
+	'/U004
+	Handled = True
+End Sub
+
+Private Sub FolderViewWindow_OnElementAdded(ByVal Element As Object, ByVal ParentNode As Object)
+	If FolderTreeView.FocusedNode.ID <> ParentNode.ID Then
+		Set FolderTreeView.FocusedNode= ParentNode				'GBA 2015-12-03
+	End If
+End Sub
+
+Private Sub FolderViewWindow_OnFileDrop(ByRef FileNames() As String, ByVal Node As Object, ByRef Handled As Boolean)   '* Ü002
+
+	Exit Sub
+	'*********************************************** OnFileDrop UND OnFileDrop2 sind nicht nötig! GBA 2015-12-02   Ü003
+	' in den anderen FTV's wird das andere Event unterdrückt,
+	' aber hier bei der Revisionsakte wird das OnFileDrop2 für andere Anforderungen verwendet!
+
+	Set ASF_aktuelle_Akte = FolderTreeView.Document
+
+	Set FolderTreeView.SelectedNode = Node			'Ü003 02.10.2015 GBA
+	Set FolderTreeView.FocusedNode = Node
+
+	'2011-08-03 GBA Korrektur CR37 (Reihenfolge der Befehle)
+	Application.Globals.Item ("ASF_Aktuelles_Register") = FolderTreeView.SelectedNode
+	Application.Globals.Item ("ASF_Aktuelle_FolderViewWindow") = FolderViewWindow
+End Sub
+
+Private Sub FolderViewWindow_OnFileDrop2(ByRef Files() As Object, ByVal Node As Object, ByRef Handled As Boolean)   '* Ü002
+	Set ASF_aktuelle_Akte = FolderTreeView.Document
+
+	Set FolderTreeView.SelectedNode = Node			'Ü003 02.10.2015 GBA
+	Set FolderTreeView.FocusedNode = Node
+
+	' in den anderen FTV's wird das andere Event unterdrückt,
+	' aber hier bei der Revisionsakte wird das OnFileDrop2 für andere Anforderungen verwendet!
+
+	'2011-08-03 GBA Korrektur CR37 (Reihenfolge der Befehle)
+	Application.Globals.Item ("ASF_Aktuelles_Register") = FolderTreeView.SelectedNode
+	Application.Globals.Item ("ASF_Aktuelle_FolderViewWindow") = FolderViewWindow
+
+	Set MyFEW = Application.OpenEnvironment2(Application.MetaData.FilingEnvironments.ItemByName("Dokument").GUID, True)
+	If Not MyFEW Is Nothing Then
+		Dim i As Integer
+		For i = 0 To UBound(Files())
+			MyFEW.ArchiveViewWindow.ViewerWindow.DocViewer.AddPartDoc(Files(i),True)
+		Next
+	End If
+
+	Call ASF_fill_file_control(Files(0),MyFEW.ArchiveViewWindow.ArchiveDlg,Files(0).fileName,"ArchiveViewWindow_OnFileDrop")
+	MyFEW.ArchiveViewWindow.ArchiveDlg.ControlByName("TabBeschlagwortung_ASFDokNummer").Data = FolderViewWindow.ArchiveWindow.ArchiveDlg.ControlByName("ASFDokNummer").Data
+	MyFEW.ArchiveViewWindow.ArchiveDlg.ControlByName("TabBeschlagwortung_ASFProjektBezeichnung").Data = FolderViewWindow.ArchiveWindow.ArchiveDlg.ControlByName("ASFBezeichnung").Data
+
+	Set myStartCategorySB = MyFEW.ArchiveViewWindow.ArchiveDlg.ControlByName("TabEinordnung_SbASFStartkategorie")
+	Set myCategoryCTC = MyFEW.ArchiveViewWindow.ArchiveDlg.ControlByName("TabEinordnung_CtcASFKategorie")
+
+	myStartCategorySB.Data = "HLD"
+	myStartCategorySB.FireOnValueChanged
+	myCategoryCTC.AddData("{AF91C100-17C3-4426-9AC0-5444E8BFB9D7}") 'Setze Prüfdokumentation
+	myCategoryCTC.FireOnValueChanged
+	Handled = True
+End Sub
+
+Private Sub FolderViewWindow_OnRibbonBarInitialized()
+
+	Dim XRC As RibbonCategory
+	Dim XRP As RibbonPanel
+
+	Set XRC = FolderViewWindow.RibbonBar.CategoryByName("Akte")
+	If XRC Is Nothing Then Set XRC = FolderViewWindow.RibbonBar.CategoryByName("Record")		'GBA 2014-10-29 Ü001  CR6, Tr7
+	If Not XRC Is Nothing Then
+		Set XRP = XRC.AddPanel("IDweitere", "weitere Funktionen")
+		If Not XRP Is Nothing Then
+			XRP.AddElement(rtButton, "IDneueAkte", "neue Akte", "Fügt eine neue Akte zu dem ausgewählten Register hinzu", 79, 79)
+			XRP.AddElement(rtButton, SER_ExpAllDocs_ID, SER_ExpAllDocs_Name, SER_ExpAllDocs_Help, SER_ExpAllDocs_SMI, SER_ExpAllDocs_LMI)
+			XRP.AddElement(rtButton, SER_ExpRLDocs_ID, SER_ExpRLDocs_Name, SER_ExpRLDocs_Help, SER_ExpRLDocs_SMI, SER_ExpRLDocs_LMI) 'GBA 2014-10-29 Ü001  CR6, Tr7
+
+		End If
+	End If
+
+End Sub
+
+Private Sub FolderViewWindow_OnRibbonElementClicked(ByVal ElementID As String, ByRef Handled As Boolean)
+
+	Dim myNode As CNode
+	Select Case ElementID
+		Case "IDneueAkte"
+			doNeueAkte
+		Case SER_ExpAllDocs_ID
+			SER_ExportAllRecordDocs(FolderTreeView.Document, FolderViewWindow.Caption)
+		Case SER_ExpRLDocs_ID																	'GBA 2014-10-29 Ü001  CR6, Tr7
+			SER_ExportResultListDocs(FolderTreeView.Document, FolderTreeView.SelectedNode, FolderViewWindow.DocumentLinksWindow)
+
+	End Select
+
+End Sub
+
+Public Sub doNeueAkte()
+
+	Set ASF_aktuelle_Akte = FolderTreeView.Document
+	Set MyFEW = Application.OpenEnvironment2(Application.MetaData.FilingEnvironments.ItemByName("Akte").GUID, True)
+
+End Sub
+Private Sub MyFEW_OnDocumentExecuted(ByVal Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean, ByRef Handled As Boolean)
+	Dim XNode As CNode
+	Set XNode =	FolderViewWindow.FolderTreeView.FocusedNode
+	XNode.Elements.AddNew(LT_DOCUMENT).Link = Doc.DocumentID
+	'Ü004
+	Doc.Descriptors.ItemByGUID("adbe1d35-987a-4062-819f-ff35d3695e65").RemoveValues
+	Doc.Descriptors.ItemByGUID("adbe1d35-987a-4062-819f-ff35d3695e65").AddValue("RV")
+
+	Doc.Commit
+
+End Sub
+
+Private Sub MyFEW_OnFolderExecuted(ByVal Folder As SWAFRAMELib.ItaFolder, ByVal Succeeded As Boolean, ByRef Handled As Boolean)
+
+	Dim XNode As CNode
+	Set XNode =	FolderViewWindow.FolderTreeView.FocusedNode
+	XNode.Elements.AddNew(LT_FOLDER).Link = Folder.DocumentID
+
+End Sub
+'Beim Hinzufügen eines neuen Registers zu einer Akte, wird dem Register die DMS-Trefferliste 'Akte_Allgemein'
+'zugewiesen
+Private Sub FolderViewWindow_OnNodeAdded(ByVal Node As Object, ByVal ParentNode As Object)
+
+	Dim myNode As CNode
+	Dim myResultDlgDefinition As ResultDlgDefinition
+
+	Set myResultDlgDefinition = Application.MetaData.ResultDlgDefinitions.ItemByName ("Akte_Allgemein")
+	If myResultDlgDefinition Is Nothing Then
+	Else
+		Set myNode = Node
+		myNode.Presentation.ResultDlgDefinition (LT_DOCUMENT)= myResultDlgDefinition.GUID
+	End If
+End Sub
+

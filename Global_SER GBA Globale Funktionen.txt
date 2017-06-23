@@ -1,0 +1,1588 @@
+'#Reference {F0380C4E-354B-4BFE-B0EF-BA54159674A5}#1.0#0#D:\SER\CUBEDE~1\COMPON~1\Swa\SWB139~1.DLL#SwaOrgaCSB 1.0-Typbibliothek#SwaOrgaCSBLib
+'#Reference {B3FC9758-FFE6-4EE5-A95A-B4662532FF1C}#1.0#0#D:\SER\CUBEDE~1\COMPON~1\Swa\WFWORK~2.DLL#wfWorkflowDialogs 1.0 Type Library#WFWFDLGSLib
+'#Reference {DA08C43F-0125-419A-A749-84CEAC01C4C4}#1.0#0#D:\SER\CUBEDE~1\COMPON~1\Swa\WFRELE~2.DLL#wfReleaseDelegateDlg 1.0 Type Library#WFRDDLGLib
+'#Reference {2A75196C-D9EB-4129-B803-931327F72D5C}#2.8#0#C:\Program Files (x86)\Common Files\System\ado\msado28.tlb#Microsoft ActiveX Data Objects 2.8 Library#ADODB
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Global Script/ SER GBA Globale Funktionen
+'*	Autor	:	Guido Bachmayr, SER Solutions Österreich GmbH
+'*	Datum	:	02.09.2010
+'*  Ü001	:	2010-09-09	SER/GSC		GUID kann nicht verwendet werden, weil Control.GUID z.B. bei verschiedenen checkbox-controls immer identisch ist
+'*  Ü002	:	11.02.2011	Christian Aigner,SER: In Fkt. SER_getDocumentAccessForUser geprüft, ob Benutzer in Gruppe "Gesamtzugriff ausgen. Personal" ist
+'*	Ü003	:	16.02.2011	Christian Aigner,SER: Fkt. Initialize auf SER_CAD_Initialize umbenannt
+'*  Ü004    :   17.02.2011  Guido Bachmayr, SER: Neues Features: Alle Dokumente einer Akte exportieren, Ersteller -> dbRecordSelector
+'*	Ü005	:	16.11.2012  Guido Bachmayr, SER: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+'*	Ü006	:	29.10.2014  Guido Bachmayr, SER: Modif: ExportAllDocs aus Akte + Neuerstellung ExportResultListDocs CR 6, Tranche 7
+'*	Ü007	:	31.10.2014  Guido Bachmayr, SER: Neue Funktion SER_SetFileDateByDocDescriptor() als Teil von Ü006: CR 6, Tranche 7
+'************************************************************************
+
+Option Explicit
+
+'Ü007 GBA - Deklarationen zum Überschreiben des Datei-Erstellungsdatums
+Type SYSTEMTIME
+        wYear As Integer
+        wMonth As Integer
+        wDayOfWeek As Integer
+        wDay As Integer
+        wHour As Integer
+        wMinute As Integer
+        wSecond As Integer
+        wMilliseconds As Integer
+End Type
+
+Type FILETIME
+        dwLowDateTime As Long
+        dwHighDateTime As Long
+End Type
+
+Type SECURITY_ATTRIBUTES
+        nLength As Long
+        lpSecurityDescriptor As Long
+        bInheritHandle As Long
+End Type
+
+Declare Function SetFileTime Lib "kernel32" Alias "SetFileTime" (ByVal hFile As Long, lpCreationTime As FILETIME, lpLastAccessTime As FILETIME, lpLastWriteTime As FILETIME) As Long
+Declare Function SystemTimeToFileTime Lib "kernel32" Alias "SystemTimeToFileTime" (lpSystemTime As SYSTEMTIME, lpFileTime As FILETIME) As Long
+Declare Function CreateFile Lib "kernel32" Alias "CreateFileA" (ByVal lpFileName As String, ByVal dwDesiredAccess As Long, ByVal dwShareMode As Long, lpSecurityAttributes As SECURITY_ATTRIBUTES, ByVal dwCreationDisposition As Long, ByVal dwFlagsAndAttributes As Long, ByVal hTemplateFile As Long) As Long
+Private Declare Function CloseHandle Lib "kernel32" (ByVal hObject As Long) As Long
+
+Private Const GENERIC_READ As Long = &H80000000
+Private Const GENERIC_WRITE    As Long = &H40000000
+Private Const FILE_SHARE_READ  As Long = &H1&
+Private Const FILE_SHARE_WRITE As Long = &H2&
+Private Const OPEN_EXISTING    As Long = &H3&
+Private Const FILE_FLAG_BACKUP_SEMANTICS As Long = &H2000000
+Private Const INVALID_HANDLE_VALUE As Long = -&H1&
+'/Ü007 GBA
+
+Public Const SER_ExpAllDocs_ID = "IDExportiereAlleRecDokumente"
+Public Const SER_ExpAllDocs_Name = "Exportiere alle Dokumente der Akte"
+Public Const SER_ExpAllDocs_Help = "Exportiert alle Dokumente der Akte in eine äquivalente Verzeichnisstruktur"
+Public Const SER_ExpAllDocs_SMI = 3
+Public Const SER_ExpAllDocs_LMI = 3
+
+Public Const SER_ExpRLDocs_ID = "IDExportiereAlleRLDokumente"
+Public Const SER_ExpRLDocs_Name = "Exportiere alle Dokumente der Trefferliste"
+Public Const SER_ExpRLDocs_Help = "Exportiert alle Dokumente der Trefferliste in ein Verzeichnis"
+Public Const SER_ExpRLDocs_SMI = 4
+Public Const SER_ExpRLDocs_LMI = 4
+
+
+Public LastStoredDokID As String
+
+Private SER_exportLogFH As Integer
+
+'************************************************************************
+'*	Lokale Objekte
+'************************************************************************
+
+
+'*	Datenbank-Abfragen
+	Dim MyRst As New ADODB.Recordset				'GBA: auf public gesetzt 'MHA: wieder zurück gesetzt, warum glaubst heißt das "my", hm?
+
+
+
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub openLocalRecordset(	ByVal pSQL As String, _
+								Optional ByVal pCallerName As String, _
+								Optional ByVal pCursorType As CursorTypeEnum = adOpenStatic, _
+								Optional ByVal pLockType As LockTypeEnum = adLockReadOnly)
+
+	On Error GoTo ErrorHandler
+
+	If MyRst.State = adStateOpen Then MyRst.Close
+	MyRst.Open pSQL, ASF_DMS_Daten, pCursorType, pLockType
+
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler beim Abfragen von Daten aus der Datenbank ASF_DMS_Daten!", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in openLocalRecordset(" & pSQL & ")" & vbCrLf & "aufgerufen von " & pCallerName, 0
+End Sub
+
+
+
+'************************************************************************
+'*	GLOBALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub ASF_LoadErstellerRecordset()
+
+	Dim rs As ADODB.Recordset
+	Dim rsSort As ADODB.Recordset
+	Dim org As Organisation
+	Dim i As Integer
+	Dim key As String
+
+	On Error GoTo onIni_ERROR
+
+	'Stop
+
+	If Application.Globals.Exists("Ersteller") Then
+		'Application.Globals.Remove("Ersteller")
+		Exit Sub
+	End If
+
+	Set rs = New ADODB.Recordset
+
+	key= "User"
+	rs.Fields.Append key, adVarChar, 50
+	rs.Fields.Append "Vorname", adVarChar, 60
+	rs.Fields.Append "Nachname", adVarChar, 60
+
+	rs.Open
+	rs.Sort = key
+
+	Set org= Application.System.Organisation
+
+	For i= 0 To org.Persons.Count -1
+		rs.AddNew
+		rs(key) = org.Persons(i).Name
+		rs("Vorname") = org.Persons(i).Forename
+		rs("Nachname") = org.Persons(i).Lastname
+		'rs.Update
+	Next i
+
+	rs.Update
+
+
+	Set rsSort = New ADODB.Recordset
+
+	rsSort.Fields.Append key, adVarChar, 50
+	rsSort.Fields.Append "Vorname", adVarChar, 60
+	rsSort.Fields.Append "Nachname", adVarChar, 60
+	rsSort.Open
+	rs.MoveFirst
+
+	Do Until rs.EOF
+		rsSort.AddNew
+		rsSort(key) = rs.Fields(key)
+		rsSort("Vorname") = rs.Fields("Vorname")
+		rsSort("Nachname") = rs.Fields("Nachname")
+		rs.MoveNext
+		'rsSort.Update
+	Loop
+
+	rsSort.Update
+
+	Application.Globals("Ersteller") = rsSort
+	'Set iErsteller.Recordset= rs
+	'iErsteller.Recordset.Sort= "[" & key & "]"
+
+onIni_FIN:
+	Set org= Nothing
+	Set rs= Nothing
+	Set rsSort= Nothing
+	Exit Sub
+onIni_ERROR:
+	Application.ShowError "Fehler beim Laden der Ersteller-Auswahl!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+	GoTo onIni_FIN
+End Sub
+
+
+Public Sub ASF_InitErsteller(ByRef iErsteller As DBRecordSelector, Optional iAbleger As DBRecordSelector) '* Ü005: 2. Parameter
+' Init-Aufruf: ASF_InitErsteller(TabEinordnung_dbrsASFErsteller)
+
+	On Error GoTo IniErst_ERR
+
+	If Not Application.Globals.Exists("Ersteller") Then
+		Call ASF_LoadErstellerRecordset()
+	End If
+
+	If Application.Globals.Exists("Ersteller") Then
+		Set iErsteller.Recordset= Application.Globals("Ersteller")
+		If Not iAbleger Is Nothing Then iAbleger.Recordset= Application.Globals("Ersteller")  '* Ü005
+	End If
+	Exit Sub
+IniErst_ERR:
+	Application.ShowError "Fehler beim Befüllen der Ersteller-Auswahl!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+End Sub
+
+
+Public Sub ASF_ErstellerOpenDlg(ByRef idbrsErsteller As DBRecordSelector, ByRef itbErsteller As Edit)
+'2 Events eintragen:
+'Private Sub TabEinordnung_btnASFErsteller_OnClicked()
+'	ASF_ErstellerOpenDlg(TabEinordnung_dbrsASFErsteller, TabEinordnung_ASFErsteller)
+'End Sub
+
+'Private Sub TabEinordnung_dbrsASFErsteller_OnDialogClosed(ByVal OKButton As Boolean)
+'	If OKButton Then
+'		If TabEinordnung_dbrsASFErsteller.DataCount > 0 Then
+'			TabEinordnung_ASFErsteller.Data= TabEinordnung_dbrsASFErsteller.Data(0)
+'		End If
+'	End If
+'End Sub
+
+	Dim fieldVal As String
+	On Error GoTo Open_Continues
+
+	fieldVal= itbErsteller.Data
+	idbrsErsteller.MultiSelect= False
+	idbrsErsteller.DataMustMatch= False
+
+	If fieldVal = "" Then
+		If idbrsErsteller.DataCount > 0 Then idbrsErsteller.ResetContent
+	Else
+		If idbrsErsteller.DataCount = 0 Then
+			idbrsErsteller.AddData(fieldVal)
+		End If
+		If idbrsErsteller.Data(0) <> fieldVal Then
+			idbrsErsteller.ResetContent
+			idbrsErsteller.AddData(fieldVal)
+		End If
+	End If
+Open_Continues:
+	idbrsErsteller.OpenDialog
+End Sub
+
+'* Ü005
+Public Sub ASF_AblegerOpenDlg(ByRef idbrsAbleger As DBRecordSelector, ByRef iAbleger As Edit)
+	ASF_ErstellerOpenDlg(idbrsAbleger, iAbleger)
+End Sub
+'* /Ü005
+
+Public Function SER_wf_Delegate(ByRef pWorkItem As wfWorkItem, Optional multiSelect As Boolean= False) As Boolean
+
+'*	Lokale Objekte
+	Dim XwfPS As New WFWFDLGSLib.wfParticipantSelect
+	Dim XWFReceivers As wfReceivers
+	Dim errText As String
+	Dim abbrText As String
+	Dim ok As Boolean
+	Dim i As Integer
+
+On Error GoTo ErrorHandler
+
+	errText= "Fehler beim Auswählen des Delegations-Empfängers!"
+	ok= False
+	SER_wf_Delegate= False
+	If pWorkItem Is Nothing Then
+		abbrText= "Abbruch: Kein Workitem übergeben"
+		GoTo AbbruchHandler
+	End If
+
+	With XwfPS
+        .Caption = "Postkorb-Auswahl"
+        .InformationText = "Wählen Sie einen Postkorb zum Delegieren."
+        If multiSelect Then
+        	.SelectMode = wfPS_SM_MultipleSelect
+		Else
+        	.SelectMode = wfPS_SM_SingleSelect
+        End If
+        .DisplayMode = wfPS_DM_Combined
+
+        Set XWFReceivers = .Show(Application.wfSession)
+    End With
+
+    errText= "Fehler beim Delegieren!"
+
+	If Not XWFReceivers Is Nothing Then
+		ok= True							'Abbruch durch Benutzer ist auch ok
+		If XWFReceivers.Count > 0 Then
+			If Not pWorkItem.CurrentWorkBasket Is Nothing Then
+				For i= 0 To XWFReceivers.Count -1
+					If XWFReceivers(i).Name = pWorkItem.CurrentWorkBasket.Name Then
+						XWFReceivers.Remove(i)
+						MsgBox "Das WorkItem befindet sich bereits im Postkorb: " & pWorkItem.CurrentWorkBasket.Name & vbCrLf & _
+								"An diesen Postkorb kann nicht delegiert werden!", vbInformation, "Delegieren"
+					End If
+				Next i
+			End If
+		End If
+		If XWFReceivers.Count > 0 Then
+			pWorkItem.DelegateWI(XWFReceivers)
+			ok= True
+			SER_wf_Delegate= True
+		End If
+	End If
+
+	If ok Then Exit Function				'Delegieren ausgeführt oder Abbruch durch Benutzer
+											'Returnwert (SER_wf_Delegate) gibt an, ob tatsächlich delegiert worden ist
+
+	abbrText= "Delegieren wurde NICHT durchgeführt"
+AbbruchHandler:
+	MsgBox abbrText
+
+	Exit Function
+ErrorHandler:
+	Application.ShowError errText, "Delegate()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+End Function
+
+
+Public Sub ASF_InitErsteller_alt(ByRef iErsteller As DBRecordSelector)
+
+' Init-Aufruf: ASF_InitErsteller(TabEinordnung_dbrsASFErsteller)
+
+' Ersetze: 	TabEinordnung_ASFErsteller.Data= Application.System.User.User
+'		->	TabEinordnung_dbrsASFErsteller.ResetContent
+'		->	TabEinordnung_dbrsASFErsteller.AddData(Application.System.User.User)
+
+	Dim rs As New ADODB.Recordset
+	Dim org As Organisation
+	Dim i As Integer
+	Dim key As String
+
+	On Error GoTo xxERROR
+
+	key= iErsteller.KeyField
+	If key= "" Then
+		iErsteller.KeyField= "User"
+		key= iErsteller.KeyField
+	End If
+
+	If key= "" Then
+		MsgBox "Fehler in DB-Selektor-Feld: Ersteller - Kein Key-Feld definiert!", vbExclamation, "Init Ersteller"
+		GoTo finish
+	End If
+
+	rs.Fields.Append key, adBSTR
+	rs.Open
+	Set org= Application.System.Organisation
+
+	For i= 0 To org.Persons.Count -1
+		rs.AddNew
+		rs(key) = org.Persons(i).Name
+		rs.Update
+	Next i
+
+	Set iErsteller.Recordset= rs
+
+finish:
+	Set org= Nothing
+	Exit Sub
+xxERROR:
+	Application.ShowError "Fehler beim Befüllen der Ersteller-Auswahl!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+	GoTo finish
+End Sub
+
+'Ü006  CR6, Tr7
+
+Public Function SER_CountChar(ByVal stri As String, ByVal cha As String) As Integer
+	Dim i As Integer
+	Dim l As Integer
+	Dim cnt As Integer
+On Error GoTo ERR_MILE
+	cnt= 0
+	SER_CountChar= 0
+	If stri= "" Then Exit Function
+	If cha = "" Then Exit Function
+	l= Len(cha)
+	For i= 1 To Len(stri)
+		If Mid(stri, i, l) = cha Then cnt= cnt + 1
+	Next
+	SER_CountChar= cnt
+	Exit Function
+ERR_MILE:
+	Application.ShowError "Fehler in SER_CountChar!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+End Function
+
+
+'Ü006 GBA Neue Export Funktionen Akte & Trefferliste CR6 Tr7
+Public Function SER_SelectPath(ByVal titel As String, ByVal maxDepth As Integer) As String
+	Dim oShell As Object
+	Dim winFolder As Object
+	Dim curPfad As String
+	Dim pos As String
+	Dim depth As Integer
+
+On Error GoTo ERR_MILE
+
+	pos= "Init"
+	SER_SelectPath= ""
+	exportAllRecDocsErrorShown= False
+
+	pos= "Verzeichnis-Dialog öffnen"
+	Set oShell= CreateObject("Shell.Application")
+
+AGAIN:
+	Set winFolder= oShell.BrowseForFolder(0, "Zielordner wählen", 3)
+
+	pos= "Zielverzeichnis auswerten"
+	curPfad= ""
+	If winFolder Is Nothing Then GoTo FINISH
+
+	curPfad= winFolder.self.Path
+
+	depth= SER_CountChar(curPfad, "\")
+	If depth > maxDepth Then
+
+		If MsgBox("Sie haben ein Verzeichnis der " & depth & ". Ebene gewählt: " & vbCrLf & curPfad & vbCrLf & vbCrLf & _
+					"Bitte wählen Sie ein Verzeichnis der " & maxDepth & ". Ebene aus, um fortzusetzen!", _
+					vbOkCancel, "Verzeichnis auswählen") = vbOK Then
+			GoTo AGAIN
+		End If
+	Else
+		SER_SelectPath= curPfad							'Ergebnis nur unterhalb der max, Verzeichnistiefe akzeptieren
+	End If
+
+FINISH:
+	If curPfad= "" Then
+		MsgBox "Kein Ordner ausgewählt -> Abbruch", vbExclamation, titel
+	End If
+
+	Set oShell= Nothing
+	Set winFolder= Nothing
+
+	Exit Function
+ERR_MILE:
+	Application.ShowError "Fehler in SER_SelectPath!", Err.Source, 0, Err.Number, pos & " " & Err.Description, 0
+	Err.Clear
+End Function
+
+
+Public Function SER_ExportDocsVorbereitung(ByVal titel As String, ByVal verzName As String) As String
+	Dim i As Integer
+	Dim curPfad As String
+	Dim curName As String
+	Dim pos As String
+	Dim fso As Object
+On Error GoTo ERR_MILE
+
+	pos= "Init"
+	''''''''''''''exportAllRecDocsErrorShown= ""
+
+	curPfad= SER_SelectPath(titel, 1)
+
+	If curPfad= "" Then Exit Function
+
+	pos= "Hauptordner anlegen..."
+
+	If verzName= "" Then							'Kein Hauptverzeichnis anlegen -> auch ok -> Ausstieg
+		If Right(curPfad, 1) <> "\" Then curPfad= curPfad & "\"
+		SER_ExportDocsVorbereitung= curPfad
+		Exit Function
+	End If
+
+	curName= verzName
+	'curName= curName & " " & Format(Now, "yyyy-mm-dd hh-nn-ss")
+	curName= SER_FilterString(curName)
+	If Right(curPfad,1) <> "\" Then curPfad= curPfad & "\"
+
+	pos= "Hauptordner anlegen: " & curPfad & " --> " & curName
+	Set fso= CreateObject("Scripting.FileSystemObject")
+	If fso.FolderExists(curPfad & curName) Then
+		MsgBox "Hauptordner existiert bereits -> Abbruch" & vbCrLf & vbCrLf & _
+		                       curPfad & " --> " & curName, vbExclamation, titel
+		GoTo finish
+	End If
+
+	MkDir(curPfad & curName)
+	If fso.FolderExists(curPfad & curName) Then
+		If Right(curPfad, 1) <> "\" Then curPfad= curPfad & "\"
+		curName= SER_FilterString(curName)
+		SER_ExportDocsVorbereitung= curPfad & curName
+	Else
+		MsgBox "Anlegen des Ordners fehlgeschlagen -> Abbruch" & vbCrLf & vbCrLf & curPfad & " --> " & curName, vbExclamation, titel
+	End If
+
+finish:
+	Set fso= Nothing
+
+	Exit Function
+ERR_MILE:
+	Application.ShowError "Fehler in SER_ExportDocsVorbereitung!", Err.Source, 0, Err.Number, pos & " " & Err.Description, 0
+	Err.Clear
+
+	GoTo finish
+End Function
+
+Public Function SER_ExportDocName(ByRef doc As IDocument, ByRef asfDocId As String) As String
+	Dim docName As String
+	Dim desc As IDescriptor
+On Error GoTo ERR_MILE
+	SER_ExportDocName= ""
+	asfDocId= "NoDocID"
+
+	If doc Is Nothing Then Exit Function
+	Set desc= doc.Descriptors.ItemByGUID("56dd9d18-fa70-4ee0-9629-7fdc7f5ac637")
+	If Not desc Is Nothing Then
+		If desc.ValueCount > 0 Then
+			docName= desc.Value(0)
+			asfDocId= desc.Value(0)
+		End If
+	End If
+
+	Set desc= doc.Descriptors.ItemByGUID("6f31de4d-0d91-49a8-9859-3f09b32ac86b")
+	If Not desc Is Nothing Then
+		If desc.ValueCount > 0 Then docName= docName & "_" & desc.Value(0)
+	End If
+
+	SER_ExportDocName= docName
+
+	Exit Function
+ERR_MILE:
+	Application.ShowError "Fehler in SER_ExportDocName!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+End Function
+
+Public Sub SER_MapFileName(ByRef curFileName As String, ByVal docID As String, ByVal expMode As String, ByRef mapList As String)
+	Dim origName As String
+	Dim fileNameWoExt As String
+	Dim fileExt As String
+	Dim extPos As Integer
+	Dim maxLen As Integer
+	Dim iter As Integer
+	Dim fso As Object
+On Error GoTo ERR_MILE
+
+	maxLen= 252
+
+	extPos= InStrRev(curFileName, ".")
+	If extPos > 0 Then
+		fileNameWoExt= Left(curFileName, extPos -1)
+		fileExt= Mid(curFileName, extPos)
+	Else
+		fileNameWoExt= curFileName
+		fileExt= ""
+	End If
+
+	If fileExt <> "" And Len(fileNameWoExt) > Len(fileExt) Then
+		If LCase(Right(fileNameWoExt, Len(fileExt))) = LCase(fileExt) Then	'doppelte Endung korrigieren, kommt wegen untersch. Einbrinung manchmal vor, manchmal nicht
+			extPos= InStrRev(fileNameWoExt, ".")
+			fileNameWoExt= Left(fileNameWoExt, extPos -1)
+			curFileName= fileNameWoExt & fileExt			'Groß-/Klein-Schreibung könnte bei den doppelten Endungen untersch. sein
+		End If
+	End If
+	origName= curFileName									'Filename, so wie er sein sollte
+
+	Set fso= CreateObject("Scripting.FileSystemObject")
+	If fso Is Nothing Then
+		mapList= mapList & ";" & curFileName & " fso FileSystemObject anlegen fehlgeschlagen!"
+		curFileName= ""
+		Exit Sub
+	End If
+
+	iter= -1
+AGAIN:
+	iter= iter + 1
+
+	If iter = 1 Then maxLen= maxLen -4			'doppelte Dateinamen berücksichtigen
+
+	If iter > 999 Then
+		mapList= mapList & ";" & curFileName & " nicht gespeichert - 1000 doppelte Dateinamen"
+		curFileName= ""
+		Exit Sub
+	End If
+
+	If Len(curFileName) > maxLen Or iter > 0 Then
+		curFileName= Left(fileNameWoExt, maxLen - Len(extPos))
+		If iter > 0 Then curFileName= curFileName & "_" & Format(iter, "000")
+		curFileName= curFileName & fileExt
+	End If
+
+	If fso.fileExists(curFileName) Then GoTo AGAIN
+	Set fso= Nothing
+
+	If curFileName <> origName Then
+		If LCase(expMode)= "reslist" Then
+			mapList= mapList & ";" & curFileName & "  ...  " & docID
+		End If
+		If LCase(expMode)= "rec-test" Then
+			If iter = 0 Then mapList= "2 long"	'vorhandener Dateiname ist egal
+		End If
+	End If
+
+	Exit Sub
+ERR_MILE:
+	Application.ShowError "Fehler in SER_MapFileName!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+	Set fso= Nothing
+End Sub
+
+Public Function SER_GetFileExtension(ByRef curData As DocData) As String
+	Dim extPos As Integer
+On Error GoTo ERR_MILE
+	SER_GetFileExtension= ""
+	extPos= InStrRev(curData.fileName, ".")
+	If extPos > 0 Then SER_GetFileExtension= Mid(curData.fileName, extPos)
+Exit Function
+ERR_MILE:
+	Application.ShowError "Fehler in SER_GetFileExtension!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+End Function
+
+Public Sub SER_ExportDocByIdOrDoc(ByVal docID As String, ByRef curIDoc As IDocument, ByVal doItReal As Boolean, ByVal startPfad As String, ByVal curPfad As String, ByVal expMode As String, ByRef mapList As String)
+	Dim curDoc As ItaDocument
+	Dim curRep As IRepresentation
+	Dim i As Integer
+	Dim curFileName As String
+	Dim curDocName As String
+	Dim curData As DocData
+	Dim asfDocId As String
+	Dim ext As String
+	Dim fsoFile As Object
+	Dim flatMap As String
+	Dim curPfad_copy As String
+On Error GoTo ERR_MILE
+
+	''mapList= ""
+	If docID= "" And curIDoc Is Nothing Then Exit Sub
+	If curIDoc Is Nothing Then Set curIDoc= Application.System.GetDocumentDirect(docID)
+	If curIDoc Is Nothing Then Exit Sub
+	If curIDoc.Type <> TDocumentType.ItaDocument Then Exit Sub
+
+	Set curDoc= curIDoc																	'auf aktuelle Version wechseln
+	If Not curDoc.CurrentVersion Then Set curIDoc= Application.System.GetDocumentDirect(curDoc.DocumentIDCurrentVersion)
+	If curIDoc Is Nothing Then Exit Sub
+	Set curDoc= curIDoc
+
+	If curDoc.Representations.Count = 0 Then Exit Sub
+	Set curRep= curDoc.Representations(curDoc.Representations.DefaultRepresentation)
+	If curRep.PartDocuments.Count = 0 Then Exit Sub
+
+	curDocName= SER_ExportDocName(curDoc, asfDocId)
+	If curDocName = "" Then curDocName= "Keine DocID und kein Dokumentname gefunden"
+
+	If LCase(expMode) = "rec-flat" Then
+		curPfad_copy= curPfad
+	End If
+
+	For i= 0 To curRep.PartDocuments.Count -1
+		Set curData= curRep.PartDocuments(i).DataObject
+		ext= SER_GetFileExtension(curData)
+		If LCase(expMode) = "rec-flat" Then
+			curPfad= curPfad_copy
+			flatMap= curPfad
+			curPfad= startPfad
+		End If
+		If curRep.PartDocuments.Count = 1 Then
+			curFileName= curPfad & curDocName & ext										'Dateiname Single-Part-Dokument
+		Else
+			curFileName= curPfad & "MD_" & Format(i+1, "00") & "_" & curDocName & ext	'Dateiname Multi-Part-Dokument
+		End If
+
+		SER_MapFileName(curFileName, asfDocId, expMode, mapList)
+
+		If LCase(expMode) = "rec-flat" Then
+			'flat: LogFile der die Felder Pfad - Dateiname - Dok_ID enthält
+			'curFileName basiert auch hier auf curPfad - curPfad beginnt aber mit Leerstring
+			'Der Part-Dok-Inhalt soll aber auf startPfad gespeichert werden.
+			mapList= ""
+			SER_MapFileName(curFileName, asfDocId, expMode, mapList)
+			flatMap= flatMap & " - " & Mid(curFileName, Len(startPfad) + 1) & " - " & asfDocId
+			Print #SER_exportLogFH, flatMap
+		End If
+
+		If doItReal Then
+			curData.SaveData(curFileName)
+			SER_SetFileDateByDocDescriptor(curFileName, curDoc, "635b8a4b-f8b4-4fa5-aa1c-201326adc76d")
+		Else
+			If mapList <> "" Then Exit Sub												'Test-Modus (Akte): Abbruch, da Mapping notwendig
+		End If
+	Next i
+
+	Exit Sub
+ERR_MILE:
+	Application.ShowError "Fehler in SER_ExportDocByIdOrDoc!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+End Sub
+
+'Ü007
+Public Sub SER_SetFileDateByDocDescriptor(ByVal fileName As String, ByRef doc As IDocument, ByVal descGUID As String)
+	Dim timeDescriptorValue As String
+	Dim myTimeDescriptor As Descriptor
+	Dim myNewDate As String
+	Dim myNewSystemTime As SYSTEMTIME
+	Dim myNewFileTime As FILETIME
+	Dim hFile As Long
+	Dim DebugV As Long
+	Dim splittedDate() As String
+	Dim fHand As Long
+	Dim secObj As SECURITY_ATTRIBUTES
+	Dim fOpen As Boolean
+On Error GoTo ERR_MILE
+
+	fOpen= False
+
+	If fileName = "" Then Exit Sub
+	If descGUID = "" Then Exit Sub
+	If doc Is Nothing Then Exit Sub
+
+	Set myTimeDescriptor = doc.Descriptors.ItemByGUID(descGUID)
+	If myTimeDescriptor Is Nothing Then Exit Sub
+	If myTimeDescriptor.ValueCount = 0 Then Exit Sub
+
+	'Dim xDate As IDate
+	'Set xDate= myTimeDescriptor
+
+	myNewDate = myTimeDescriptor.Value(0)
+
+	myNewDate= Replace(myNewDate, ".", ";")
+	myNewDate= Replace(myNewDate, "-", ";")
+	myNewDate= Replace(myNewDate, "/", ";")
+
+	splittedDate = Split(myNewDate, ";")
+
+	myNewSystemTime.wDay = CInt(splittedDate(0))
+	myNewSystemTime.wMonth = CInt(splittedDate(1))
+	myNewSystemTime.wYear = CInt(splittedDate(2))
+
+	DebugV = SystemTimeToFileTime(myNewSystemTime, myNewFileTime)
+
+	fHand = CreateFile(fileName, GENERIC_WRITE, FILE_SHARE_WRITE, secObj, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0)
+	fOpen= True
+
+	SetFileTime(fHand, myNewFileTime, myNewFileTime, myNewFileTime)
+	CloseHandle(fHand)
+
+	Exit Sub
+ERR_MILE:
+	Application.ShowError "Fehler in SER_SetFileDateByDocDescriptor!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+	If fOpen Then CloseHandle(fHand)
+End Sub
+'/Ü007
+
+Public Sub SER_ExportResultListDocs(ByRef iAkte As Object, ByRef selNode As Object, ByRef resWin As ResultWindow)
+	Dim curPfad As String
+	Dim i As Integer
+	Dim curNode As CNode
+	Dim curElem As CElement
+	Dim mapList As String
+	Dim mapArr() As String
+	Dim fn As Integer
+	Dim curDoc As IDocument
+	Dim resSet As IResultset
+On Error GoTo ERR_MILE
+
+	curPfad= SER_ExportDocsVorbereitung("Trefferliste exportieren", "")
+	If curPfad= "" Then Exit Sub
+
+	mapList= ""
+	If Not selNode Is Nothing Then
+		Set curNode= selNode
+		For i= 0 To curNode.Elements.Count -1
+			Set curElem= curNode.Elements(i)
+			If Not curElem Is Nothing Then
+				SER_ExportDocByIdOrDoc(curElem.Link, Nothing, True, "", curPfad, "ResList", mapList)
+			End If
+		Next i
+	Else
+		'reswin.ResultList.Resultset.AvailableCount -> 5
+		If Not resWin Is Nothing Then
+			If Not resWin.ResultList Is Nothing Then
+				Set resSet= resWin.ResultList.Resultset
+				If Not resSet Is Nothing Then
+					For i= 0 To resSet.AvailableCount -1
+						Set curDoc= resSet.Document(i)
+						SER_ExportDocByIdOrDoc("", curDoc, True, "", curPfad, "ResList", mapList)
+					Next i
+				End If
+			End If
+		End If
+	End If
+
+	If mapList <> "" Then
+		fn = FreeFile
+		Open (curPfad & "ExportLog.txt") For Output As #fn
+		Print #fn, "Abgekürzte Dateinamen:"
+		Print #fn, ""
+
+		mapArr= Split(mapList, ";")
+		For i= LBound(mapArr) To UBound(mapArr)
+			If mapArr(i) <> "" Then Print #fn, mapArr(i)
+		Next i
+		Print #fn, ""
+		Print #fn, "Ende"
+		Close #fn
+	End If
+
+	MsgBox "Export der Trefferliste abgeschlossen", vbInformation, "Export"
+
+	Exit Sub
+ERR_MILE:
+	Application.ShowError "Fehler in SER_ExportResultListDocs!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+End Sub
+
+
+Public Sub SER_ExportAllRecordDocs(ByRef iAkte As Object, Optional aktBez As String = "")
+
+	Dim curAkte As ItaFolder
+	Dim i As Integer
+	Dim oShell As Object
+	Dim fso As Object
+	Dim winFolder As Object
+	Dim curPfad As String
+	Dim curName As String
+	Dim titel As String
+	Dim pos As String
+	Dim dokFehler As Integer
+	Dim mft As FolderType
+	Dim retFehler As Integer
+	Dim tooLong As Boolean
+	Dim mapList As String
+	Dim expModeTxt As String
+	Dim startPfad As String
+On Error GoTo ERR_MILE
+
+	curName= ""
+	Set curAkte= iAkte
+	If 1=2 Then						'falls Hauptordner noch/wieder erwünscht ist
+		pos= "Hauptordner bestimmen..."
+
+		If aktBez= "" Then
+			curName= curAkte.Name
+			'application.System.FolderTypes.ItemByGUID(curakte.FolderTypeGUID).Name -> "AIG Projektakte"
+			Set mft= Application.System.FolderTypes.ItemByGUID(curAkte.FolderTypeGUID)
+			If Not mft Is Nothing Then
+				curName= mft.Name
+			End If
+			If curName= "" Then curName= "DOXiS4 Akte"
+		Else
+			curName= aktBez
+		End If
+	End If
+
+	pos= "Vorbereitung..."
+	curPfad= SER_ExportDocsVorbereitung("Ganze Akte exportieren", curName)
+	If curPfad= "" Then Exit Sub
+
+	pos= "Register exportieren - Testlauf"
+	mapList= ""
+	dokFehler= 0
+	tooLong= False
+	For i= 0 To curAkte.Nodes.Count -1
+		SER_ExportNodeAdvanced(curAkte.Nodes(i), startPfad, curPfad, "REC-Test", mapList, retFehler)
+		If mapList = "2 long" Then
+			tooLong= True
+			Exit For
+		End If
+	Next i
+
+	mapList= ""
+	retFehler= 0
+	startPfad= curPfad
+	If tooLong Then
+		pos= "Register exportieren - Echtlauf - flach (flat)"
+		expModeTxt= vbCrLf & "(Flacher Export da Dateinamen zu lange)"
+
+		SER_exportLogFH = FreeFile
+
+		Open (curPfad & "ExportLog.txt") For Output As #SER_exportLogFH
+		Print #SER_exportLogFH, "Ort der Dokumente innerhalb der Akte:"
+		Print #SER_exportLogFH, ""
+		For i= 0 To curAkte.Nodes.Count -1
+			SER_ExportNodeAdvanced(curAkte.Nodes(i), startPfad, "", "REC-Flat", mapList, retFehler)
+															   'x ... curPfad beginnt hier leer
+		Next i
+		Print #SER_exportLogFH, ""
+		Print #SER_exportLogFH, "Ende"
+		Close #SER_exportLogFH
+	Else
+		pos= "Register exportieren - Echtlauf - verschachtelt (nested)"
+		expModeTxt= vbCrLf & "(Hierarchisch verschachtelter Export da ausreichend kurze Dateinamen)"
+		For i= 0 To curAkte.Nodes.Count -1
+			SER_ExportNodeAdvanced(curAkte.Nodes(i), startPfad, startPfad, "REC-Nested", mapList, retFehler)
+		Next i
+	End If
+
+	pos= "Abschluss"
+	If retFehler < 10000 Then
+		titel = "Ganze Akte exportieren"
+		If dokFehler = 0 Then
+			MsgBox "Exportieren aller Aktendokumente abgeschlossen!" & expModeTxt, vbInformation, titel
+		Else
+			MsgBox "Beim Exportieren der Aktendokumente sind " & dokFehler & " Fehler aufgetreten." & expModeTxt, vbExclamation, titel
+		End If
+	End If
+
+	Exit Sub
+ERR_MILE:
+	Application.ShowError "Fehler in SER_ExportAllRecordDocs!", Err.Source, 0, Err.Number, pos & " " & Err.Description, 0
+	Err.Clear
+End Sub
+
+Public Sub SER_ExportNodeAdvanced(ByVal curNode As CNode, ByVal startPfad As String, ByVal curPfad As String, ByVal expMode As String, ByRef mapList As String, ByRef fehlerCnt As Integer)
+
+	Dim curFehler As Integer
+	'Dim curObj As Object
+	Dim fso As Object
+	Dim ciDoc As IDocument
+	Dim curDoc As ItaDocument
+	Dim i As Integer
+	Dim subPfad As String
+	Dim curElem As IElement
+
+On Error GoTo ERR_MILE
+
+	If curNode.Elements.Count = 0 And _
+	   curNode.ChildNodes.Count = 0 Then
+		Exit Sub							' Leeres Register = Rekursionsboden
+	End If
+
+	If fehlerCnt >= 1000 Then Exit Sub		' Abbruch
+
+	subPfad= SER_FilterString(curNode.Name)
+	If subPfad = "" Then subPfad = "NoRegName"
+	curPfad= curPfad & subPfad & "\"
+
+	If LCase(expMode) = "rec-test" Then
+		For i= 0 To curNode.Elements.Count -1
+			Set curElem= curNode.Elements(i)
+			If Not curElem Is Nothing Then
+				SER_ExportDocByIdOrDoc(curElem.Link, Nothing, False, startPfad, curPfad, expMode, mapList)
+				If mapList = "2 long" Then Exit Sub
+			End If
+		Next i
+
+		For i= 0 To curNode.ChildNodes.Count -1
+			SER_ExportNodeAdvanced(curNode.ChildNodes(i), startPfad, curPfad, expMode, mapList, fehlerCnt)
+			If mapList = "2 long" Then Exit Sub
+		Next i
+
+	ElseIf LCase(expMode) = "rec-nested" Then				'Bei doppelten Dateiname (wegen eindeutiger ASF-DocID eigentl. nicht möglich)
+															'könnten hier Mappings in Form von Laufnummern (und dann ggf Abschneiden nötig werden
+		mapList= ""											'diese werden nicht protokolliert, da wegen ASF-DocID nicht möglich
+		Set fso= CreateObject("Scripting.FileSystemObject")
+		If fso.FolderExists(curPfad) Then
+			fehlerCnt= fehlerCnt + 10000
+			MsgBox "Sub-Ordner bereits vorhanden -> Abbruch" & vbCrLf & vbCrLf & curPfad & _
+						vbCrLf & vbCrLf & "Bitte wählen Sie ein leeres Exportverzeichnus aus.", vbExclamation, "Export Register"
+			Exit Sub
+		End If
+		MkDir(curPfad)
+		If Not fso.FolderExists(curPfad) Then
+			MsgBox "Anlegen des Ordners fehlgeschlagen -> Abbruch" & vbCrLf & vbCrLf & curPfad , vbExclamation, "Export Register"
+			Exit Sub
+		End If
+		For i= 0 To curNode.Elements.Count -1
+			Set curElem= curNode.Elements(i)
+			If Not curElem Is Nothing Then
+				SER_ExportDocByIdOrDoc(curElem.Link, Nothing, True, startPfad, curPfad, expMode, mapList)
+			End If
+		Next i
+
+		For i= 0 To curNode.ChildNodes.Count -1
+			SER_ExportNodeAdvanced(curNode.ChildNodes(i), startPfad, curPfad, expMode, mapList, fehlerCnt)
+		Next i
+
+	ElseIf LCase(expMode) = "rec-flat" Then
+
+		For i= 0 To curNode.Elements.Count -1
+			Set curElem= curNode.Elements(i)
+			If Not curElem Is Nothing Then
+				SER_ExportDocByIdOrDoc(curElem.Link, Nothing, True, startPfad, curPfad, expMode, mapList)
+			End If
+		Next i
+
+		For i= 0 To curNode.ChildNodes.Count -1
+			SER_ExportNodeAdvanced(curNode.ChildNodes(i), startPfad, curPfad, expMode, mapList, fehlerCnt)
+		Next i
+	End If
+
+	Set fso= Nothing
+	Exit Sub
+ERR_MILE:
+	Application.ShowError "Fehler in SER_ExportNodeAdvanced!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+	Set fso= Nothing
+End Sub
+
+'/Ü006 GBA Neue Export Funktionen Akte & Trefferliste CR6 Tr7
+
+Public Sub SER_ExportAllRecordDocsxxxxxxxxx___ALT___ALT___ALT(ByRef iAkte As Object, Optional aktBez As String = "")
+
+	Dim curAkte As ItaFolder
+	Dim i As Integer
+	Dim oShell As Object
+	Dim fso As Object
+	Dim winFolder As Object
+	Dim curPfad As String
+	Dim curName As String
+	Dim titel As String
+	Dim pos As String
+	Dim dokFehler As Integer
+	Dim mft As FolderType
+
+
+	On Error GoTo EXPORTREC_ERR
+
+	'Exit Sub
+	pos= "Init"
+	exportAllRecDocsErrorShown= False
+	Set curAkte= iAkte
+	titel = "Ganze Akte exportieren"
+
+	pos= "Verzeichnis-Dialog öffnen"
+	Set oShell= CreateObject("Shell.Application")
+	Set winFolder= oShell.BrowseForFolder(0, "Zielordner wählen", 3)
+
+	pos= "Zielverzeichnis auswerten"
+	curPfad= ""
+	On Error Resume Next
+	curPfad= winFolder.self.Path
+
+	On Error GoTo EXPORTREC_ERR
+
+	If curPfad= "" Then
+		MsgBox "Kein Ordner ausgewählt -> Abbruch", vbExclamation, titel
+		GoTo finish
+	End If
+
+	pos= "Hauptordner anlegen..."
+
+	If aktBez= "" Then
+		curName= curAkte.Name
+		'application.System.FolderTypes.ItemByGUID(curakte.FolderTypeGUID).Name -> "AIG Projektakte"
+		Set mft= Application.System.FolderTypes.ItemByGUID(curAkte.FolderTypeGUID)
+		If Not mft Is Nothing Then
+			curName= mft.Name
+		End If
+		If curName= "" Then curName= "DOXiS4 Akte"
+	Else
+		curName= aktBez
+	End If
+
+	curName= curName & " " & Format(Now, "yyyy-mm-dd hh-nn-ss")
+	curName= SER_FilterString(curName)
+	If Right(curPfad,1) <> "\" Then curPfad= curPfad & "\"
+
+	pos= "Hauptordner anlegen: " & curPfad & " --> " & curName
+	Set fso= CreateObject("Scripting.FileSystemObject")
+	If fso.FolderExists(curPfad & curName) Then
+		MsgBox "Hauptordner existiert bereits -> Abbruch" & vbCrLf & vbCrLf & _
+		                       curPfad & " --> " & curName, vbExclamation, titel
+		GoTo finish
+	End If
+	MkDir(curPfad & curName)
+	If Not fso.FolderExists(curPfad & curName) Then
+		MsgBox "Anlegen des Ordners fehlgeschlagen -> Abbruch" & vbCrLf & vbCrLf & curPfad & " --> " & curName, vbExclamation, titel
+		GoTo finish
+	End If
+
+	curPfad= curPfad & curName
+
+	pos= "Register exportieren"
+	dokFehler= 0
+	For i= 0 To curAkte.Nodes.Count -1
+		dokFehler= dokFehler + ExportNode(curAkte.Nodes(i), curPfad)
+	Next i
+
+	If dokFehler = 0 Then
+		MsgBox "Exportieren abgeschlossen!", vbInformation, titel
+	Else
+		MsgBox "Beim Exportieren der Aktendokumente sind " & dokFehler & " Fehler aufgetreten.", vbExclamation, titel
+	End If
+
+finish:
+	Set curAkte= Nothing
+	Set oShell= Nothing
+	Set winFolder= Nothing
+	Set fso= Nothing
+
+	Exit Sub
+EXPORTREC_ERR:
+	If pos <> "" Then pos= pos & vbCrLf
+	Application.ShowError "Fehler beim Exportieren der Aktendokumente!", Err.Source, 0, Err.Number, pos & Err.Description, 0
+	Err.Clear
+	GoTo finish
+End Sub
+
+
+Private exportAllRecDocsErrorShown As Boolean
+Private Sub ShowExportAllRecDocsError(ByVal fileName As String)
+On Error GoTo xxERROR
+	If exportAllRecDocsErrorShown Then Exit Sub
+	MsgBox "Dateipfad zu lang!" & vbCrLf & vbCrLf & _
+			"Der angegebene Zielpfad zum Exportieren aller Aktendokumente + Registernamen + Mindest-Dateiname" & vbCrLf & _
+			"sind zusammen zu lang!" & vbCrLf & vbCrLf & _
+			"Windows erlaubt maximal eine Gesamtlänge für Pfad- und Dateiname von 255 Zeichen." & vbCrLf & _
+			"(Bei Verzeichnissen noch weniger)" & vbCrLf & vbCrLf & _
+			"Bitte exportieren Sie die Akte an einer höheren Ebene im Dateisystem." & vbCrLf & _
+			"z.B.: C:\" & vbCrLf & vbCrLf & fileName, vbExclamation, "Dateipfad zu lang!"
+	exportAllRecDocsErrorShown= True
+	Exit Sub
+xxERROR:
+	Application.ShowError "Fehler in ShowExportAllRecDocsError (glob Skript)!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+End Sub
+
+Private Function ExportNode(ByVal xNode As INode, ByVal curPfad As String) As Integer
+	Dim curFehler As Integer
+	'Dim curObj As Object
+	Dim fso As Object
+	Dim ciDoc As IDocument
+	Dim curDoc As ItaDocument
+	Dim curRep As Representation
+	Dim curData As DocData
+	Dim curDName As String
+	Dim curfName As String
+	Dim i As Integer
+	Dim j As Integer
+	Dim k As Integer
+	Dim docAlias As String
+	Dim docExt As String
+
+	On Error GoTo xxERROR
+
+	ExportNode= 0
+
+	'testen, ob Node leer, dann abbruch)
+	If xNode.Elements.Count = 0 And _
+	   xNode.ChildNodes.Count = 0 Then
+		GoTo finish
+	End If
+
+	If Right(curPfad,1) <> "\" Then curPfad= curPfad & "\"
+	Set fso= CreateObject("Scripting.FileSystemObject")
+
+	k=0
+	curDName= SER_FilterString("_Reg_" & Format(xNode.Index+1, "000 ") & xNode.Name)
+	Do While fso.FolderExists(curPfad & curDName)
+		k= k+1
+		curDName= SER_FilterString("_Reg_" & Format(xNode.Index+1, "000 ") & xNode.Name & " x" & k)
+	Loop
+
+	If Len(curPfad) + Len(curDName) > 242 Then
+		ShowExportAllRecDocsError(curPfad & curDName)
+		ExportNode= ExportNode + 1
+		Exit Function
+	End If
+
+	MkDir(curPfad & curDName)
+	If Not fso.FolderExists(curPfad & curDName) Then
+		MsgBox "Anlegen des Ordners fehlgeschlagen -> Abbruch" & vbCrLf & vbCrLf & curPfad & " --> " & curDName, vbExclamation, "ExportNode"
+		GoTo finish
+	End If
+
+	curPfad= curPfad & curDName
+	If Right(curPfad,1) <> "\" Then curPfad= curPfad & "\"
+
+	For i= 0 To xNode.Elements.Count -1					'Dokumente durchlaufen
+		If xNode.Elements(i).Link <> "" Then
+
+			'Set curDoc= Application.System.GetDocumentDirect(xNode.Elements(i).Link)
+			Set ciDoc= Application.System.GetDocumentDirect(xNode.Elements(i).Link)					'GBA 2013-12-03
+			Set curDoc= Nothing
+			If ciDoc.Type= TDocumentType.ItaDocument Then
+				Set curDoc= ciDoc
+			End If
+
+			If Not curDoc Is Nothing Then
+				If Not curDoc.CurrentVersion Then Set curDoc= Application.System.GetDocumentDirect(curDoc.DocumentIDCurrentVersion)
+			End If
+			If Not curDoc Is Nothing Then															'/GBA 2013-12-03
+				If curDoc.Representations.Count > 0 Then
+					Set curRep= curDoc.Representations(curDoc.Representations.DefaultRepresentation)
+					If curRep.PartDocuments.Count > 1 Then
+						curDName= SER_FilterString("Doc_" & Format(i+1,"000 ") & xNode.Name)
+						k= 0
+						Do While (fso.FolderExists(curPfad & curDName))
+							k= k+1
+							curDName= SER_FilterString("Doc_" & Format(i+1,"000 ") & xNode.Name & " x" & k)
+						Loop
+						MkDir(curPfad & curDName)
+						curDName= curDName & "\"
+						If fso.FolderExists(curPfad & curDName) Then
+							For j= 0 To curRep.PartDocuments.Count -1
+								Set curData= curRep.PartDocuments(j).DataObject
+								curfName= SER_FilterString("Doc_" & Format(i+1,"000 ") & "Part_" & Format(j+1, "000 ") & xNode.Name & " ")
+								'curfName= curfName & Left(fso.GetFileName(curData.Alias),20) & "." & fso.GetExtensionName(curData.Alias)
+
+								docAlias= fso.GetFileName(curData.Alias)
+								docExt= "." & fso.GetExtensionName(curData.Alias)
+								If Len(curPfad) + Len(curfName) + Len(docExt) > 252 Then
+									ShowExportAllRecDocsError(curPfad & curfName & docAlias)
+									ExportNode= ExportNode + 1
+								Else
+									docAlias= SER_FilterString(Left(docAlias, InStrRev(docAlias, ".") -1))
+									curfName= Left(curfName & docAlias, 253 - Len(docExt)) & docExt
+									curData.SaveData(curPfad & curDName & curfName)
+								End If
+							Next j
+						Else
+							'SubOrdner anlegen fehlgeschlagen
+							ExportNode= ExportNode + 1
+						End If
+
+					ElseIf curRep.PartDocuments.Count = 1 Then
+						Set curData= curRep.PartDocuments(0).DataObject
+						curfName= SER_FilterString("Doc_" & Format(i+1,"000 ") & xNode.Name & " ")
+						'curfName= curfName & Left(fso.GetFileName(curData.Alias),20) & "." & fso.GetExtensionName(curData.Alias)
+
+						docAlias= fso.GetFileName(curData.Alias)
+						docExt= "." & fso.GetExtensionName(curData.Alias)
+						If Len(curPfad) + Len(curfName) + Len(docExt) > 252 Then
+							ShowExportAllRecDocsError(curPfad & curfName & docAlias)
+							ExportNode= ExportNode + 1
+						Else
+							docAlias= SER_FilterString(Left(docAlias, InStrRev(docAlias, ".") -1))
+							curfName= Left(curfName & docAlias, 252 - Len(docExt)) & docExt
+							curData.SaveData(curPfad & curfName)
+						End If
+					End If
+				End If
+			End If
+		End If
+	Next i
+
+	For i= 0 To xNode.ChildNodes.Count -1
+		curDName= xNode.ChildNodes(i).Name
+		ExportNode= ExportNode + ExportNode(xNode.ChildNodes(i), curPfad)
+	Next i
+
+	Exit Function
+finish:
+	Set fso= Nothing
+	Set curDoc= Nothing
+	Set curRep = Nothing
+	Set curData= Nothing
+
+	Exit Function
+xxERROR:
+	ExportNode= ExportNode + 1
+	Err.Clear
+	GoTo finish
+End Function
+
+
+Public Const STR_FILTER= "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜabcdefghijklmnopqrstuvwxyzäöüß0123456789 _.-"
+Public Function SER_FilterString(iStr As String)As String
+	Dim i As Integer
+	Dim max As Integer
+	Dim c As String
+
+	On Error GoTo filter_ERR
+
+	max= Len(iStr)
+	For i=1 To max
+		c= Mid(iStr,i,1)
+		If InStr(STR_FILTER, c)> 0 Then SER_FilterString= SER_FilterString & c
+	Next i
+
+	Exit Function
+filter_ERR:
+	SER_FilterString= iStr
+	Err.Clear
+End Function
+
+
+Public Sub ASF_doRetentionRule(ByRef pDoc As IDocument, ruleEvent As String, Optional ByVal dokArt As String, _
+						Optional ByRef rmbDat As IDate, Optional ByRef erstDat As IDate, Optional ByRef anlassDat As IDate)
+
+	'Dim dokArt As String
+	Dim myDesk As IDescriptor
+	Dim myDeskGUID As String
+	'Dim dokartVal As String
+	Dim myDoc As ItaDocument		'ItaDocument -> geht NICHT mit Akten, aber IDocument hat keine Retention-Members
+	Dim myMsg As String
+	Dim xt As String
+	Dim retPName As String
+	Dim retPEvent As String
+	Dim retRuleGUID As String
+	Dim retRule As RetentionRule
+
+	On Error GoTo ASF_doRetRule_Exception
+
+	If pDoc Is Nothing Then myMsg= "pDoc Is Nothing": GoTo ASF_doRetRule_ERR
+	If ruleEvent = "" Then myMsg= "ruleEvent = leer": GoTo ASF_doRetRule_ERR
+
+	Set myDoc = pDoc
+	ruleEvent= UCase(Left(ruleEvent,1))
+	If ruleEvent= "A" Then
+		If dokArt = "" Then myMsg= "Bei der Ablage muss die Dokumentart angegeben/übergeben werden": GoTo ASF_doRetRule_ERR
+	Else
+		myDeskGUID= Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Art").GUID
+		Set myDesk= myDoc.Descriptors.ItemByGUID(myDeskGUID)
+		If myDesk Is Nothing Then myMsg= "Dokumentart-Deskriptor nicht gefunden": GoTo ASF_doRetRule_ERR
+		If myDesk.ValueCount = 0 Then myMsg= "Dokumentart-Deskriptor hat keinen Wert": GoTo ASF_doRetRule_ERR
+		dokArt= myDesk.Value(0)
+	End If
+
+	xt = "SELECT * FROM Dokumentarten WHERE Name = '" & dokArt & "'"
+	openLocalRecordset xt, "ASF_doRetentionRule"
+	retPName= ""
+	retPEvent= ""
+	With MyRst
+		If Not .EOF Then
+			.MoveFirst
+			While Not .EOF
+				If .Fields("RetentionPolicy").ACTUALSIZE > 0 Then retPName= .Fields("RetentionPolicy")
+				If .Fields("RetentionEvent").ACTUALSIZE > 0 Then retPEvent= .Fields("RetentionEvent")
+				GoTo afterDB
+				.MoveLast
+				.MoveNext
+			Wend
+		End If
+	End With
+afterDB:
+
+	If retPName= "" And retPEvent= "" Then Exit Sub      '****	normaler Ausstieg - nichts zu tun!
+
+	If retPName= "" Or retPEvent= "" Then
+		myMsg= "Retention-Management:" & vbCrLf & vbCrLf & _
+				"Für die Dokumentart: " & dokArt & " ist nur 1 von 2 Werten für das Retention Management gesetzt." &vbCrLf & _
+				"RetentionPolicy= " & retPName & vbCrLf & "RetentionEvent= " & retPEvent & vbCrLf & _
+				"DB-Tabelle= Dokumentarten"
+		GoTo ASF_doRetRule_ERR
+	End If
+
+	'ruleEvent= UCase(Left(ruleEvent,1))   oben
+	retPEvent= UCase(Left(retPEvent,1))
+	If ruleEvent = "A" And retPEvent = "E" Then ruleEvent= "E"      'Anlage & Eingang sind gleiches Event
+
+	If ruleEvent <> retPEvent Then Exit Sub				'****	normaler Ausstieg - nichts zu tun!
+
+	Select Case(ruleEvent)
+	Case "E"
+		If rmbDat Is Nothing Then myMsg= "Control RMBasisDat muss bei der Ablage übergeben werden": GoTo ASF_doRetRule_ERR
+		If anlassDat Is Nothing Then
+			myMsg= "Control AnlassDatum muss bei der Ablage übergeben werden" & vbCrLf & vbCrLf & _
+			"In der Baubestands-DokKlasse gibt es kein Anlassdatum - Dokumentart hat aber RetentionEvent mit Eingangsdatum gesetzt" & vbCrLf & _
+			"(DB-Tabelle: Dokumentarten)"
+			GoTo ASF_doRetRule_ERR
+		End If
+		If anlassDat.Empty Then
+			myMsg= "Das Anlassdatum ist nicht gesetzt!": GoTo ASF_doRetRule_ERR
+		Else
+			If rmbDat.Empty Then
+				rmbDat.Data= anlassDat.Data
+			Else
+				If anlassDat.Data > rmbDat.Data Then rmbDat.Data= anlassDat.Data
+			End If
+		End If
+	Case "A"
+		If rmbDat Is Nothing Then myMsg= "Control RMBasisDat muss bei der Ablage übergeben werden": GoTo ASF_doRetRule_ERR
+		If erstDat Is Nothing Then myMsg= "Control ErstellDatum muss bei der Ablage übergeben werden": GoTo ASF_doRetRule_ERR
+		If erstDat.Empty Then		'--> dok ist (noch) NICHT archiviert
+			If rmbDat.Empty Then rmbDat.Data= Now
+		Else
+			If rmbDat.Empty Then
+				rmbDat.Data= erstDat.Data
+			Else
+				If erstDat.Data > rmbDat.Data Then
+					rmbDat.Data= erstDat.Data
+				End If
+			End If
+		End If
+	Case Else
+	End Select
+
+	If ruleEvent = "E" Then
+		'myDeskGUID= Application.System.DescriptorDefinitions.ItemByName("ASF_Anlassdatum").GUID
+		'Set myDesk= myDoc.Descriptors.ItemByGUID(myDeskGUID)
+		'If myDesk Is Nothing Then myMsg= "Deskriptor: ASF_Anlassdatum nicht gefunden": GoTo ASF_doRetRule_ERR
+		'If myDesk.ValueCount = 0 Then myMsg= "Deskriptor: ASF_Anlassdatum hat keinen Wert": GoTo ASF_doRetRule_ERR
+		'myDoc.RetentionBaseDate= myDesk.Value(0)
+	Else
+		'myDoc.RetentionBaseDate= Now
+	End If
+
+	Set retRule= Application.System.RetentionRules.ItemByName(retPName)
+	If retRule Is Nothing Then myMsg= "RetentionRule Name: " & retPName & " nicht gefunden": GoTo ASF_doRetRule_ERR
+	retRuleGUID= retRule.GUID
+	myDoc.RetentionRule= retRuleGUID
+
+	Exit Sub
+ASF_doRetRule_Exception:
+	Application.ShowError "Fehler bem Setzen der Aufbewahrungsregel (glob Skript)!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+	Exit Sub
+ASF_doRetRule_ERR:
+	MsgBox myMsg & vbCrLf & vbCrLf & "Routine: ASF_doRetentionRule abgebrochen! (SER_GBA_global)", vbCritical, "Skript-Fehler"
+End Sub
+
+
+Public Function SER_getDocumentAccessForUser(ByRef pDoc As IDocument) As Boolean
+
+	Dim userGr() As String
+	Dim userOU() As String
+	Dim i As Integer
+	Dim j As Integer
+	Dim asfZugr As IDescriptor
+	Dim asfZugrGUID As String
+	Dim apUser As String
+	'Dim myDoc As ItaDocument
+	Dim myDoc As IDocument
+
+	On Error GoTo GetDocAcc_ERR
+
+	'Ü002
+	If Application.System.User.Role = "admins" Then
+		SER_getDocumentAccessForUser= True
+		Exit Function
+	End If
+	If ASF_security_isUserGroupMember("Gesamtzugriff ausgen. Personal") Then
+		SER_getDocumentAccessForUser= True
+		Exit Function
+	End If
+	'/Ü002
+
+	SER_getDocumentAccessForUser= False
+
+	Set myDoc = pDoc
+
+
+
+	'Abfrage für Gruppen:
+	asfZugrGUID= Application.System.DescriptorDefinitions.ItemByName("ASF_Zugriff").GUID
+	Set asfZugr= myDoc.Descriptors.ItemByGUID(asfZugrGUID)
+
+	If asfZugr Is Nothing Then
+		SER_getDocumentAccessForUser= True
+		Exit Function
+	End If
+
+	If Not asfZugr Is Nothing Then
+		For i= 0 To asfZugr.ValueCount -1
+
+			'Zugriff OUs und Gruppen
+			ASF_loadFullOUNameToArray(userOU)
+			If IsArray(userOU) Then
+				For j = LBound(userOU) To UBound(userOU)
+					If asfZugr.Value(i) = userOU(j) Then
+						SER_getDocumentAccessForUser= True
+						Exit Function
+					End If
+				Next j
+			End If
+
+			'Gruppen
+			SER_getGroupMemberArray(userGr)
+			If IsArray(userGr) Then
+				For j = LBound(userGr) To UBound(userGr)
+					If asfZugr.Value(i) = userGr(j) Then
+						SER_getDocumentAccessForUser= True
+						Exit Function
+					End If
+				Next j
+			End If
+		Next i
+	End If
+
+
+	asfZugrGUID= Application.System.DescriptorDefinitions.ItemByName("ASF_Zugriff_Temp").GUID
+	Set asfZugr= myDoc.Descriptors.ItemByGUID(asfZugrGUID)
+	If asfZugr Is Nothing Then Exit Function
+	apUser= Application.System.User.User
+	For i= 0 To asfZugr.ValueCount -1
+		If asfZugr.Value(i) = apUser Then
+			SER_getDocumentAccessForUser= True
+			Exit Function
+		End If
+	Next i
+
+	SER_getDocumentAccessForUser= False
+	Exit Function
+getDocAcc_ERR:
+	Application.ShowError "Fehler bei der Zugriffsschutz-Prüfung (glob Skript)!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+	SER_getDocumentAccessForUser= False
+End Function
+
+Public Function ASF_DokumentArtIstGeschützt2 (ByVal pCategoryId As String, ByVal pName As String) As Boolean
+
+	Dim MyASF_Dokumentart As ASF_Dokumentart
+
+	On Error GoTo fError
+	MyASF_Dokumentart = ASF_getASF_Dokumentart(pCategoryId, pName)
+	ASF_DokumentArtIstGeschützt2 = MyASF_Dokumentart.geschützt
+	Exit Function
+fError:
+	Application.ShowError "Beim Zugriff auf die Tabelle 'Dokumentart' ist ein Fehler aufgetreten!",,,,Err.Description
+End Function
+
+Public Sub SER_keepValues_OnValueChanged(ByRef archViewWin As ArchiveViewWindow, ByRef cbKeepValues As ICheckBox)
+
+	Dim arDlg As ArchiveDlg
+	Dim iCtrlKeepValues As IControlInternal
+	Dim iCtrlDefKeepValues As IControlDefinition
+	Dim keepValuesGUID As String
+	Dim ctls As IControlInternal
+	Dim ctdef As IControlDefinition
+	Dim isChecked As Boolean
+	Dim i As Integer
+	Dim max As Integer
+
+	On Error GoTo KeepValuesOnChanged_ERR
+
+	If archViewWin Is Nothing Then Exit Sub
+	If cbKeepValues Is Nothing Then Exit Sub
+
+	If archViewWin.ArchiveDlg Is Nothing Then
+		'ev. noch nicht bedachter Kontext
+		Exit Sub
+	End If
+
+	Set arDlg= archViewWin.ArchiveDlg
+	isChecked= cbKeepValues.Checked
+	arDlg.KeepValues= isChecked
+
+	Set iCtrlKeepValues= cbKeepValues
+	Set iCtrlDefKeepValues= iCtrlKeepValues.ControlDefinition
+	keepValuesGUID= iCtrlDefKeepValues.GUID
+	max= arDlg.ControlCount -1
+
+	For i= 0 To max
+		Select Case TypeName(arDlg.Control(i))
+		Case "IEdit", "MultivalueEdit", "ISelectionBox", "ICategoryTreeControl", "IMultivalueSelectionBox", _
+				"IDate", "IMultivalueEdit", "ICheckBox", "ITabbedDlgControl"
+			'"IControlContainer"   -   wegen Ortsbezug
+
+			Set ctls= arDlg.Control(i)
+			Set ctdef= ctls.ControlDefinition
+			'*001
+			'ctdef.Name -> "TabEinordnung_ASFDokID"
+
+			If ctdef.Name <> iCtrlDefKeepValues.Name And _
+			   Right(ctdef.Name, 8) <> "ASFDokID" Then
+			'If ctdef.GUID <> keepValuesGUID Then
+			'
+				ctls.KeepValues= isChecked
+
+			End If
+		Case Else
+		End Select
+	Next i
+	Set ctls= Nothing
+	Set ctdef= Nothing
+	Exit Sub
+KeepValuesOnChanged_ERR:
+	Application.ShowError "Fehler bei SER_keepValues_OnValueChanged (glob Skript GBA)!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+End Sub
+
+Public Sub SetKmControl(ByRef iCI As IControlInternal)
+	On Error Resume Next
+	With iCI
+		.DataType = VT_BSTR '8 'vt_bstr
+		.ValueType = vt_free
+		.ViewingFormat = "$-,3.3" 'beliebig bis max. 13.3
+		.ControlDefinition = Nothing
+	End With
+End Sub
+'Ü003: Fkt. Initialize auf SER_CAD_Initialize umbenannt
+'/Ü003
+Public Function SER_CAD_Initialize(lMode As Long, ByRef pDOXiSCAD As Object)As Long
+
+	Dim buf As String
+
+	On Error Resume Next
+
+    SER_CAD_Initialize = 0
+
+    buf = pDOXiSCAD.Version
+    If Err = 0 Then
+        Exit Function
+    End If
+    Err.Clear
+
+    On Error GoTo fError
+
+	Set pDOXiSCAD = CreateObject("DOXiSCAD.System")
+
+	SER_CAD_Initialize = 0
+	Exit Function
+fError:
+	MsgBox "Can't initialize DOXiSCAD.System!",vbExclamation ,"DOXiS CAD Manager"
+	SER_CAD_Initialize = -1
+End Function
+

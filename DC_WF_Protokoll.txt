@@ -1,0 +1,12 @@
+Default
+Option Explicit
+
+
+
+
+
+Private Sub Dlg_OnExecute(ByVal Doc As SWAFRAMELib.IDocument, ByRef Continue As Boolean)
+	RSCONVERT.Data = "CONVERT"
+End Sub
+
+

@@ -1,0 +1,1341 @@
+'#Reference {CB325AB3-F5D2-11D3-8E1B-00104BE74BC0}#1.0#0#C:\Program Files (x86)\SER\DOXiS4 winCube\WflObj.dll#WflObj 5.1.8.10 Type Library#WFLOBJ
+'#Reference {DC752F70-69D7-49F3-8756-9F765D0CE953}#1.0#0#C:\PROGRA~2\SER\COMPON~1\Swa\SwaGM.dll#SwaGM 1.0 Type Library#SWAGMLib
+'#Reference {B3FC9758-FFE6-4EE5-A95A-B4662532FF1C}#1.0#0#C:\PROGRA~2\SER\COMPON~1\Swa\WFWORK~2.DLL#wfWorkflowDialogs 1.0 Type Library#WFWFDLGSLib
+'#Reference {2A75196C-D9EB-4129-B803-931327F72D5C}#2.8#0#C:\Program Files (x86)\Common Files\System\ado\msado28.tlb#Microsoft ActiveX Data Objects 2.8 Library#ADODB
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	Global Script/ SER MHA Globale Funktionen
+'*	erstellt am / von	:	29.07.2010/ Markus D. Hartbauer, SER
+'*	Überarbeitung Ü001	:	07.12.2010/ Markus D. Hartbauer, SER
+'*	Überarbeitung Ü002	:	13.01.2011/ Markus D. Hartbauer, SER:	SER_getGroupMemberArray() verweist jetzt auf eine ASF_spezifische Funktion
+'*																	wg Performance-Problemen (SST Mantis 0022654), Aufgrund der Ladeprio ist diese
+'*																	jedoch in diesem Script und nicht in ASF MHA Globale Funktionen
+'*	Überarbeitung Ü003	:	25.03.2011/ Christian Aigner, SER: Fkt. SER_wf_loadSeriellActorsToMultiLineControl hinzugefügt
+'*	Überarbeitung Ü004	:	03.05.2011/ Christian Aigner, SER: Fkt. SER_wf_selectCCReceivers hinzugefügt
+'*	Überarbeitung Ü005	:	04.05.2011/ Christian Aigner, SER: Fkt. SER_wf_loadCCReceiversToMultiLineControl hinzugefügt
+'*	Überarbeitung Ü006	:	04.05.2011/ Christian Aigner, SER: Fkt. SER_wf_releaseWFWI: Parameter 'pCCREceivers' hinzugefügt und CC-Kopie versenden (CR26)
+'*	Überarbeitung Ü007	:	10.08.2011/ Martina Skalicka, SER: Fkt. SER_searchDocumentsOrFolders hinzugefügt
+'*	Überarbeitung Ü008	:	10.08.2011/ Martina Skalicka, SER: Fkt. SER_isIDocumentArrayFilled hinzugefügt
+'*	Überarbeitung Ü009	:	16.08.2011/ Christian Aigner, SER: Fkt. SER_wf_loadSeriellActorsToEditControl hinzugefügt
+'*	Überarbeitung Ü010	:	16.08.2011/ Christian Aigner, SER: Fkt. SER_wf_loadPredefinedReceiversToEditControl hinzugefügt
+'*	Überarbeitung Ü011	:	16.08.2011/ Christian Aigner, SER: Fkt. SER_wf_selectAndReplacePredefinedRecieversToProcessStep hinzugefügt
+'*	Überarbeitung Ü012	:	22.09.2011/ Christian Aigner, SER: Fkt. SER_wf_sendCCWFWI hinzugefügt
+'*	Überarbeitung Ü013	:	29.09.2011/ Christian Aigner, SER: Fkt. SER_wf_QueryPICopies hinzugefügt
+'*	Überarbeitung Ü014	:	25.04.2012/ Christian Aigner, SER: Fkt. SER_wf_loadCCReceiversOfActivityoMultiLineControl hinzugefügt
+'*	Überarbeitung Ü015	:	16.10.2012/ Christian Aigner, SER: Fkt. CR 4 Tranche 4: Umbau der Funktionen SER_wf_selectAndReplacePredefinedRecieversToProcessStep und SER_wf_loadSeriellActorsToEditControl
+'*	Überarbeitung Ü016	:	22.03.2013/ Christian Aigner, SER: neue Fkt. SER_wf_SetState hinzugefügt (s. OTRS-Call 1008298 und SDE-Mantis 39256)
+'*	Überarbeitung Ü017	:	04.04.2013/ Christian Aigner, SER: neue Fkt. SER_addPIToRecord, SER_SETDescriptorValue und SER_addDocumentToRecord für BAV hinzugefügt
+'************************************************************************
+
+
+	Option Explicit
+
+	Dim MyGroupMemberArray() As String
+
+
+'************************************************************************
+'*	APPLICATION LIFECYCLE
+'************************************************************************
+
+
+
+'************************************************************************
+'*	GLOBALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub Application_OnInit()
+	ASF_security_getGroupMemberships(MyGroupMemberArray)
+
+End Sub
+
+'Ü002
+Public Sub SER_getGroupMemberArray(ByRef pGroups() As String)
+'	ASF_security_getGroupMemberships(pGroups)
+	pGroups = MyGroupMemberArray
+End Sub
+
+Public Function SER_getFirstDescriptorValueByName(	ByRef pDescriptors As SWAFRAMELib.Descriptors, _
+													ByVal pDescriptorName As String, _
+													Optional ByVal returnEmptyStringIfMissing As Boolean = True) As Variant
+
+	If IsMissing(pDescriptors) Then Exit Function
+	If returnEmptyStringIfMissing Then
+		SER_getFirstDescriptorValueByName = ""
+		On Error Resume Next
+	End If
+	SER_getFirstDescriptorValueByName = pDescriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(pDescriptorName).GUID).Value(0)
+
+End Function
+Public Function SER_getFirstDescriptorValueByID(	ByRef pDescriptors As SWAFRAMELib.Descriptors, _
+													ByVal pDescriptorID As String, _
+													Optional ByVal returnEmptyStringIfMissing As Boolean = True) As Variant
+
+	If IsMissing(pDescriptors) Then Exit Function
+	If returnEmptyStringIfMissing Then
+		SER_getFirstDescriptorValueByID = ""
+		On Error Resume Next
+	End If
+	SER_getFirstDescriptorValueByID = pDescriptors.ItemByGUID(pDescriptorID).Value(0)
+
+End Function
+Public Function SER_getDescriptorValuesByID(ByRef pDescriptors As SWAFRAMELib.Descriptors, ByVal pDescriptorID As String) As Variant()
+
+	If IsMissing(pDescriptors) Then Exit Function
+	If Not pDescriptors.ItemByGUID(pDescriptorID) Is Nothing Then
+		SER_getDescriptorValuesByID = pDescriptors.ItemByGUID(pDescriptorID).Values
+	End If
+End Function
+Public Function SER_getIControlInternalByBoundDescriptorName(	ByRef pDlg As ArchiveDlg, _
+																ByVal pDescriptorName As String) _
+																As SWACTRLSLib.IControlInternal
+
+	If IsMissing(pDlg) Then Exit Function
+	If IsMissing(pDescriptorName) Then Exit Function
+
+	Dim XDD As DescriptorDefinition
+	Set XDD = Application.System.DescriptorDefinitions.ItemByName(pDescriptorName)
+	If XDD Is Nothing Then Exit Function
+
+	Dim xl As Long
+	Dim XICI As IControlInternal
+
+	For xl = 0 To pDlg.ControlCount - 1
+		Set XICI = pDlg.Control(xl)
+		If XICI.UserData = XDD.GUID Then
+			Set SER_getIControlInternalByBoundDescriptorName = XICI
+			Exit For
+		End If
+	Next
+
+End Function
+
+Public Function SER_isValidWordOleDocument(ByRef pOleDoc As Object) As Boolean
+
+     On Error GoTo ErrorHandler
+     If pOleDoc.FullName <> "" Then
+		If pOleDoc.ContentControls.Count >= 0 Then
+               SER_isValidWordOleDocument = True
+          End If
+     End If
+
+     Exit Function
+ErrorHandler:
+End Function
+
+Public Function SER_getDBFieldSafe(ByVal pField As ADODB.Field, Optional ByVal pReturnIfNull As Variant = "") As Variant
+
+	If Not IsNull(pField.Value) Then
+		SER_getDBFieldSafe = pField.Value
+	Else
+		SER_getDBFieldSafe = pReturnIfNull
+	End If
+
+End Function
+
+Public Function SER_resetAllControlsDirtyStatus(ByRef pDlg As Object)
+
+	If pDlg Is Nothing Then Exit Function
+	Dim xl As Long
+
+	On Error Resume Next
+	For xl = 0 To pDlg.ControlCount - 1
+		pDlg.Control(xl).ResetDirtyStatus
+	Next
+
+End Function
+
+
+
+'************************************************************************
+'*	WORKFLOW
+'************************************************************************
+
+Public Function SER_wf_getPersonalWorkBasket() As wfWorkBasket
+
+	Dim xl As Long
+		For xl = 0 To Application.wfSession.WorkBaskets.Count - 1
+		If Application.wfSession.WorkBaskets(xl).Type = wfWB_PERSONAL Then
+			Set SER_wf_getPersonalWorkBasket = Application.wfSession.WorkBaskets(xl)
+			Exit For
+		End If
+	Next xl
+
+End Function
+
+
+Public Function SER_wf_getWorkBasketByName(pWBName As String) As wfWorkBasket
+
+	Dim xl As Long
+		For xl = 0 To Application.wfSession.WorkBaskets.Count - 1
+		If Application.wfSession.WorkBaskets(xl).Name  = pWBName Then
+			Set SER_wf_getWorkBasketByName = Application.wfSession.WorkBaskets(xl)
+			Exit For
+		End If
+	Next xl
+
+End Function
+
+
+Public Function SER_wf_createWFPIwithDescriptorsAndDoc(	ByVal pPDName As String, _
+														ByRef pDescriptors() As String, _
+														Optional ByRef pIDoc1 As IDocument, _
+														Optional ByRef pIDoc2 As IDocument, _
+														Optional ByVal pStartActivityName As String, _
+														Optional ByVal pStartWorkbasketName As String) _
+														As BPMLINELib.wfProcessInstance
+'*	Infos
+'	Erzeugt eine neue ProzessInstanz mit Deskriptoren, 0..2 Dokumenten
+'	erzeugt wird entweder im angegebenen Postkorb oder im persönlichen Postkorb des Benutzers
+'	erzeugt wird entweder in der in der angegebenen Startaktivität oder in der 1. Startaktivität der PD
+
+'*	Abhängigkeiten
+'	SER_wf_getPersonalWorkBasket()
+
+'*	Checks
+	If pPDName = "" Then Exit Function
+	If UBound(pDescriptors, 1) < 0 Then Exit Function
+
+'*	lokale Objekte
+	Dim XPD As wfProcessDefinition
+	Dim XPS As wfProcessStep
+	Dim XPCC As wfProcessCreationContext
+	Dim XPI As wfProcessInstance
+	Dim xi As Integer
+	Dim xl As Long
+	Dim xdGUID As String
+	Dim xdValue As String
+	Dim XDocRef As wfDocumentReference
+	Dim XWB As wfWorkBasket
+	Dim XWI As wfWorkItem
+
+	On Error GoTo fError
+'**	Business Logik
+'*	Umgebung erzeugen
+     Set XPD = Application.wfSession.ProcessDefinitions.ItemByName(pPDName)
+     For xl = 0 To XPD.ProcessSteps.Count - 1
+          If XPD.ProcessSteps(xl).Start Then
+               Set XPS = XPD.ProcessSteps(xl)
+               Exit For
+          End If
+     Next
+     If pStartActivityName <> "" Then
+          Set XPS = XPD.ProcessSteps.ItemByName(pStartActivityName)
+          If XPS Is Nothing Then
+        		Exit Function
+          End If
+     End If
+     Set XPCC = Application.wfSession.CreateProcessCreationContext
+     XPCC.ProcessDefinition = XPD
+     XPCC.StartProcessStep = XPS
+     Set XPI = Application.wfSession.CreateProcessInstance
+     XPI.ProcessCreationContext = XPCC
+
+'*	wfDeskriptoren ergänzen, speichern
+	For xi = 0 To UBound(pDescriptors, 1)
+		xdGUID = pDescriptors(xi,0)
+		xdValue = pDescriptors(xi,1)
+		If XPI.DescriptorsWF.ItemByGUIDWF(xdGUID) Is Nothing Then
+			XPI.DescriptorsWF.AddNewByGUIDWF(xdGUID).AddValue(xdValue)
+		Else
+			XPI.DescriptorsWF.ItemByGUIDWF(xdGUID).ChangeValue(0, xdValue)
+		End If
+	Next xi
+
+'*	optional: Dokumentreferenz(en) ergänzen
+	If Not pIDoc1 Is Nothing Then
+		Set XDocRef = XPI.DocumentReferences.AddNewDocument(pIDoc1)
+		Set XPI.DocumentReferences.MainDocument = XDocRef
+	End If
+	If Not pIDoc2 Is Nothing Then
+		Set XDocRef = XPI.DocumentReferences.AddNewDocument(pIDoc2)
+	End If
+
+'*	speichern
+	XPI.Commit
+
+'*	WI in Postkorb erzeugen
+	If pStartWorkbasketName = "" Or UCase(Application.System.User.User) = UCase(pStartWorkbasketName) Then
+		Set SER_wf_createWFPIwithDescriptorsAndDoc = XPI
+		Exit Function
+	Else
+		Set XWB = Application.wfSession.WorkBaskets.ItemByName(pStartWorkbasketName)
+	End If
+	Set XWI = XPI.WorkItems(0)
+	With XWI
+		.SetLockWF  wfLT_WI_WHOLE
+		.DelegateWIToWB(XWB, "")
+		.Commit
+		.ReleaseLockWF wfLT_WI_WHOLE
+	End With
+
+'*	Rückgabe
+	Set SER_wf_createWFPIwithDescriptorsAndDoc = XPI
+	Exit Function
+fError:
+	Application.ShowError  "Beim Erstellen des Vorgangs ist ein Fehler aufgetreten!","ER MHA Globale Funktionen / SER_wf_createWFPIwithDescriptorsAndDoc",,,Err.Description
+End Function
+
+
+Public Function SER_wf_releaseWFWI(	ByRef pWFWI As wfWorkItem, _
+									Optional ByVal pNextStepName As String = "", _
+									Optional ByVal pWorkBasketName As String = "", _
+									Optional ByVal pInfoText As String = "", _
+									Optional ByVal pCCREceivers As wfReceivers) _
+									As WF_RELEASESTATUS
+
+'*	Checks
+	If pWFWI Is Nothing Then Exit Function
+
+'*	Lokale Objekte
+	Dim XNextStep As wfProcessStep
+	Dim XNextSteps As New wfProcessSteps
+	Dim XReceiver As wfReceiver
+	Dim XPDI As Object
+	Dim xl As Long
+
+	On Error GoTo fError
+'*	Business Logik
+	If pNextStepName = "" Then
+		Set XNextSteps = Nothing
+	Else
+		Set XNextStep = pWFWI.ProcessInstance.ProcessSteps.ItemByName(pNextStepName)
+		Set XReceiver = XNextStep.AdhocReceivers.AddNew
+		If pWorkBasketName <> "" Then
+			XReceiver.Participant = Application.wfSession.WorkBaskets.ItemByName(pWorkBasketName)
+			XNextStep.AdhocReceivers.Commit
+		End If
+		XNextSteps.Add XNextStep
+	End If
+
+	'Ü006
+	'CC senden
+	Call SER_wf_sendCCWFWI( pWFWI, pCCREceivers, pInfoText, pNextStepName)
+	'/Ü006
+
+'*	Release/Rückgabe
+	SER_wf_releaseWFWI = pWFWI.ReleaseWI(XPDI, XNextSteps, pInfoText)
+	Exit Function
+fError:
+	Application.ShowError "Fehler beim Versenden des Vorgangs", "SER_wf_releaseWFWI()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+End Function
+
+
+Public Function SER_wf_addPredefinedReceiverToProcessStep(	ByVal pPI As wfProcessInstance, _
+															ByVal pReceiverWBName As String, _
+															ByVal pProcessStepName As String) As Boolean
+
+'*	Checks
+	If pPI Is Nothing Then Exit Function
+	If pReceiverWBName = "" Then Exit Function
+	If pProcessStepName = "" Then Exit Function
+
+'*	Business Logik
+	Dim XStep As wfProcessStep
+	Dim XRec As wfReceiver
+
+	Set XStep = pPI.ProcessSteps.ItemByName(pProcessStepName)
+	For Each XRec In XStep.PredefinedReceivers
+		If XRec.Participant.Name = pReceiverWBName Then
+			SER_wf_addPredefinedReceiverToProcessStep = True
+			Exit Function
+		End If
+	Next
+
+	Set XRec = XStep.PredefinedReceivers.AddNew
+	XRec.Participant = Application.wfSession.Workbaskets.ItemByName(pReceiverWBName)
+	XStep.PredefinedReceivers.Commit
+
+'*	Rückmeldung
+	SER_wf_addPredefinedReceiverToProcessStep = True
+
+End Function
+'Ü004
+Public Function SER_wf_selectCCReceivers() As wfReceivers
+
+'*	Checks
+	On Error GoTo ErrorHandler
+
+'*	Lokale Objekte
+
+	Dim XWFReceivers As wfReceivers
+	Dim XwfPS As New WFWFDLGSLib.wfParticipantSelect
+
+'**	Business Logik
+	With XwfPS
+        .Caption = "Postkorb-Auswahl"
+        .InformationText = "Wählen Sie die cc-Empfänger."
+        .SelectMode = wfPS_SM_MultipleSelect
+        .DisplayMode = wfPS_DM_Combined
+        Set XWFReceivers = .Show(Application.wfSession)
+    End With
+'*	Rückmelden
+	Set SER_wf_selectCCReceivers = XWFReceivers
+finish:
+	Set XwfPS = Nothing
+	Set XWFReceivers = Nothing
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Hinzufügen von Empfängern!", "SER_wf_selectCCReceivers()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+	GoTo finish
+End Function
+'/Ü004
+
+Public Function SER_wf_selectAndAddPredefinedRecieversToProcessStep(	ByRef pPI As wfProcessInstance, _
+																		ByVal pProcessStepName As String, _
+																		Optional ByVal pParallelType As BPMLINELib.WF_PARALLELTYPE = WF_PARALLELTYPE.wfPT_UNDEF, _
+																		Optional ByVal pIllegalRecipientName As String, _
+																		Optional ByVal pIllegalRecipientWarningMessage As String) _
+																		As Boolean
+
+'*	Checks
+	If pPI Is Nothing Then Exit Function
+	If pProcessStepName = "" Then Exit Function
+	On Error GoTo ErrorHandler
+
+'*	Lokale Objekte
+	Dim XPS As wfProcessStep
+	Dim XwfPS As New WFWFDLGSLib.wfParticipantSelect
+	Dim XWFReceivers As wfReceivers
+
+'**	Business Logik
+	Set XPS = pPI.ProcessSteps.ItemByName(pProcessStepName)
+'*	wählen
+	With XwfPS
+        .Caption = "Postkorb-Auswahl"
+        .InformationText = "Wählen Sie die Postkörbe für die Aufgabe '" & pProcessStepName & "'."
+        .SelectMode = wfPS_SM_MultipleSelect
+        .DisplayMode = wfPS_DM_Combined
+	    Set XWFReceivers = .Show(Application.wfSession)
+    End With
+
+'*	leeren
+	If XWFReceivers.Count = 0 And XPS.PredefinedReceivers.Count > 0 Then
+		If MsgBox("Bisherige Postkörbe (Empfänger) entfernen?", vbQuestion + vbYesNo + vbDefaultButton2, "Frage") = vbYes Then
+			XPS.PredefinedReceivers.RemoveAll
+			XPS.PredefinedReceivers.Commit
+		End If
+		Exit Function
+	End If
+	XPS.PredefinedReceivers.RemoveAll
+
+'*	füllen
+    Dim xl As Long
+    Dim ausSchl As Boolean
+'    ausSchl= (pProcessStepName = "genehmigen")
+    For xl = 0 To XWFReceivers.Count - 1
+		If pIllegalRecipientName <> "" And XWFReceivers.Item(xl).Name = pIllegalRecipientName Then
+    		MsgBox pIllegalRecipientWarningMessage & vbCrLf & _
+    				"Auswahl wird ignoriert.", vbExclamation, "Warnung"
+		Else
+			XWFReceivers.Item(xl).ParallelType = pParallelType
+			XPS.PredefinedReceivers.Add(XWFReceivers.Item(xl))
+    	End If
+	Next xl
+	XPS.PredefinedReceivers.Commit
+
+'*	Rückmelden
+	SER_wf_selectAndAddPredefinedRecieversToProcessStep = True
+
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Hinzufügen von Empfängern!", "addPredefinedReceiversToProcessStep()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+End Function
+'Ü011
+Public Function SER_wf_selectAndReplacePredefinedRecieversToProcessStep(	ByRef pPI As wfProcessInstance, _
+																		ByVal pProcessStepName As String, _
+																		ByVal pIndexOfPredefinedReceiver As Integer, _
+																		Optional ByVal pParallelType As BPMLINELib.WF_PARALLELTYPE = WF_PARALLELTYPE.wfPT_UNDEF, _
+																		Optional ByVal pIllegalRecipientName As String, _
+																		Optional ByVal pIllegalRecipientWarningMessage As String, _
+																		Optional ByVal pDisplayMode As wfPSSelectMode =  wfPS_SM_MultipleSelect) _
+																		As Boolean
+'*	Checks
+	If pPI Is Nothing Then Exit Function
+	If pProcessStepName = "" Then Exit Function
+	On Error GoTo ErrorHandler
+
+'*	Lokale Objekte
+	Dim XPS As wfProcessStep
+	Dim XwfPS As New WFWFDLGSLib.wfParticipantSelect
+	Dim XWFReceivers As wfReceivers
+	Dim XWFTmpReceiver As wfReceiver
+	Dim XmyWFPredefinedReceivers As wfReceivers
+	Dim i As Integer
+
+'**	Business Logik
+	Set XPS = pPI.ProcessSteps.ItemByName(pProcessStepName)
+	Set XWFTmpReceiver = Nothing
+'*	wählen
+	With XwfPS
+        .Caption = "Postkorb-Auswahl"
+        .InformationText = "Wählen Sie die Postkörbe für die Aufgabe '" & pProcessStepName & "'."
+        .SelectMode  = wfPS_SM_SingleSelect
+        .DisplayMode = wfPS_DM_Combined
+	    Set XWFReceivers = .Show(Application.wfSession)
+    End With
+'Ü015
+'*	leeren
+	If XWFReceivers.Count = 0 And XPS.PredefinedReceivers.Count > pIndexOfPredefinedReceiver Then
+		If MsgBox("Diesen Postkorb (Empfänger) entfernen?", vbQuestion + vbYesNo + vbDefaultButton2, "Frage") = vbYes Then
+			XPS.PredefinedReceivers.Remove (pIndexOfPredefinedReceiver)
+			XPS.PredefinedReceivers.Commit
+		End If
+		Exit Function
+	End If
+
+	If XWFReceivers.Count  > 0 Then
+		If pIllegalRecipientName <> "" And XWFReceivers.Item(0).Name = pIllegalRecipientName Then
+	    	MsgBox pIllegalRecipientWarningMessage & vbCrLf & _
+	    			"Auswahl wird ignoriert.", vbExclamation, "Warnung"
+	    	Exit Function
+	    End If
+	Else
+		Exit Function
+	End If
+
+    'Prüfung, ob der Empfänger hinzugefügt oder ein bestehender entfernt werden soll
+	If 	XPS.PredefinedReceivers.Count  = pIndexOfPredefinedReceiver Then 'Empfänger hinzufügen
+		XPS.PredefinedReceivers.Add (XWFReceivers.Item(0))
+	Else  'bestehenden Empfänger ersetzen
+		Set XmyWFPredefinedReceivers =  New wfReceivers
+
+		For i = 0 To XPS.PredefinedReceivers.Count - 1
+			XmyWFPredefinedReceivers.Add XPS.PredefinedReceivers.Item(i)
+		Next i
+		XPS.PredefinedReceivers.RemoveAll
+
+		For i = 0 To XmyWFPredefinedReceivers.Count - 1
+			If i = pIndexOfPredefinedReceiver Then
+				XWFReceivers.Item(0).ParallelType = pParallelType
+				XPS.PredefinedReceivers.Add (XWFReceivers.Item(0))
+			Else
+				XmyWFPredefinedReceivers.Item(i).ParallelType = pParallelType
+				XPS.PredefinedReceivers.Add (XmyWFPredefinedReceivers.Item(i))
+			End If
+		Next i
+	End If
+'/Ü015
+	XPS.PredefinedReceivers.Commit
+'*	Rückmelden
+	SER_wf_selectAndReplacePredefinedRecieversToProcessStep = True
+
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Hinzufügen von Empfängern!", "SER_wf_selectAndReplacePredefinedRecieversToProcessStep()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+
+End Function
+'/Ü011
+'Ü005
+Public Function SER_wf_loadCCReceiversToMultiLineControl(ByRef pMultiLineControl As MultilineEdit, _
+														ByVal pCCReceivers As wfReceivers ) As Boolean
+'*	Checks
+	If pMultiLineControl Is Nothing Then Exit Function
+	If pCCReceivers Is Nothing Then Exit Function
+
+	On Error GoTo ErrorHandler
+
+'*	Lokale Objekte
+	Dim xl As Long
+
+'*	Business Logic
+	pMultiLineControl.Data = ""
+	For xl = 0 To pCCReceivers.Count - 1
+		pMultiLineControl.Data = pMultiLineControl.Data & pCCReceivers.Item (xl).Name & vbCrLf
+	Next xl
+
+	pMultiLineControl.ResetDirtyStatus
+
+'*	Rückgabe
+	SER_wf_loadCCReceiversToMultiLineControl = True
+
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Laden der eingetragenen Empfänger!", "SER_wf_loadCCReceiversToMultiLineControl()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+End Function
+'/Ü005
+Public Function SER_wf_loadPredefinedReceiversToMultiLineControl(	ByRef pPI As wfProcessInstance, _
+																	ByVal pProcessStepName As String, _
+																	ByRef pMultiLineControl As MultilineEdit) _
+																	As Boolean
+'*	Checks
+	If pPI Is Nothing Then Exit Function
+	If pProcessStepName = "" Then Exit Function
+	If pMultiLineControl Is Nothing Then Exit Function
+	On Error GoTo ErrorHandler
+
+'*	Lokale Objekte
+	Dim XPS As wfProcessStep
+	Dim xl As Long
+
+'*	Business Logic
+	Set XPS = pPI.ProcessSteps.ItemByName(pProcessStepName)
+	If Not XPS Is Nothing Then
+		pMultiLineControl.Data = ""
+		For xl = 0 To XPS.PredefinedReceivers.Count - 1
+			pMultiLineControl.Data = pMultiLineControl.Data & XPS.PredefinedReceivers.Item(xl).Name & vbCrLf
+		Next xl
+	End If
+	pMultiLineControl.ResetDirtyStatus
+
+'*	Rückgabe
+	SER_wf_loadPredefinedReceiversToMultiLineControl = True
+
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Laden der eingetragenen Empfänger!", "SER_wf_loadPredefinedReceiversToMultiLineControl()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+End Function
+
+
+Public Function SER_wf_loadParallelActorsToMultiLineControl(	ByRef pPI As wfProcessInstance, _
+																ByVal pActivityName As String, _
+																ByRef pMultiLineControl As MultilineEdit) _
+																As Boolean
+'*	Checks
+	If pPI Is Nothing Then Exit Function
+	If pActivityName = "" Then Exit Function
+	If pMultiLineControl Is Nothing Then Exit Function
+
+'*	Lokale Objekte
+	Dim xl As Long
+
+'*	Business Logik
+	pMultiLineControl.Data = ""
+	For xl = 0 To pPI.WorkItems.Count - 1
+		If pPI.WorkItems(xl).CurrentProcessStep.Name = pActivityName Then
+			pMultiLineControl.Data = pMultiLineControl.Data & pPI.WorkItems(xl).CurrentWorkBasket.Name & vbCrLf
+		End If
+	Next xl
+	pMultiLineControl.ResetDirtyStatus
+
+'*	Rückmeldung
+	SER_wf_loadParallelActorsToMultiLineControl = True
+
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Laden der aktuellen Empfänger!", "SER_wf_loadParallelActorsToMultiLineControl()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+End Function
+'Ü010
+Public Function SER_wf_loadPredefinedReceiversToEditControl(ByRef pPI As wfProcessInstance, _
+																	ByVal pProcessStepName As String, _
+																	ByVal pIndexOfPredefinedReceiver As Integer, _
+																	ByRef pEditControl As Edit) _
+																	As Boolean
+'*	Checks
+	If pPI Is Nothing Then Exit Function
+	If pProcessStepName = "" Then Exit Function
+	If pEditControl Is Nothing Then Exit Function
+	On Error GoTo ErrorHandler
+
+'*	Lokale Objekte
+	Dim XPS As wfProcessStep
+	Dim xl As Long
+
+'*	Business Logic
+	Set XPS = pPI.ProcessSteps.ItemByName(pProcessStepName)
+	If Not XPS Is Nothing Then
+		pEditControl.Clear
+		If XPS.PredefinedReceivers.Count > pIndexOfPredefinedReceiver Then
+			pEditControl.Data = XPS.PredefinedReceivers.Item(pIndexOfPredefinedReceiver).Name
+		End If
+	End If
+	pEditControl.ResetDirtyStatus
+
+'*	Rückgabe
+	SER_wf_loadPredefinedReceiversToEditControl = True
+
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Laden der eingetragenen Empfänger!", "SER_wf_loadPredefinedReceiversToEditControl()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+End Function
+'/Ü010
+'Ü009
+Public Function SER_wf_loadSeriellActorsToEditControl(	ByRef pPI As wfProcessInstance, _
+																ByVal pActivityName As String, _
+																ByRef pEditControl As Edit, _
+																Optional ByVal pIndexOfSubSequentReceiver As Integer = 0) _
+													As Boolean
+'*	Checks
+
+	SER_wf_loadSeriellActorsToEditControl = False
+
+	If pPI Is Nothing Then Exit Function
+	If pActivityName = "" Then Exit Function
+	If pEditControl Is Nothing Then Exit Function
+
+'*	Lokale Objekte
+	Dim xl As Long
+	Dim y As Integer
+	Dim myCurrentProcessStep As wfProcessStep
+
+'Ü015
+'*	Business Logik
+	pEditControl.Clear
+	For xl = 0 To pPI.WorkItems.Count - 1
+		Set myCurrentProcessStep = pPI.WorkItems(xl).CurrentProcessStep
+		If myCurrentProcessStep.Name = pActivityName Then
+			If myCurrentProcessStep.SubsequentReceivers.Count > 0 Then
+				If myCurrentProcessStep.PredefinedReceivers.Count > pIndexOfSubSequentReceiver Then
+					If myCurrentProcessStep.PredefinedReceivers.Count - myCurrentProcessStep.SubsequentReceivers.Count <= pIndexOfSubSequentReceiver Then
+						pEditControl.Data = myCurrentProcessStep.SubsequentReceivers((pIndexOfSubSequentReceiver - myCurrentProcessStep.PredefinedReceivers.Count) + myCurrentProcessStep.SubsequentReceivers.Count).Name
+					End If
+				End If
+			End If
+		End If
+	Next xl
+	pEditControl.ResetDirtyStatus
+'/Ü015
+'*	Rückmeldung
+	SER_wf_loadSeriellActorsToEditControl = True
+
+
+finish:
+	Set myCurrentProcessStep = Nothing
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Laden der aktuellen Empfänger!", "SER_wf_loadSeriellActorsToEditControl()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+	GoTo finish
+End Function
+'/Ü009
+Public Function SER_wf_loadSeriellActorsToMultiLineControl(	ByRef pPI As wfProcessInstance, _
+																ByVal pActivityName As String, _
+																ByRef pMultiLineControl As MultilineEdit) _
+																As Boolean
+'*	Checks
+
+	SER_wf_loadSeriellActorsToMultiLineControl = False
+
+	If pPI Is Nothing Then Exit Function
+	If pActivityName = "" Then Exit Function
+	If pMultiLineControl Is Nothing Then Exit Function
+
+'*	Lokale Objekte
+	Dim xl As Long
+	Dim y As Integer
+	Dim mySubSequentReceiver As wfReceiver
+	Dim myCurrentProcessStep As wfProcessStep
+
+'*	Business Logik
+	pMultiLineControl.Data = ""
+	For xl = 0 To pPI.WorkItems.Count - 1  'Aufgrund serieller Verarbeitung sollte es nur ein Workitem geben
+		Set myCurrentProcessStep = pPI.WorkItems(xl).CurrentProcessStep
+		If myCurrentProcessStep.Name = pActivityName Then
+			For y = 0 To myCurrentProcessStep.SubsequentReceivers.Count - 1
+				Set mySubSequentReceiver = myCurrentProcessStep.SubsequentReceivers(y)
+				pMultiLineControl.Data = pMultiLineControl.Data & mySubSequentReceiver.Name & vbCrLf
+			Next y
+		End If
+	Next xl
+	pMultiLineControl.ResetDirtyStatus
+
+'*	Rückmeldung
+	SER_wf_loadSeriellActorsToMultiLineControl = True
+
+finish:
+	Set mySubSequentReceiver = Nothing
+	Set myCurrentProcessStep = Nothing
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Laden der aktuellen Empfänger!", "SER_wf_loadParallelActorsToMultiLineControl()" & vbCrLf & Err.Source, 0, Err.Number, Err.Description, 0
+	GoTo finish
+End Function
+Public Function SER_wf_getPredefinedReceiversCount(	ByRef pWI As wfWorkItem, _
+													ByVal pActivityName As String) _
+													As Integer
+
+'*	Checks
+	If pWI Is Nothing Then Exit Function
+
+'*	lokale Objekte
+	Dim XStep As wfProcessStep
+
+'*	Business Logik
+	Set XStep = pWI.NextActivities.ItemByName(pActivityName)
+	If Not XStep Is Nothing Then
+		SER_wf_getPredefinedReceiversCount = XStep.PredefinedReceivers.Count
+	End If
+
+End Function
+
+
+
+'************************************************************************
+'*	SYNCHRONIZATION FRAMEWORK
+'************************************************************************
+
+Public Sub SER_syncFW_loadValuesFromIDocumentToArchiveDlgControls(	ByRef pIDoc As SWAFRAMELib.IDocument, _
+																	ByRef pADlg As ArchiveDlg, _
+																	ByRef pDescriptorNames() As String)
+
+'*	Info
+
+'*	Checks
+	If IsMissing(pIDoc) Then Exit Sub
+	If IsMissing(pADlg) Then Exit Sub
+	If IsMissing(pDescriptorNames) Then Exit Sub
+
+'*	Lokale Objekte
+	Dim XICI As IControlInternal
+	Dim XDesc As Descriptor
+	Dim xl As Long
+	Dim xl2 As Long
+
+'*	Business Logik
+	For xl = 0 To UBound(pDescriptorNames)
+		Set XICI = SER_getIControlInternalByBoundDescriptorName(pADlg, pDescriptorNames(xl))
+		If Not XICI Is Nothing Then
+			XICI.ResetContent
+			Set XDesc = pIDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(pDescriptorNames(xl)).GUID)
+			If Not XDesc Is Nothing Then
+				For xl2 = 0 To XDesc.ValueCount - 1
+					XICI.AddData XDesc.Value(xl2)
+				Next
+			End If
+		End If
+	Next
+
+End Sub
+
+Public Sub SER_syncFW_loadValuesFromArchiveDlgControlsToWordDocContentControls(	ByRef pADlg As ArchiveDlg, _
+																				ByRef pWordDoc As Object)
+
+'*	Info
+'	prüft alle ContentControls im pWordDoc, wenn diese im Tag den Präfix "doxis4" haben,
+'	wird am pADlg nach einem Control mit dem zugeordneten Deskriptor mit dem Namen nach "doxis4" gesucht,
+'	zB "doxis4ASF_Ersteller", wenn gefunden, wird Wert aus Control in pWordDoc.ContentControl geschrieben
+
+'*	Checks
+	If IsMissing(pADlg) Then Exit Sub
+	If IsMissing(pWordDoc) Then Exit Sub
+
+'*	Lokale Objekte
+	Dim XICI As IControlInternal
+	Dim XCC As Object 'Word.ContentControl
+
+	If SER_isValidWordOleDocument(pWordDoc) Then
+'		Set WordDoc = OleDocument
+		For Each XCC In pWordDoc.ContentControls
+			If Left(XCC.Tag, 6) = "doxis4" Then
+				Set XICI = SER_getIControlInternalByBoundDescriptorName(pADlg, (Mid(XCC.Tag, 7)))
+				If Not XICI Is Nothing Then
+					XCC.Range = XICI.GetData(0)
+				End If
+			End If
+		Next
+	End If
+
+End Sub
+
+Public Sub SER_syncFW_loadValuesFromArchiveDlgControlsToWordDoc(	ByRef pADlg As ArchiveDlg, _
+																	ByRef pWordDoc As Object)
+
+'*	Info
+'	(1)
+'	prüft alle ContentControls im pWordDoc, wenn diese im Tag den Präfix "doxis4" haben,
+'	wird am pADlg nach einem Control mit dem zugeordneten Deskriptor mit dem Namen nach "doxis4" gesucht,
+'	zB "doxis4ASF_Ersteller", wenn gefunden, wird Wert aus Control in pWordDoc.ContentControl geschrieben
+'	(2)
+'	prüft alle Bookmarks im pWordDoc, wenn diese im Namen den Präfix "dx" haben und einem FormField zugeordnet
+'	sind wie bei (1)
+
+'*	Checks
+	If pADlg Is Nothing Then Exit Sub
+	If pWordDoc Is Nothing Then Exit Sub
+
+'*	Lokale Objekte
+	Dim XICI As IControlInternal
+	Dim XCC As Object 'Word.ContentControl
+	Dim XBM As Object 'Word.Bookmark
+
+	If SER_isValidWordOleDocument(pWordDoc) Then
+'		Set WordDoc = OleDocument
+'*		ContentControls
+		For Each XCC In pWordDoc.ContentControls
+			If Left(XCC.Tag, 6) = "doxis4" Then
+				Set XICI = SER_getIControlInternalByBoundDescriptorName(pADlg, (Mid(XCC.Tag, 7)))
+				If Not XICI Is Nothing Then
+					If XICI.DataCount > 0 Then
+						XCC.Range = XICI.GetData(0)
+					End If
+				End If
+			End If
+		Next
+'*		Bookmarks/FormFields
+		For Each XBM In pWordDoc.Bookmarks
+			If Left(XBM.Name, 2) = "dx" Then
+				If XBM.Range.FormFields.Count = 1 Then
+					Set XICI = SER_getIControlInternalByBoundDescriptorName(pADlg, (Mid(XBM.Name, 3)))
+					If Not XICI Is Nothing Then
+						If XICI.DataCount > 0 Then
+							XBM.Range.FormFields(1).Result = XICI.GetData(0)
+						End If
+					End If
+				End If
+			End If
+		Next
+	End If
+
+End Sub
+
+Public Function SER_syncFW_copyDescriptorsSafe(ByRef pSource As SWAFRAMELib.ItaDocument, _
+												ByRef pTarget As SWAFRAMELib.ItaDocument) As Boolean
+
+'*	Checks
+	If pSource Is Nothing Then Exit Function
+	If pTarget Is Nothing Then Exit Function
+
+'*	lokale Objekte
+	Dim XSourceDesc As Descriptor
+	Dim XDTD As DocumentType
+	Dim xl As Long
+	Dim XTargetDesc As Descriptor
+
+'*	Business Logik
+	Set XDTD = Application.System.DocumentTypes.ItemByGUID(pTarget.DocumentTypeGUID)
+
+	For Each XSourceDesc In pSource.Descriptors
+		If Not	XDTD.DescriptorDefinitions.ItemByGUID(XSourceDesc.DescriptorDefinition.GUID) Is Nothing Then
+			Set XTargetDesc = pTarget.Descriptors.AddNewByGUID(XSourceDesc.DescriptorDefinition.GUID)
+			For xl = 0 To XSourceDesc.ValueCount - 1
+				XTargetDesc.AddValue XSourceDesc.Value(xl)
+			Next
+		End If
+	Next
+
+End Function
+
+
+
+'************************************************************************
+'*	ASFINAG Security/Gropu Membership Tweak 'Ü003
+'************************************************************************
+
+Public Function ASF_security_isUserGroupMember(ByVal pGroupName As String) As Boolean
+
+'*	Checks
+	If pGroupName = "" Then Exit Function
+
+'*	lokale Objekte
+	Dim XSec As SWASMLib.SecurityModule
+	Dim XGM As SWAGMLib.GroupManager
+	Dim xl As Long
+
+'**	Business Logik
+'	vorbereiten
+	Set XSec = Application.System.SecurityModule
+'*	prüfen
+	On Error GoTo GroupNotFoundInAccessRights
+	If XSec.CheckRight(bfRight01, pGroupName, "ASF - Gruppenmitgliedschaften") Then
+		ASF_security_isUserGroupMember = True
+		Exit Function
+	End If
+
+	Exit Function
+GroupNotFoundInAccessRights:
+End Function
+
+Public Function ASF_security_getGroupMemberships(ByRef pGroupArray() As String)
+
+'*	lokale Objekte
+	Dim XSec As SWASMLib.SecurityModule
+	Dim XGM As SWAGMLib.GroupManager
+	Dim xl As Long
+
+'**	Business Logik
+'	vorbereiten
+	Set XSec = Application.System.SecurityModule
+	Set XGM = Application.System.GroupManager
+	ReDim pGroupArray(0)
+'*	Gruppen durchlaufen
+	On Error GoTo GroupNotFoundInAccessRights
+
+	For xl = 0 To XGM.Groups.Count - 1
+	'	Recht prüfen
+		If XSec.CheckRight(bfRight01, XGM.Groups.Item(xl).Name, "ASF - Gruppenmitgliedschaften") Then
+            pGroupArray(UBound(pGroupArray)) = XGM.Groups.Item(xl).Name
+            ReDim Preserve pGroupArray(UBound(pGroupArray)+1)
+		End If
+CheckNextRight:
+	Next
+	Exit Function
+GroupNotFoundInAccessRights:
+	Resume CheckNextRight
+End Function
+
+'Ü007
+Public Function SER_searchDocumentsOrFolders(ByVal sQueryDatabaseName As String, _
+											 ByVal sStartRange As String, _
+											 ByVal sSQL As String, _
+											 ByRef sError As String, _
+											Optional sQueryDatabaseName1 As String="") As IDocument()
+	Dim oQuery As Query
+	Dim oResultset As IResultset
+	Dim i As Integer
+	Dim resultIDocuments() As IDocument
+	Dim bIsFirst As Boolean
+
+	On Error GoTo ErrHandler
+
+	Set oQuery = Application.System.CreateQuery
+
+	With oQuery
+		.Databases.Add Application.System.QueryDatabases.ItemByName(sQueryDatabaseName)
+		If Trim(sQueryDatabaseName1) <> "" Then
+			.Databases.Add Application.System.QueryDatabases.ItemByName(sQueryDatabaseName1)
+		End If
+		.HitLimit = 0
+		.TimeOut = 90
+		.RangeStart = sStartRange
+		.RangeEnd = Format(Date, "yyyymmdd")
+		.SQLStatement = sSQL
+	End With
+
+	Set oResultset = oQuery.Execute
+	If oResultset.TotalCount > 0 Then
+		bIsFirst = True
+		For i = 0 To oResultset.TotalCount - 1
+			If i = oResultset.AvailableCount Then
+				oResultset.FetchNext
+			End If
+			If bIsFirst Then
+				ReDim resultIDocuments(0)
+				bIsFirst = False
+			Else
+				ReDim Preserve resultIDocuments(UBound(resultIDocuments) + 1)
+			End If
+			Set resultIDocuments(UBound(resultIDocuments)) = oResultset.Document(i)
+		Next i
+	End If
+
+	SER_searchDocumentsOrFolders = resultIDocuments
+
+	Finally:
+	Set oQuery = Nothing
+	Set oResultset = Nothing
+	Exit Function
+
+	ErrHandler:
+	sError = "Fehler bei der Suche nach den Dokumenten. " & Err.Description
+	Err.Clear
+	GoTo finally
+End Function
+'/Ü007
+
+'Ü008
+Public Function SER_isIDocumentArrayFilled(ByVal iDocumentArray() As IDocument) As Boolean
+	On Error Resume Next
+	Debug.Print UBound(iDocumentArray) = 0
+	If Err.Number = 0 Then
+		SER_isIDocumentArrayFilled = True
+	Else
+		SER_isIDocumentArrayFilled = False
+	End If
+End Function
+'/Ü008
+'Ü012
+Public Sub SER_wf_sendCCWFWI( ByRef pWFWI As wfWorkItem, _
+									ByVal pCCREceivers As wfReceivers, _
+									Optional ByVal pInfoText As String = "", _
+									Optional ByVal pNextStepName As String = "")
+
+	'*	Checks
+	If pWFWI Is Nothing Then Exit Sub
+
+	'*	Lokale Objekte
+	Dim xl As Long
+	Dim yl As Long
+	Dim z As Integer
+	Dim myWorkItem As wfWorkItem
+	Dim XPS As wfProcessStep
+	Dim hauptEmpfaenger As String
+	Dim myWfItems As wfItems
+	Dim myPI As wfProcessInstance
+
+	On Error GoTo fError
+	If Not pCCREceivers Is Nothing Then
+
+		'An alle CC-Empfänger die CC-Kopie versenden
+		For xl = 0 To pCCREceivers.Count - 1
+			pWFWI.SendCopy (pCCREceivers.Item (xl), pInfoText)
+		Next xl
+
+		'Alle Prozessinstanz-Kopien zur Haupt-PI ermitteln und in jede Kopie die Empfänger der Original-Prozessinstanz eintragen
+		Set myWfItems = SER_wf_QueryPICopies(pWFWI.DescriptorsWF.ItemByGUIDWF ("PI_ID").Value (0))
+		If Not myWfItems Is Nothing Then
+
+			'In allen CC-Kopien die Empfänger der Original-Prozessinstanz eintragen
+			For yl = 0 To myWfItems.TotalCount - 1
+				hauptEmpfaenger  =""
+				Set myPI = myWfItems.Document (yl)
+				If myPI.Copy Then
+					Set myWorkItem = myPI.WorkItems (0)
+					Set XPS = pWFWI.ProcessInstance.ProcessSteps.ItemByName (pNextStepName)
+					If Not XPS.PredefinedReceivers Is Nothing Then
+						myWorkItem.WriteHistoryEvent 920, pNextStepName
+						For z = 0 To XPS.PredefinedReceivers.Count - 1
+							If hauptEmpfaenger <> "" Then
+								hauptEmpfaenger = hauptEmpfaenger + ";"
+							End If
+							hauptEmpfaenger = hauptEmpfaenger + XPS.PredefinedReceivers.Item (z).Name
+						Next z
+						myWorkItem.WriteHistoryEvent 910, hauptEmpfaenger
+'Ü016
+						SER_wf_SetState(myWorkItem, WFLOBJ.wflNew)
+'/Ü016
+					End If
+				End If
+			Next yl
+		End If
+	End If
+finish:
+	Set myWorkItem = Nothing
+	Set XPS = Nothing
+	Set myWfItems = Nothing
+	Set myPI = Nothing
+	Exit Sub
+fError:
+	Application.ShowError "Beim Versenden der CC-Kopien ist ein Fehler aufgetreten!","	Global Script/ SER MHA Globale Funktionen SER_wf_sendCCWFWI",,,Err.Description
+	GoTo finish
+End Sub
+'/Ü012
+'Ü013
+'Die Funktion liefert alle Kopien von Prozessinstanzen mit einer bestimmten PID
+Private Function SER_wf_QueryPICopies(piid As String)As BPMLINELib.IwfItems
+
+	Dim myQuery As BPMLINELib.wfQuerySync
+	Dim myItems As BPMLINELib.IwfItems
+
+	On Error GoTo fError
+
+	'Suche nach Prozessinstanzen
+	Set myQuery = Application.wfSession.CreateQuerySync(BPMProcessInstance)
+
+	With myQuery
+		'In diesem Fall unbedingt notwendig !
+		.IncludeCopies = True
+		'Von vor 2 Jahren bis heute suchen
+		.EndDate = Now
+		.StartDate = CDate("01.01.2010")
+		'Kein Trefferlimit
+		.HitLimit = 0
+
+		'Es gibt einen eigenen Copy-Deskriptor !!
+		Dim desc As BPMLINELib.IwfDescriptor
+		Set desc = .QueryDescriptors.AddNewByGUIDWF("PI_COPYOF")
+		'Exakte Suche nach vorgegebener ID
+		desc.QueryOperator  = "="
+		desc.ChangeValue 0, CLng(piid)
+
+		'MsgBox "Es wurden " & myItems.TotalCount & " Ergebnisse gefunden.", vbOkOnly Or vbInformation, "QueryPICopies()"
+		Set myItems = .Execute
+		Set SER_wf_QueryPICopies = myItems
+	End With
+finish:
+	Set myQuery = Nothing
+	Exit Function
+ferror:
+	Application.ShowError "Beim Ermitteln von ProzessInstanz-Kopien zur PID " + piid + " ist ein Fehler aufgetreten!","Global Script/ SER MHA Globale Funktionen SER_wf_QueryPICopies",,,Err.Description
+	GoTo finish
+End Function
+'/Ü013
+'Ü014
+'Diese Funktion schreibt alle CC-Empfänger, die in einer bestimmten Aktivität liegen, einer PI in ein MultiValue-Control.
+Public Function SER_wf_loadCCReceiversOfActivityoMultiLineControl(ByRef pPI As wfProcessInstance, _
+															ByRef pMultiLineControl As MultilineEdit, _
+															pProcessStep As String) As Boolean
+
+		Dim myHistoryEvents As wfHistoryEvents
+		Dim i, iindex As Integer
+
+		SER_wf_loadCCReceiversOfActivityoMultiLineControl = False
+		If pPI.Copy Then
+			If Not pPI.OriginalProcessInstance Is Nothing Then
+				Set myHistoryEvents = pPI.OriginalProcessInstance.HistoryEvents
+			Else
+				Exit Function
+			End If
+		Else
+			Set myHistoryEvents = pPI.HistoryEvents
+		End If
+		For i = 0 To myHistoryEvents.Count  - 1
+			If LCase(myHistoryEvents.Item (i).StepName) = LCase(pProcessStep) Then
+				If LCase(myHistoryEvents.Item (i).Description) = LCase("Aufgabe kopiert") Then
+					iindex = InStr(1,myHistoryEvents.Item (i).EventText,"CC:")
+					pMultiLineControl.Data = pMultiLineControl.Data & Mid(myHistoryEvents.Item (i).EventText, iindex + 4)  & vbCrLf
+				End If
+			End If
+		Next
+		pMultiLineControl.ResetDirtyStatus
+		SER_wf_loadCCReceiversOfActivityoMultiLineControl = True
+finish:
+	Set myHistoryEvents = Nothing
+	Exit Function
+fError:
+	GoTo finish
+End Function
+'/Ü014
+'Ü016
+'Diese Fkt. setzt den Status eines Workitems
+Private Sub SER_wf_SetState(wi As BPMLINELib.IwfWorkItem, pNewState As WFLOBJ.WorkingStatus)
+	On Error GoTo ErrorHandler
+
+	Dim wflSystemSession As WFLOBJ.SCBWflSession
+	Set wflSystemSession = New WFLOBJ.SCBWflSession
+	With wflSystemSession
+		.ConnectServer Application.wfSession.Server, CLng(Application.wfSession.System)
+		.SystemLogin "zdA", 6
+		If .IsLoggedOn Then
+			Dim wflSystem As WFLOBJ.SCBWflSystem
+			Set wflSystem = .System
+
+			Dim wflID As WFLOBJ.SCBWflIdentifier
+			Set wflID = wflSystem.NewIDByGlobalKey(wi.GUID)
+
+			Dim wflWI As WFLOBJ.SCBWflWorkItem
+			Set wflWI = wflSystem.GetWorkItemByID(wflID)
+
+			wflWI.WorkingStatus = pNewState
+			wflWI.Update
+		End If
+	End With
+finish:
+	Set wflSystemSession = Nothing
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Beim Setzen des WF-Status ist ein Fehler aufgetreten!","Global Script/ SER MHA Globale Funktionen SER_wf_SetState",,,Err.Description
+	GoTo finish
+End Sub
+'/Ü016
+'Ü017
+Public Function SER_addDocumentToRecord(ByRef inDoc As SWAFRAMELib.IDocument, _
+									 ByRef inFolder As ItaFolder, _
+									 ByVal inNode As CNode, errMsg As String) As Boolean
+
+'*   Infos
+'	fügt einem ItaFolder eine Referenz auf ein ItaDocument im angegebenen Node hinzu
+
+	On Error GoTo fError
+'*  Checks
+
+	SER_addDocumentToRecord = False
+	If inDoc Is Nothing Then Exit Function
+	If inFolder Is Nothing Then Exit Function
+	If inNode Is Nothing Then Exit Function
+
+'*  Lokale Variablen
+	Dim xoElement As FolderManager.CElement
+
+'*	Business Logik
+	inFolder.LockFolder  ' Akte für das exklus. Bearbeiten locken
+	Set xoElement = inNode.Elements.AddNew(LT_DOCUMENT)
+	xoElement.Link = inDoc.DocumentID ' DocID des ITADokuments übergeben
+	inFolder.Commit ' Transaktion ausführen
+	inFolder.UnlockFolder 'Akte freigeben
+	SER_addDocumentToRecord = True
+finish:
+	Set xoElement = Nothing
+	Exit Function
+fError:
+	errMsg = Err.Description
+	GoTo finish
+End Function
+Public Function SER_addPIToRecord(ByRef inPI As wfProcessInstance, _
+									 ByRef inFolder As ItaFolder, _
+									 ByVal inNode As CNode, errMsg As String) As Boolean
+
+'*   Infos
+'	fügt einem ItaFolder eine Referenz auf ein ItaDocument im angegebenen Node hinzu
+
+	On Error GoTo fError
+'*  Checks
+
+	SER_addPIToRecord = False
+	If inPI Is Nothing Then Exit Function
+	If inFolder Is Nothing Then Exit Function
+	If inNode Is Nothing Then Exit Function
+
+'*  Lokale Variablen
+	Dim xoElement As FolderManager.CElement
+
+'*	Business Logik
+	inFolder.LockFolder  ' Akte für das exklus. Bearbeiten locken
+	Set xoElement = inNode.Elements.AddNew(LT_PROCESS)
+	xoElement.Link = inPI.GUID
+	inFolder.Commit ' Transaktion ausführen
+	inFolder.UnlockFolder 'Akte freigeben
+	SER_addPIToRecord = True
+finish:
+	Set xoElement = Nothing
+	Exit Function
+fError:
+	errMsg = Err.Description
+	GoTo finish
+End Function
+Public Sub SER_SETDescriptorValue(ByRef Doc As IDocument, descName As String, value As Variant, Optional overwrite As Boolean= False, Optional appendValues As Boolean= False)
+	Dim itaDoc		As ItaDocument
+	Dim itaRec		As ItaFolder
+	Dim docType 	As DocumentType
+	Dim recType		As FolderType
+	Dim descDef		As DescriptorDefinition
+	Dim descGUID	As String
+	Dim desc 		As Descriptor
+
+On Error GoTo ERR_MILE
+
+	If Doc Is Nothing Then Exit Sub
+	If descName = "" Then Exit Sub
+
+	If Doc.Type = TDocumentType.ItaDocument Then
+		Set itaDoc= Doc
+		Set docType = Application.System.DocumentTypes.ItemByGUID(itaDoc.DocumentTypeGUID)
+		If docType Is Nothing Then
+			MsgBox "Cant't get document class for destination-document", vbCritical, "Error: SER_SETDescriptorValue"
+			Exit Sub
+		End If
+		Set descDef= docType.DescriptorDefinitions.ItemByName(descName)			' Ermitteln, ob Deskriptor in Dok-Klasse eingetragen ist
+	ElseIf Doc.Type = TDocumentType.ItaFolder Then
+		Set itaRec= Doc
+		Set recType = Application.System.FolderTypes.ItemByGUID(itaRec.FolderTypeGUID)
+		If recType Is Nothing Then
+			MsgBox "Cant't get record class for destination-record", vbCritical, "Error: SER_SETDescriptorValue"
+			Exit Sub
+		End If
+		Set descDef= recType.DescriptorDefinitions.ItemByName(descName)			' Ermitteln, ob Deskriptor in Dok-Klasse eingetragen ist
+	Else
+		MsgBox "Unknown document-type", vbCritical, "Error: SER_SETDescriptorValue"
+		Exit Sub
+	End If
+
+	If Not descDef Is Nothing Then
+		descGUID= descDef.GUID
+		Set desc= Doc.Descriptors.ItemByGUID(descGUID)
+		If desc Is Nothing Then Set desc= Doc.Descriptors.AddNewByGUID(descGUID)
+		If desc Is Nothing Then
+			MsgBox "Cant't insert descriptor: " & descName & " into document", vbCritical, "Error: SER_SETDescriptorValue"
+		Else
+			If overwrite Then desc.RemoveValues
+			If appendValues And descDef.MultivalueType = mt_none And desc.ValueCount = 1 Then
+				value= desc.Value(0) + value   								' mit integer noch nicht getestet
+				desc.RemoveValues
+			End If
+			If descDef.DescriptorType = dt_char Or descDef.DescriptorType = dt_longtext Or descDef.DescriptorType = dt_string Then
+				value= Left(value, descDef.Length)
+			End If
+			If appendValues Or desc.ValueCount = 0 Then
+				desc.AddValue(value)
+			End If
+		End If
+	End If
+
+	Exit Sub
+ERR_MILE:
+	Application.ShowError "Error in SER_SETDescriptorValue", ,, Err.Number, Err.Description
+	Err.Clear
+End Sub
+'/Ü017
+Public Function SER_IsArray(pArray() As Variant) As Boolean
+	On Error Resume Next
+	Debug.Print pArray(0)
+	SER_IsArray = (Err.Number = 0)
+End Function
+

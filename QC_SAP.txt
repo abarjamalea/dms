@@ -1,0 +1,39 @@
+Default
+'*	Überarbeitung Ü001	:	16.11.2012/ Guido Bachmayr, SER: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+
+Option Explicit
+
+'Ü001: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+Private Sub btnAbleger_OnClicked()
+	ASF_AblegerOpenDlg(dbrsAbleger, Ableger)
+End Sub
+
+Private Sub dbrsAbleger_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsAbleger.DataCount > 0 Then
+			Ableger.Data= dbrsAbleger.Data(0)
+		End If
+	End If
+End Sub
+'/Ü001
+
+Private Sub Dlg_OnInit()
+	contRep.SetStringMatrix Application.MetaData.StringMatrices.ItemByName("ContentRepositories"), 0, 0
+	ASF_InitErsteller(dbrsAbleger)     'Ü001
+End Sub
+Private Sub Dlg_OnClose()
+	'Workaround wg. SER internen Mantis-Call 23133
+	Barcode.SetFocus
+End Sub
+
+Private Sub Dlg_OnExecuted(ByVal Results As SWAFRAMELib.IResultset, ByVal Succeeded As Boolean)
+	'Workaround wg. SER internen Mantis-Call 23133
+	If Results Is Nothing Then
+		Barcode.SetFocus
+		Exit Sub
+	End If
+	If Results.AvailableCount = 0 Then
+		Barcode.SetFocus
+	End If
+End Sub
+

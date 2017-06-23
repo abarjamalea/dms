@@ -1,0 +1,47 @@
+Option Explicit
+
+'KGR 20170330
+Private Sub Dlg_OnResize()
+	Dim AXC As ActiveXControl
+	Dim XDlgI As IQueryDlgInternal
+	Dim xCtr As IButton
+	Dim xCtrl, xCtrl2 As Object
+
+	If Not Dlg.ControlCount > 0 Then Exit Sub
+	On Error Resume Next
+	Dlg.Control(0).Height = Dlg.Height-10
+	Dlg.Control(0).Width = Dlg.Width - 10
+
+	Set AXC = Dlg.Control(0)
+	Set XDlgI = AXC.Control
+
+	'Position der Buttons anpassen
+	Set xCtrl = XDlgI.LanguageExtension.ControlByName("btnCancel")
+	Set xCtrl2 = XDlgI.LanguageExtension.ControlByName("btnOK")
+
+	'Vertikale Position der Schaltflächen nur dann anpassen, wenn genug Platz ist
+	If (2 * xCtrl.Height) + 20 + 100 <= AXC.Height Then
+		xCtrl.Top = AXC.Height - (2*xCtrl.Height )- 20
+		xCtrl2.Top = xCtrl.Top
+	End If
+
+	'Horizontale Position der Schaltflächen nur dann anpassen, wenn genug Platz ist
+	If xCtrl.Width + xCtrl2.Width + 30 <= AXC.Width Then
+		xCtrl.Left = AXC.Width - 10 - xCtrl.Width -20
+		xCtrl2.Left = xCtrl.Left - 5 - xCtrl2.Width
+	End If
+
+	'Position von Checkbox und Label anpassen
+	Set xCtrl = XDlgI.LanguageExtension.ControlByName("chkExportChilds")
+	xCtrl.Top = xCtrl2.Top - (xCtrl.Height) - 5
+	XDlgI.LanguageExtension.ControlByName("lblExportChildren").Top = xCtrl.Top + 2
+
+	'Größe des CategoryTree anpassen
+	Set xCtrl2 = XDlgI.LanguageExtension.ControlByName("CTCNodes")
+	xCtrl2.Width = AXC.Width - (2 * xCtrl2.Left) - 10
+	xCtrl2.Height = xCtrl.Top - 10 - xCtrl2.Top
+
+
+End Sub
+'/KGR 20170330
+

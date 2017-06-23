@@ -1,0 +1,164 @@
+Default
+'******************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	Query Dialog/ DOKaNT Akten
+'*	erstellt am / von	:	12.08.2010	/ Markus D. Hartbauer, SER
+'*	Überarbeitung Ü001	:   02.02.2011/ Christian Aigner, SER: Dlg_OnClose hinzugefügt als Workarounf für SER internen Mantis-Call 23133
+'*	Überarbeitung Ü002	:	16.11.2012/ Guido Bachmayr, SER: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+'*
+'************************************************************************
+
+
+Option Explicit
+
+
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+Private Sub Dlg_OnClose()
+	'Ü001: Workaround wg. SER internen Mantis-Call 23133
+	TabStrecke_SbASFDokObjekttyp.SetFocus
+End Sub
+
+Private Sub Dlg_OnExecuted(ByVal Results As SWAFRAMELib.IResultset, ByVal Succeeded As Boolean)
+	'Ü001: Workaround wg. SER internen Mantis-Call 23133
+	If Results Is Nothing Then
+		TabStrecke_SbASFDokObjekttyp.SetFocus
+		Exit Sub
+	End If
+	If Results.AvailableCount = 0 Then
+		TabStrecke_SbASFDokObjekttyp.SetFocus
+	End If
+End Sub
+
+Private Sub Dlg_OnDebugResume()
+	initControls
+	initValues
+End Sub
+
+Private Sub Dlg_OnInit()
+	initControls
+	initValues
+End Sub
+
+Private Sub Dlg_OnClearedContent()
+	initValues
+End Sub
+
+Private Sub Dlg_OnExecuteSQL(ByRef pStatement As String)
+
+End Sub
+
+
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+'Ü002: Einbau Control Ableger -> Dokumenteigenschaft: Versionsersteller; Wertevorrat wie Ersteller
+Private Sub btnAbleger_OnClicked()
+	ASF_AblegerOpenDlg(dbrsAbleger, Ableger)
+End Sub
+
+Private Sub dbrsAbleger_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If dbrsAbleger.DataCount > 0 Then
+			Ableger.Data= dbrsAbleger.Data(0)
+		End If
+	End If
+End Sub
+'/Ü002
+
+'*********************************
+'*	TAB STRECKE
+
+
+
+Private Sub TabStrecke_SbASFDokObjekttyp_OnSelectionChanged()
+
+	ASF_loadValuesFromDBToSelectionBox(	"SELECT DISTINCT Beschreibung AS Wert FROM DokantStammdatenStrecke " & _
+										"WHERE Typ='" & TabStrecke_SbASFDokObjekttyp.Data & "' " & _
+										"ORDER BY Wert", _
+										"Wert", TabStrecke_SbASFDokObjekt, True)
+
+End Sub
+
+Private Sub TabStrecke_SbASFDokObjekt_OnSelectionChanged()
+
+	ASF_loadValuesFromDBToSelectionBox(	"SELECT DISTINCT Bezeichnung AS Wert FROM DokantStammdatenStrecke " & _
+										"WHERE Typ='" & TabStrecke_SbASFDokObjekttyp.Data & "' " & _
+										"AND Beschreibung='" & TabStrecke_SbASFDokObjekt.Data & "' " & _
+										"ORDER BY Wert", _
+										"Wert", TabStrecke_SbASFDokObjektdetail, True)
+
+End Sub
+
+
+'*********************************
+'*	TAB HOCHBAU
+
+Private Sub TabHochbau_SbASFStandort_OnSelectionChanged()
+
+	ASF_loadValuesFromDBToSelectionBox(	"SELECT DISTINCT Gebäude AS Wert FROM DokantStammdatenHochbau " & _
+										"WHERE Standort='" & TabHochbau_SbASFStandort.Data & "' " & _
+										"ORDER BY Wert", _
+										"Wert", TabHochbau_SbASFStandortGebaeude, True)
+
+End Sub
+
+Private Sub TabHochbau_SbASFStandortGebaeude_OnSelectionChanged()
+
+	ASF_loadValuesFromDBToSelectionBox(	"SELECT DISTINCT Geschoß AS Wert FROM DokantStammdatenHochbau " & _
+										"WHERE Standort='" & TabHochbau_SbASFStandort.Data & "' " & _
+										"AND Gebäude='" & TabHochbau_SbASFStandortGebaeude.Data & "' " & _
+										"ORDER BY Wert", _
+										"Wert", TabHochbau_SbASFStandortGeschoss, True)
+
+End Sub
+
+Private Sub TabHochbau_SbASFStandortGeschoss_OnSelectionChanged()
+
+	ASF_loadValuesFromDBToSelectionBox(	"SELECT DISTINCT Raum AS Wert FROM DokantStammdatenHochbau " & _
+										"WHERE Standort='" & TabHochbau_SbASFStandort.Data & "' " & _
+										"AND Gebäude='" & TabHochbau_SbASFStandortGebaeude.Data & "' " & _
+										"AND Geschoß='" & TabHochbau_SbASFStandortGeschoss.Data & "' " & _
+										"ORDER BY Wert", _
+										"Wert", TabHochbau_SbASFStandortRaum, True)
+
+End Sub
+
+
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub initControls()
+
+	ASF_InitErsteller(dbrsAbleger)     'Ü002
+
+End Sub
+
+Private Sub initValues()
+
+'*	jeweils erste SelectionBoxes füllen
+'	Strecke/Typ
+	ASF_loadValuesFromDBToSelectionBox(	"SELECT DISTINCT Typ AS Wert FROM DokantStammdatenStrecke " & _
+										"ORDER BY Wert", _
+										"Wert", TabStrecke_SbASFDokObjekttyp, True)
+'	Hochbau/Standort
+	ASF_loadValuesFromDBToSelectionBox(	"SELECT DISTINCT Standort AS Wert FROM DokantStammdatenHochbau " & _
+										"ORDER BY Wert", _
+										"Wert", TabHochbau_SbASFStandort, True)
+
+'*	Dokumentklasse einschränken
+	With MvKlasseID
+		.ResetContent
+		.AddData Application.System.FolderTypes.ItemByName("DOKaNT").GUID
+	End With
+
+End Sub
+
+

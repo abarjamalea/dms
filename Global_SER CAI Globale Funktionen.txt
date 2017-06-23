@@ -1,0 +1,639 @@
+'#Reference {DC752F70-69D7-49F3-8756-9F765D0CE953}#1.0#0#C:\PROGRA~2\SER\COMPON~1\Swa\SwaGM.dll#SwaGM 1.0 Type Library#SWAGMLib
+Option Explicit
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Global Script/ SER CAI Globale Functionen
+'*	Autor	:	Christian Aigner, SER Solutions Österreich GmbH
+'*	Datum	:	19.03.2013
+'*	Überarbeitung Ü001	:	29.05.2013  Christian Aigner, SER: Fkt. SER_ClearAllControls, SER_copyControlValues2Descriptors, SER_getDocDescDefs und SER_supposedDescGUIDByControlName hinzugefügt
+'*	Überarbeitung Ü002	:	24.06.2013  Christian Aigner, SER: Fkt. SER_createFolder, SER_isWeekend,SER_subtractBusinessDays und SER_getPreviousBusinessDate hinzugefügt
+'*	Überarbeitung Ü003	:	05.07.2013  Christian Aigner, SER: Fkt. SER_valueInDescriptor hinzugefüt
+'*	Überarbeitung Ü004	:	14.08.2013  Christian Aigner, SER: Änderungen an der Funktion SER_BAV_calcFälligkeitstermine durchgeführt
+'*	Überarbeitung Ü005	:	01.09.2013  Christian Aigner, SER: Änderungen an der Funktion SER_createFolder durchgeführt
+'*	Überarbeitung Ü006	:	20.10.2015  Christian Aigner, SER: CR 17 Tranche 9,Fkt. SER_Org_isMemberOfGroup, SER_Org_getPersonsOfUnit, SER_Org_getPersonsOfRole, SER_Org_isMemberOfUnit hinzugefügt
+'*	Überarbeitung Ü007	:	15.12.2016  Michael Lämmle, SER: Check für alte Werte erweitert. Meldung erscheint nichtmehr bei schon eingetragenen Werten
+'************************************************************************
+
+'Ü002
+'Diese Fkt. prüft, ob ein Datum auf ein Wochenende fällt.
+'@param: date2Check: Datum im Format yyyy.mm.dd, das geprüft werden soll
+'@return: true: Datum fällt auf ein Wochenende
+'@return: false: Datum fällt auf kein Wochenende
+Private Function SER_isWeekend(date2Check As String )As Boolean
+
+	Dim weekDayNumber As Integer
+
+	weekDayNumber = Weekday(date2Check)
+	SER_isWeekend = (weekDayNumber = vbSunday Or weekDayNumber = vbSaturday)
+End Function
+'Diese Fkt. liefert ein Datum, dass eine bestimmte Anzahl an Werktagen (Parameter days) vor einem bestimmten Datum liegt
+'@param: pDate: Datum, das der Berechnung zugrunde liegt
+'@param: Anzahl der Werktagen für die Berechnung
+Public Function SER_subtractBusinessDays(ByVal pDate As Variant, days As Integer) As Variant
+
+	Dim i As Integer
+
+	If SER_isWeekend(pDate)  Then
+		pDate = SER_getPreviousBusinessDate(pDate)
+		days = days - 1
+	End If
+	For i = 0 To days - 1
+		pDate = DateAdd("d", -1, pDate)
+		If SER_isWeekend(pDate) Then
+			i = i - 1
+		End If
+	Next i
+	SER_subtractBusinessDays = pDate
+End Function
+'Liefert den letzten Arbeitstag vor einem bestimmten Datum
+'@param: pDate: Wenn das Datum (Format yyyy.mm.dd) ein Wochentag ist, wird dieses Datum wieder zurück geliefert. Falls das Datum auf eine
+'	Wochenende fällt, wird das letztte Datum vor diesem Wochenende geliefert.
+Private Function SER_getPreviousBusinessDate(pDate As Variant) As String
+	While (SER_isWeekend(pDate))
+		pDate = DateAdd("d", -1, pDate)
+	Wend
+	SER_getPreviousBusinessDate = pDate
+End Function
+Public Function SER_createFolder(pFolderClassName As String, pDatabaseName As String, _
+						pDescName1 As String, pDescValue1 As String, _
+						Optional pDescName2 As String, Optional pDescValue2 As String, _
+						Optional pDescName3 As String, Optional pDescValue3 As String, _
+						Optional pDescName4 As String, Optional pDescValue4 As String, _
+						Optional pDescName5 As String, Optional pDescValue5 As String) As ItaFolder
+	On Error GoTo fError
+
+	Dim myFolder As SWAFRAMELib.ItaFolder
+	Dim myFolderClass As FolderType
+	Dim myDatabase As FilingDatabase
+	Dim myDescDef As DescriptorDefinition
+	Dim myDescriptor As IDescriptor
+
+	If pDescName1 = "" Then
+		Application.ShowMessage ("Es ist kein Deskriptor für die Akte vorhanden!")
+		GoTo finish
+	End If
+	Set myFolderClass = Application.System.FolderTypes.ItemByName (pFolderClassName)
+	If myFolderClass Is Nothing Then
+		Application.ShowMessage ("Die Aktenklasse " + pFolderClassName + " existiert nicht! Die BAV-Akte wird nicht erstellt")
+		GoTo finish
+	End If
+
+	Set myDatabase = Application.System.FilingDatabases.ItemByName (pDatabaseName)
+	If myDatabase Is Nothing Then
+		Application.ShowMessage ("Die Datenbank " + pDatabaseName + " existiert nicht! Die BAV-Akte wird nicht erstellt")
+		GoTo finish
+	End If
+
+	Set myFolder = Application.System.CreateDocument(SWAFRAMELib.enumDocumentType.ItaFolder)
+	If myFolder Is Nothing Then
+		Application.ShowMessage ("Die Akte konnte aus unbekanntem Grund nicht angelegt werden! Die BAV-Akte wird nicht erstellt")
+		GoTo finish
+	End If
+
+	Set myDescDef = Application.System.DescriptorDefinitions.ItemByName(pDescName1)
+	If myDescDef Is Nothing Then
+		Application.ShowMessage ("Die Deskriptordefinition " +  pDescName1 + " existiert nicht! Die BAV-Akte wird nicht erstellt")
+		GoTo finish
+	End If
+
+	myFolder.Init Application.System.FolderDefinitions.ItemByName("BAVAkte")
+	myFolder.FolderTypeGUID = myFolderClass.GUID
+	Set myFolder.Database = myDatabase
+	Set myDescriptor = myFolder.Descriptors.AddNewByGUID (myDescDef.GUID)
+	myDescriptor.AddValue pDescValue1
+	Set myDescDef = Nothing
+
+	If pDescName2 <> "" And pDescValue2 <> "" Then
+		Set myDescDef = Application.System.DescriptorDefinitions.ItemByName(pDescName2)
+		If Not myDescDef Is Nothing Then
+			Set myDescriptor = myFolder.Descriptors.AddNewByGUID (myDescDef.GUID)
+			myDescriptor.AddValue pDescValue2
+		End If
+	End If
+
+	If pDescName3 <> "" And pDescValue3 <> "" Then
+		Set myDescDef = Nothing
+		Set myDescDef = Application.System.DescriptorDefinitions.ItemByName(pDescName3)
+		If Not myDescDef Is Nothing Then
+			Set myDescriptor = myFolder.Descriptors.AddNewByGUID (myDescDef.GUID)
+			myDescriptor.AddValue pDescValue3
+		End If
+	End If
+
+	If pDescName4 <> "" And pDescValue4 <> "" Then
+		Set myDescDef = Nothing
+		Set myDescDef = Application.System.DescriptorDefinitions.ItemByName(pDescName4)
+		If Not myDescDef Is Nothing Then
+			Set myDescriptor = myFolder.Descriptors.AddNewByGUID (myDescDef.GUID)
+			myDescriptor.AddValue pDescValue4
+		End If
+	End If
+'Ü005
+	If pDescName5 <> "" And pDescValue5 <> "" Then
+		Set myDescDef = Nothing
+		Set myDescDef = Application.System.DescriptorDefinitions.ItemByName(pDescName5)
+		If Not myDescDef Is Nothing Then
+			Set myDescriptor = myFolder.Descriptors.AddNewByGUID (myDescDef.GUID)
+			myDescriptor.AddValue pDescValue5
+		End If
+	End If
+'/Ü005
+	myFolder.Commit
+	Set SER_createFolder = myFolder
+finish:
+	Set myFolder = Nothing
+	Set myFolderClass = Nothing
+	Set myDescDef = Nothing
+	Set myDatabase = Nothing
+	Set myDescriptor = Nothing
+	Exit Function
+fError:
+	Application.ShowError "Beim Erstellen der BAV-Akte ist ein Fehler aufgetreten!", Err.Source, 0, Err.Number, Err.Description, 0
+	GoTo finish
+End Function
+'/Ü002
+Public Sub SER_ClearAllControls(ByRef Dlg As Object)
+	Dim i As Integer
+	Dim j As Integer
+	Dim ctrl	As IControlInternal
+	Dim cEdit	As Edit
+	Dim cDBRS	As DBRecordSelector
+	Dim cSelB	As SelectionBox
+	Dim cMvEdit As MultivalueEdit
+	Dim cMlEdit As MultilineEdit
+	Dim cMvSelB As MultivalueSelectionBox
+	Dim cCheck	As CheckBox
+	Dim ciDate	As IDate
+	Dim catCtrl As CategoryTreeControl
+
+On Error GoTo ERR_MILE
+
+	For i= 0 To Dlg.ControlCount -1
+		Set ctrl=Dlg.Control(i)
+		Select Case ctrl.ControlDefinition.ControlType
+		Case "MaskedEdit"
+			Set cEdit= ctrl
+			cEdit.Clear
+		Case "DBRecordSelector"
+			Set cDBRS= ctrl
+			For j= 0 To cDBRS.DataCount -1
+				cDBRS.DeleteData(j)
+			Next j
+		Case "CategoryTree"
+			Set catCtrl = ctrl
+			catCtrl.ResetContent
+		Case "SelectionBox"
+			Set cSelB= ctrl
+			cSelB.Data= ""
+		Case "MultiValueMaskedEdit"
+			Set cMvEdit= ctrl
+			cMvEdit.ResetContent
+		Case "MultiLineEdit"
+			Set cMlEdit= ctrl
+			cMlEdit.Data= ""
+		Case "MultivalueSelectionBox"
+			Set cMvSelB= ctrl
+			cMvSelB.RemoveAll
+		Case "CheckBox"
+			Set cCheck= ctrl
+			cCheck.Checked= False
+		Case "Date"
+			Set ciDate= ctrl
+			ciDate.Clear
+		End Select
+	Next i
+
+	Exit Sub
+ERR_MILE:
+	Application.ShowError "Error in SER_ClearAllControls  / i= " & i, Err.Source,, Err.Number, Err.Description
+	Err.Clear
+End Sub
+
+Public Function SER_supposedDescGUIDByControlName(ByRef destDescDefs As DescriptorDefinitions, ByVal controlName As String) As String
+	Dim i As Integer
+	Dim descName As String
+On Error GoTo ERR_MILE
+	SER_supposedDescGUIDByControlName= ""
+
+	descName= controlName
+	i= InStr(descName, "_")
+	If i > 0 Then descName= Mid(descName, i+1)
+
+	For i= 0 To destDescDefs.Count -1
+		If Replace(destDescDefs(i).Name, "_", "") = descName Then
+			SER_supposedDescGUIDByControlName= destDescDefs(i).GUID
+			Exit Function
+		End If
+	Next
+
+	Exit Function
+ERR_MILE:
+	Application.ShowError "Error in SER_supposedDescGUIDByControlName", "global script: SER_copyControlValues2Descriptors",, Err.Number, Err.Description
+	Err.Clear
+	SER_supposedDescGUIDByControlName= ""
+End Function
+Public Function SER_getDocDescDefs(ByRef doc As IDocument) As DescriptorDefinitions
+	Dim itaDoc	As ItaDocument
+	Dim itaRec	As ItaFolder
+	Dim docType As DocumentType
+	Dim recType As FolderType
+On Error GoTo ERR_MILE
+
+	If doc Is Nothing Then MsgBox "No doc available", vbExclamation, "Error: SER_getDocDescDefs" : Exit Function
+
+	If doc.Type = TDocumentType.ItaDocument Then
+		Set itaDoc= doc
+		Set docType = Application.System.DocumentTypes.ItemByGUID(itaDoc.DocumentTypeGUID)
+		If docType Is Nothing Then
+			MsgBox "Cant't get document class for destination-document", vbCritical, "Error: SER_getDocDescDefs" : Exit Function
+		End If
+		Set SER_getDocDescDefs= docType.DescriptorDefinitions
+	ElseIf doc.Type = TDocumentType.ItaFolder Then
+		Set itaRec= doc
+		Set recType = Application.System.FolderTypes.ItemByGUID(itaRec.FolderTypeGUID)
+		If recType Is Nothing Then
+			MsgBox "Cant't get document class for destination-document", vbCritical, "Error: SER_getDocDescDefs" : Exit Function
+		End If
+		Set SER_getDocDescDefs= recType.DescriptorDefinitions
+	Else
+		MsgBox "Unsupported type for destination-document", vbCritical, "Error: SER_getDocDescDefs" : Exit Function
+	End If
+
+	Exit Function
+ERR_MILE:
+	Application.ShowError "Error in SER_getDocDescDefs: ", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+End Function
+
+Public Function SER_copyControlValues2Descriptors(ByRef srcDlg As ArchiveDlg, ByRef destDoc As IDocument, ByRef errMsg As String, Optional overwrite As Boolean= False, _
+				Optional appendValues As Boolean= False, Optional supposeDescriptors As Boolean= False) As Boolean
+	Dim i As Integer
+	Dim j As Integer
+	Dim srcCtrl 	As IControlInternal
+	Dim descName 	As String
+	Dim destDesc 	As Descriptor
+	Dim srcDescGUID As String
+	Dim destDescDefs As DescriptorDefinitions
+	Dim destDescDef As DescriptorDefinition
+On Error GoTo ERR_MILE
+
+	SER_copyControlValues2Descriptors= False
+	If srcDlg Is Nothing Then MsgBox "No srcDlg available", vbExclamation, "Error: SER_copyControlValues2Descriptors" : Exit Function
+	If destDoc Is Nothing Then MsgBox "No destDoc available", vbExclamation, "Error: SER_copyControlValues2Descriptors" : Exit Function
+
+	Set destDescDefs= SER_getDocDescDefs(destDoc)
+	If destDescDefs Is Nothing Then
+		MsgBox "Descriptor-definitions not available for destination-document", vbCritical, "Error: SER_copyControlValues2Descriptors" : Exit Function
+	End If
+
+	SER_copyControlValues2Descriptors= True
+	For i= 0 To srcDlg.ControlCount -1
+		Set srcCtrl= srcDlg.Control(i)
+		If srcCtrl.Name <> "" And srcCtrl.DataCount > 0 Then
+			srcDescGUID= srcCtrl.UserData
+
+			If srcDescGUID = "" And supposeDescriptors Then								' Deskriptor aufgrund des Control-Namen mutmaßen
+				srcDescGUID= SER_supposedDescGUIDByControlName(destDescDefs, srcCtrl.Name)
+			End If
+
+			If Not destDescDefs.ItemByGUID(srcDescGUID) Is Nothing Then					' Ermitteln, ob Deskriptor in Dok-Klasse eingetragen ist
+				Set destDesc= destDoc.Descriptors.ItemByGUID(srcDescGUID)
+				If destDesc Is Nothing Then Set destDesc= destDoc.Descriptors.AddNewByGUID(srcDescGUID)
+
+				If destDesc Is Nothing Then
+					MsgBox "Cant't insert descriptor: " & destDescDefs.ItemByGUID(srcDescGUID).Name & " into document", vbCritical, "Error: SER_copyControlValues2Descriptors"
+					SER_copyControlValues2Descriptors= False							' Liefert i.A. Fehler zurück
+				Else
+					If overwrite Then destDesc.RemoveValues
+					If appendValues Or destDesc.ValueCount = 0 Then
+						For j= 0 To srcCtrl.DataCount -1
+							destDesc.AddValue(srcCtrl.GetData(j))
+						Next j
+					End If
+				End If
+			End If
+		End If
+	Next i
+
+	Exit Function
+ERR_MILE:
+	errMsg = Err.Description
+	Application.ShowError "Error while copying control values", "global skript Global Script/ SER CAI Globale Functionen: SER_copyControlValues2Descriptors",, Err.Number, Err.Description
+	Err.Clear
+	SER_copyControlValues2Descriptors=False
+End Function
+
+Public Sub SER_DlgOnExecuteQueryObject(ByRef Query As SWAFRAMELib.Query, TabOrtsbezug_DbrsASFOrtStrasse As SWACTRLSLib.DBRecordSelector, _
+										TabOrtsbezug_ASFDokStrKmVon As SWACTRLSLib.IEdit, TabOrtsbezug_ASFDokStrKmBis  As SWACTRLSLib.IEdit, _
+										TabOrtsbezug_SbKmSuchart As SWACTRLSLib.SelectionBox)
+
+	''*	Lokale Variablen
+	Dim xl As Long
+	Dim myDescDef As DescriptorDefinition
+
+	Set myDescDef = Application.System.DescriptorDefinitions.ItemByName ("ASF_Dok_DokFolderUUID")
+	If myDescDef Is Nothing Then
+		Application.ShowError ("Der Descriptor ASF_Dok_DokFolderUUID existiert nicht!","Global Script/ SER CAI Globale Functionen SER_DlgOnExecuteQueryObject")
+		Exit Sub
+	End If
+
+	'**	Business Logik - Ortsbezug
+	If	TabOrtsbezug_DbrsASFOrtStrasse.DataCount = 1 And _
+		TabOrtsbezug_ASFDokStrKmVon.Data <> "" And TabOrtsbezug_ASFDokStrKmBis.Data <> "" And _
+		TabOrtsbezug_SbKmSuchart.Data <> "" Then
+
+			Query.ExtendedFrom = ""
+			Query.ExtendedWhere = "EXISTS(SELECT " + myDescDef.QueryLiteral +" from IDXONLY_0000_H I WHERE A.UUID = " + _
+					"I." + myDescDef.QueryLiteral
+
+			Select Case TabOrtsbezug_SbKmSuchart.Data
+				Case "exakt innerhalb"
+					xl = ASF_enumStreckenabschnittSuchart.asfStrAbSuchExaktInnerhalb
+				Case "überschneidend"
+					xl = ASF_enumStreckenabschnittSuchart.asfStrAbSuchUeberschneidend
+			End Select
+
+			Query.ExtendedWhere = Query.ExtendedWhere & ASF_Ortsbezug_getStreckenAbschnittSql(	TabOrtsbezug_DbrsASFOrtStrasse.Data(0), _
+																					TabOrtsbezug_ASFDokStrKmVon.Data, _
+																					TabOrtsbezug_ASFDokStrKmBis.Data, _
+																					xl, "I") & ")"
+	End If
+
+End Sub
+
+Public Function isDateInArray(myArray() As String, myDate As String) As Boolean
+	Dim i As Integer
+	For i = 0 To UBound(myArray)
+		If myDate = myArray(i) Then
+			isDateInArray = True
+			Exit Function
+		Else
+			isDateInArray = False
+		End If
+	Next
+End Function
+'Ü007
+Public Function SER_BAV_checkFälligkeitsdatum(ctrlFälligkeitsdatum As MultivalueEdit, dateChecker As SWACTRLSLib.Date, Optional myOldValues As Variant = Nothing) As Boolean
+	Dim i As Integer
+	Dim fälligkeitsDatum As String
+	Dim fälligkeitstermine() As String
+
+	SER_BAV_checkFälligkeitsdatum = False
+
+	ReDim fälligkeitstermine(ctrlFälligkeitsdatum.DataCount)
+
+	'Fälligkeitstermine in einem Array abspeichern
+	For i = 0 To ctrlFälligkeitsdatum.DataCount -1
+		fälligkeitsDatum = ctrlFälligkeitsdatum.GetData(i)
+		fälligkeitstermine(i+1) = fälligkeitsDatum
+	Next i
+
+	'Prüfung, ob alle Fälligkeitsdaten gültige Datumswerte sind. Datumsangaben in das Format dd.mm.yyyy formatieren
+	For i = 1 To UBound(fälligkeitstermine)
+		fälligkeitsDatum = fälligkeitstermine(i)
+		On Error Resume Next
+		fälligkeitsDatum = Format(fälligkeitsDatum,"yyyy.mm.dd") 'dadruch wird ein gültiges Datum im Format dd.mm.yyyy umformatiert auf yyyy.mm.dd
+		dateChecker.Data = Format(fälligkeitsDatum,"yyyy.mm.dd")
+		If (Left (fälligkeitsDatum,4) > "2099") Then
+			Application.ShowMessage "Ein Fälligkeitsdatum darf nicht nach dem 31.12.2099 liegen!"
+			Exit Function
+		End If
+		If Err.Number > 0 Then
+			Application.ShowMessage "Bitte geben Sie ein gültiges Datum " + fälligkeitsDatum + " im Format jjjj.mm.tt ein!"
+			Exit Function
+		Else
+			On Error GoTo 0
+			If DateDiff("d", fälligkeitsDatum, Format(Now,"yyyy.mm.dd")) > 0 Then
+				On Error Resume Next
+			If Not myOldValues Is Nothing Then
+				If Not isDateInArray(myOldValues,fälligkeitsDatum) Then
+					Application.ShowMessage("Das Fälligkeitsdatum " + fälligkeitsDatum + " darf nicht in der Vergangenheit liegen!")
+					Exit Function
+				End If
+			End If
+			End If
+		End If
+		fälligkeitstermine(i) = fälligkeitsDatum
+		On Error GoTo 0
+	Next
+
+	'Die korrigierten Datumswert in das Multivalueedit-Control zurückschreiben
+	For i = UBound(fälligkeitstermine) - 1 To 0 Step -1
+		ctrlFälligkeitsdatum.DeleteData(i)
+		ctrlFälligkeitsdatum.AddData(fälligkeitstermine(i+1))
+	Next i
+
+	SER_BAV_checkFälligkeitsdatum = True
+End Function
+'/Ü007
+'Diese Fkt. berechnet zu den Fälligkeitsdaten die entsprechendne Erinnerungsdaten (Erinnerungsdatum = Fälligkeitsdatum - Vorlauf).
+'Wochenende wird nicht berücksichtigt.
+Public Function SER_BAV_calcErinnerungstermine(pFaelligkeitsdaten As MultivalueEdit, pErinnerungsdaten As MultivalueEdit, _
+												pVorlauf As String)
+
+	Dim i As Integer
+	Dim erinnerungstermin As String
+	Dim faelligkeitstermin As String
+
+	On Error GoTo fError
+	SER_BAV_calcErinnerungstermine = False
+	pErinnerungsdaten.ResetContent
+	For i = 0 To pFaelligkeitsdaten.DataCount - 1
+		faelligkeitstermin = pFaelligkeitsdaten.GetData(i)
+		erinnerungstermin = Format (SER_subtractBusinessDays(faelligkeitstermin, pVorlauf), "yyyy.mm.dd")
+		If DateDiff("d", erinnerungstermin, Format(Now,"yyyy.mm.dd")) >  0 Then
+			If MsgBox("ACHTUNG! " +	vbCrLf + _
+					"Für Ihr Fälligkeitsdatum " + faelligkeitstermin + " und Ihrem gewählten Vorlauf " + _
+					"liegt der daraus resultierende Erinnerungstermin (" + erinnerungstermin + ") in der Vergangenheit! " + vbCrLf + vbCrLf + _
+					"Es steht daher nicht mehr die vollständige Frist zur Bearbeitung des Arbeitsauftrages zur Verfügung!	" + vbCrLf + _
+					"Wollen Sie die Aufgabe noch einmal bearbeiten, bevor sie gespeichert wird?",vbYesNo, "Frage") = vbYes Then
+					Exit Function
+			End If
+		End If
+		If Not SER_valueInMultiValueControl(erinnerungstermin, pErinnerungsdaten) Then
+			pErinnerungsdaten.AddData erinnerungstermin + "_" + faelligkeitstermin
+		End If
+	Next
+	SER_BAV_calcErinnerungstermine = True
+	Exit Function
+ferror:
+	Err.Raise 20, "Global Script/ SER CAI Globale Functionen SER_BAV_calcErinnerungstermine",Err.Description
+End Function
+'Diese Funktion berechnet in Abhängigkeit von Startdatum, Endedatum und Periode die Fälligkeitstermine
+'Ü004
+Public Function SER_BAV_calcFälligkeitstermine(ctrlStartDatum As SWACTRLSLib.Date, ctrlEndeDatum As SWACTRLSLib.Date, _
+								ctrlPeriode As SelectionBox, txtEndedNachXTerminen As Edit, _
+								txtWiederholenXPerioden As Edit, ctrlFälligkeitstermine As MultivalueEdit) As Boolean
+'/Ü004
+	Dim tempDate As Date
+	Dim endeDatum As Date
+	Dim anzahlTermine As Integer
+	Dim periodenInterval As Integer
+	Dim i As Integer
+
+	SER_BAV_calcFälligkeitstermine = False
+
+	On Error GoTo fError
+
+	'Interval für die Periode (zB. alle 2 Jahre)
+	If Not txtWiederholenXPerioden Is Nothing Then
+		If txtWiederholenXPerioden.Data <> "" Then
+			periodenInterval = CInt(txtWiederholenXPerioden.Data)
+		Else
+			periodenInterval = 1
+		End If
+	End If
+
+	'Anzahl an Fälligkeitsterminen
+	If Not txtEndedNachXTerminen Is Nothing Then
+		If txtEndedNachXTerminen.Data <> "" Then
+			anzahlTermine = CInt(txtEndedNachXTerminen.Data)
+		Else
+			anzahlTermine = 32500
+		End If
+	End If
+	'Fälligkeitstermine aus Startdatum und Periode berechnen. Entweder ein Endedatum oder die Anzahl an Fälligkeitsterminen
+	'muss angegeben sein.
+	i = 0
+	If Not ctrlStartDatum.Empty And ctrlPeriode.Data <> ""  Then
+		If ctrlEndeDatum.Empty Then
+			endeDatum = CDate("2099.12.31")
+		Else
+			endeDatum = ctrlEndeDatum.Data
+		End If
+		tempDate = ctrlStartDatum.Data
+		While DateDiff("d", tempDate, endeDatum) >= 0 And i < anzahlTermine
+			If Not SER_valueInMultiValueControl(Format(tempDate, "yyyy.mm.dd"),ctrlFälligkeitstermine) Then
+				If Left(Format(tempDate, "yyyy.mm.dd"),4) > "2099" Then
+					Application.ShowMessage "Ein Fälligkeitsdatum darf nicht nach dem 31.12.2099 liegen!"
+					Exit Function
+				End If
+				ctrlFälligkeitstermine.AddData Format(tempDate, "yyyy.mm.dd")
+			End If
+			Select Case ctrlPeriode.Data
+				Case "1" 'täglich
+					tempDate = DateAdd("d", periodenInterval, tempDate)
+				Case "2" 'wöchentlich
+					tempDate = DateAdd("ww", periodenInterval, tempDate)
+				Case "3" 'monatlich
+					tempDate = DateAdd("m", periodenInterval, tempDate)
+				Case "4" 'quartal
+					tempDate = DateAdd("q", periodenInterval, tempDate)
+				Case "5" 'jährlich
+					tempDate = DateAdd("yyyy", periodenInterval, tempDate)
+			End Select
+			i = i + 1
+		Wend
+	End If
+	SER_BAV_calcFälligkeitstermine = True
+	Exit Function
+ferror:
+	Err.Raise 20, "Global Script/ SER CAI Globale Functionen SER_BAV_calcFälligkeitstermine",Err.Description
+End Function
+'Diese Fkt. prüft, ob ein Wert bereits in einem Multivaluecontrol enthalten ist
+Public Function SER_valueInMultiValueControl(pValue2Check As String, ctrlMultiValue As MultivalueEdit) As Boolean
+	Dim i As Integer
+
+	SER_valueInMultiValueControl = False
+	For i = 0 To ctrlMultiValue.DataCount - 1
+		If Trim(ctrlMultiValue.GetData (i)) = Trim(pValue2Check) Then
+			SER_valueInMultiValueControl = True
+		End If
+	Next
+End Function
+'Diese Fkt. prüft, ob ein Wert bereits in einem Dokumentendeskriptor enthalten ist
+'Ü003
+Public Function SER_valueInDescriptor(pValue2Check As String, pDescr As Descriptor) As Boolean
+	Dim i As Integer
+
+	SER_valueInDescriptor = False
+	For i = 0 To pDescr.ValueCount - 1
+		If Trim(pDescr.Values(i)) = Trim(pValue2Check) Then
+			SER_valueInDescriptor = True
+		End If
+	Next
+End Function
+'/Ü003
+'Ü006
+Public Function SER_Org_isMemberOfGroup(pGroup As SWAGMLib.IGroup, pUser As String) As Boolean
+
+	Dim I As Integer
+	Dim roleCounter As Integer
+	Dim idGUID As String
+	Dim idType As String
+	Dim idName As String
+
+	Dim orgUnit As SWAORGALib.IUnit
+	Dim orgRole As SWAORGALib.IRole
+
+	'ToDo: Cache...
+
+	SER_Org_isMemberOfGroup = False
+	For I = 0 To pGroup.IdentifierCount -1
+		pGroup.GetIdentifier(I, idGUID, idType, idName)
+		Select Case idType
+			Case "Person"
+				SER_Org_isMemberOfGroup = (idName = pUser)
+			Case "Role"
+				Set orgRole = Application.System.Organisation.Roles.ItemByGUID(idGUID)
+				SER_Org_isMemberOfGroup = (Not orgRole.Persons.ItemByName(pUser) Is Nothing)
+			Case "Unit"
+				Set orgUnit = Application.System.Organisation.Units.ItemByGUID(idGUID)
+				For roleCounter = 0 To orgUnit.Roles.Count -1
+					SER_Org_isMemberOfGroup = SER_Org_isMemberOfUnit(pUser, orgUnit)
+					If(SER_Org_isMemberOfGroup) Then Exit Function
+				Next
+		End Select
+		If(SER_Org_isMemberOfGroup) Then Exit Function
+	Next
+End Function
+Private Sub SER_Org_getPersonsOfUnit(pUnit As SWAORGALib.IUnit, ByRef pSet As SWATOOLSLib.IVariantSet)
+	Dim I As Integer
+
+	For I = 0 To pUnit.Persons.Count - 1
+		If(Not pSet.Contains(pUnit.Persons(I).Name)) Then
+			pSet.Add(pUnit.Persons(I).Name)
+		End If
+	Next
+
+	For I = 0 To pUnit.Roles.Count -1
+		SER_Org_getPersonsOfRole(pUnit.Roles(I), pSet)
+	Next
+
+	For I = 0 To pUnit.Units.Count -1
+		SER_Org_getPersonsOfUnit(pUnit.Units(I), pSet)
+	Next
+End Sub
+Private Sub SER_Org_getPersonsOfRole(pRole As SWAORGALib.IRole, ByRef pSet As SWATOOLSLib.IVariantSet)
+	Dim I As Integer
+
+	For I = 0 To pRole.Persons.Count - 1
+		If(Not pSet.Contains(pRole.Persons(I).Name)) Then
+			pSet.Add(pRole.Persons(I).Name)
+		End If
+	Next
+End Sub
+Private Function SER_Org_isMemberOfUnit(pUser As String, pUnit As SWAORGALib.IUnit) As Boolean
+	Dim I As Integer
+
+	SER_Org_isMemberOfUnit = False
+	If(Not pUnit.Persons.ItemByName(pUser) Is Nothing) Then
+		SER_Org_isMemberOfUnit = True
+		Exit Function
+	End If
+	For I = 0 To pUnit.Roles.Count -1
+		If(Not pUnit.Roles(I).Persons.ItemByName(pUser) Is Nothing) Then
+			SER_Org_isMemberOfUnit = True
+			Exit Function
+		End If
+	Next
+	For I = 0 To pUnit.Units.Count -1
+		If(SER_Org_isMemberOfUnit(pUser, pUnit.Units.Item(I))) Then
+			SER_Org_isMemberOfUnit = True
+			Exit Function
+		End If
+	Next
+End Function
+'/Ü006
+

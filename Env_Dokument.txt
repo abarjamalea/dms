@@ -1,0 +1,1197 @@
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	Filing Environment/ Dokument
+'*	erstellt am / von	:	23.06.2010/ Markus D. Hartbauer, SER
+'*	Überarbeitung Ü001	:	27.08.2010/	Guido Bachmayr, SER
+'*	Überarbeitung Ü002	:	07.12.2010/ Markus D. Hartbauer, SER
+'*	Überarbeitung Ü003	:	07.01.2011/ Günther F. Schinko, SER
+'*	Überarbeitung Ü004	:	10.02.2011/ Guido J. Bachmayr, SER
+'*	Überarbeitung Ü005	:	16.02.2011/ Christian Aigner, SER
+'*	Überarbeitung Ü006	:	10.03.2011/ Markus D. Hartbauer, SER: Einbau von Aufrufen für Performance-Messungen
+'*  Überarbeitung Ü007	:	13.04.2011/ Guido J. Bachmayr, SER: CR 14: Anlassdatum nicht mehr mit Filedatum überschreiben
+'*	Überarbeitung Ü008	:	26.04.2011/ Markus D. Hartbauer, SER: CR 37: Erweiterung ASF_aktuelles_Register
+'*	Überarbeitung Ü009	:	21.10.2011/	Günther F. Schinko, SER:	CR 54: Dateiname Attachment anstatt kryptischen Namen
+''*	Überarbeitung Ü010	:	09.10.2012/	Christian Aigner SER:	CR 3, Tranche 4 (Vorbelegung Standard-Dokumentklasse)
+''*	Überarbeitung Ü011	:	28.11.2012/	Günther F. Schinko SER:	Erweiterung Ü009
+''*	Überarbeitung Ü012	:	07.10.2013/	Christian Aigner:	CR Tranche 5 (Kategorisierung Bau- und Projektakte)
+'*	Überarbeitung Ü013	:	29.04.2014/	Guido Bachmayr: Massenablage: Auf geändertes Register in Aktenanzeige reagieren.
+'*	Überarbeitung Ü014	:	04.10.2015/	Guido Bachmayr: Massenablage: WF für jedes Dokument starten.
+'*  Überarbeitung Ü015  :   26.01.2017/ Stephan Wagner: Batcharchivierung Published Property wird für jedes Dokument gesetzt
+'************************************************************************
+
+	Option Explicit
+
+'************************************************************************
+'*	Globale Objekte
+'************************************************************************
+
+'*	aktuelle Objekte für diese Instanz
+	Dim				MyASF_aktuelle_Akte		As SWAFRAMELib.ItaFolder
+'Ü008
+	Dim				MyASF_aktuelles_Register	As FolderManager.CNode
+'/Ü008
+'*	GBA 2010-08-27
+	'Importieren mehrerer Files --> Frage: 1 oder je File 1 Dokument
+	'Aufruf der: 2. OnFileOpen
+	'Wenn je File 1 Dok, dann alle weiteren Files im Hintergrund zwischenspeichern
+	'und nach dem Archivieren (onExecuted oder onDocChanged(nothing)) den Zwischenspeicher ausräumen
+
+	Private Const INIT_UPB_BUFFER As Integer = 15
+	'Ü005
+	Private Const DOKKLASSE_BAUBESTAND As String = "BauBestandsDok"
+	'/Ü005
+
+	Dim WithEvents myArchDlg As ArchiveDlg
+	Dim WithEvents myDoc As ItaDocument	'weil ArchDlg.OnDocumentChanged nicht auslöst, wenn importierte Datei gelöscht wird
+	Dim WithEvents myButtonTake As Button
+
+	Private fileCount As Integer
+	Private bufferFiles As Boolean
+	Private fileBuffer() As SWADATALib.DocData
+	Private fileSavePos As Integer
+	Private fileGetPos As Integer
+
+	Private myKnownDocID As String
+	Private myKnownPartAlias As String
+	Private myKnownPartName As String
+	Private myKnownPartCount As Integer
+	Private myKnownRepZero As Boolean
+	Private myKnownPartZero As Boolean
+
+
+'************************************************************************
+'*	ENVIRONMENT LEBENSZYKLUS
+'************************************************************************
+
+Private Sub FilingEnvironmentWindow_OnInit()
+
+'*	aktuelle Akte beim Start
+	'Ü002
+	Set MyASF_aktuelle_Akte = ASF_aktuelle_Akte
+	Set ASF_aktuelle_Akte = Nothing
+	'/Ü002
+	'Ü008
+	Set MyASF_aktuelles_Register = ASF_aktuelles_Register
+	Set ASF_aktuelles_Register = Nothing
+	'/Ü008
+
+	ReDim fileBuffer(INIT_UPB_BUFFER)
+	fileSavePos = -1
+	fileGetPos = 0
+
+	If FilingEnvironmentWindow.ArchiveViewWindow Is Nothing Then
+		myArchDlg= Nothing
+	Else
+		Set myArchDlg= FilingEnvironmentWindow.ArchiveViewWindow.ArchiveDlg
+		Set myDoc = myArchDlg.Document
+		Set myButtonTake= myArchDlg.ControlByName("btnTakeNext")
+	End If
+
+	myKnownRepZero= False
+	myKnownPartCount= False
+
+'Ü010
+	Dim arrmatrix() As String
+	If SER_getKeyValueFromStringMatrixByName("ASF_StandardDokumentKlasseJeOE",Application.System.User.Unit,arrmatrix,False) Then
+		If Not Application.MetaData.ArchiveDocClasses.ItemByName (arrmatrix(1)) Is Nothing Then
+			If Not MyASF_aktuelle_Akte Is Nothing Then
+				If Application.System.FolderTypes.ItemByName("Beschaffungsakte").GUID <> MyASF_aktuelle_Akte.FolderTypeGUID Then
+					FilingEnvironmentWindow.ActiveArchiveDocClass = Application.MetaData.ArchiveDocClasses.ItemByName (arrmatrix(1)).GUID
+				End If
+			Else
+				FilingEnvironmentWindow.ActiveArchiveDocClass = Application.MetaData.ArchiveDocClasses.ItemByName (arrmatrix(1)).GUID
+			End If
+		Else
+			Application.ShowError "Die konfigurierte Dokumentenklasse " + arrmatrix(1) + " existiert nicht!","Filing Environment/ Dokument FilingEnvironmentWindow_OnInit",,, _
+					"Bitte informieren Sie Ihren Systemadministrator. " + vbCrLf + _
+					"Es muss geprüft werden, ob die in der Werteliste 'ASF_StandardDokumentKlasseJeOE' konfigurierte Dokumentenklasse zur Organisationseinheit " + Application.System.User.Unit + " existiert!" + vbCrLf + _
+					"Es wird die Standard Dokumentenklasse geladen!"
+		End If
+	End If
+'/Ü010
+
+'Ü012
+	If Not MyASF_aktuelle_Akte Is Nothing Then
+		If Application.System.FolderTypes.ItemByName("Bauprojektakte").GUID = MyASF_aktuelle_Akte.FolderTypeGUID Then
+			FilingEnvironmentWindow.ActiveArchiveDocClass = Application.MetaData.ArchiveDocClasses.ItemByName (DOKKLASSE_BAUBESTAND).GUID
+		End If
+	End If
+'/Ü012
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnDebugStop()					'wird nicht aufgerufen !!!!!!
+
+	Dim i As Integer
+	Dim imax As Integer
+	imax= INIT_UPB_BUFFER
+	If imax < fileSavePos Then imax= fileSavePos
+	For i= 0 To imax
+		Set fileBuffer(i)= Nothing
+	Next
+	ReDim fileBuffer(INIT_UPB_BUFFER)
+	fileSavePos= -1
+	fileGetPos= 0
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnDebugResume()
+
+	Dim ret As Integer
+
+	If FilingEnvironmentWindow.ArchiveViewWindow Is Nothing Then
+		myArchDlg= Nothing
+	Else
+		Set myArchDlg= FilingEnvironmentWindow.ArchiveViewWindow.ArchiveDlg
+		Set myDoc = myArchDlg.Document
+		Set myButtonTake= myArchDlg.ControlByName("btnTakeNext")
+	End If
+
+	ReDim fileBuffer(INIT_UPB_BUFFER)
+	fileSavePos= -1
+	fileGetPos= 0
+
+	Call setArchDlgCtrls
+
+	myKnownRepZero= False
+	myKnownPartCount= False
+
+					Dim idct 		As SWACTRLSLib.Edit
+					Set idct= myArchDlg.ControlByName("TabEinordnung_ASFDokID")
+					If Not idct Is Nothing Then
+						idct.Data= ASF_IDs_getNextDocId()  'ID muss mit nächster Laufnummer vorbelegt werden
+					End If
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnRibbonBarInitialized()
+
+	Dim XRbPnl As RibbonPanel
+	Dim XRbBtn As RibbonButton
+	Set XRbPnl = FilingEnvironmentWindow.RibbonBar.Category(0).AddPanel("IDVorlagen", "Vorlagen")
+	Set XRbBtn = XRbPnl.AddElement(rtButton, "IDNeuVonVorlage", "neu von Vorlage", "erstellt ein neues Dokument auf Basis einer Vorlage", 77, 77)
+	'SER/GSC 2010-09-20
+
+	Set XRbPnl = FilingEnvironmentWindow.RibbonBar.Category(0).AddPanel("IDSystem", "Systemfunktionen")
+	Call SER_ADD_DELETE_RIBBON_ELEMENTS(True,FilingEnvironmentWindow,"IDSystem","IDBarcode", "Barcode erzeugen", "erzeugt einen Barcode im Internet-Explorer")
+	Call SER_ADD_DELETE_RIBBON_ELEMENTS(True,FilingEnvironmentWindow,"IDSystem","IDMails", "Mails holen", "holt Mail(s) von Outlook")
+	'Set XRbBtn = XRbPnl.AddElement(rtButton, "IDBarcode", "Barcode erzeugen", "erzeugt einen Barcode im Internet-Explorer", -1,-1)
+	'Set XRbBtn = XRbPnl.AddElement(rtButton, "IDMails", "Mails holen", "holt Mail(s) von Outlook",-1,-1)
+	'Ü005
+	If Not Application.MetaData.ArchiveDocClasses.ItemByGUID (FilingEnvironmentWindow.ActiveArchiveDocClass) Is Nothing Then
+		If Application.MetaData.ArchiveDocClasses.ItemByGUID (FilingEnvironmentWindow.ActiveArchiveDocClass).Name = DOKKLASSE_BAUBESTAND  Then
+			If FilingEnvironmentWindow.RibbonBar.Category(0).PanelByID("CADResult_Panel") Is Nothing Then
+				Set XRbPnl = FilingEnvironmentWindow.RibbonBar.Category(0).AddPanel("CADResult_Panel", "CAD Dokument bearbeiten")
+			End If
+			Call SER_ADD_DELETE_RIBBON_ELEMENTS(True,FilingEnvironmentWindow,"CADResult_Panel","CADDoArchive", "Neu ablegen", "CAD Dokument neu ablegen",08)
+		End If
+	End If
+	'/Ü005
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnClose()
+
+	If Application.Globals.Exists ("ASF_Aktuelles_Register") Then
+		Application.Globals.Remove ("ASF_Aktuelles_Register")
+	End If
+	If Application.Globals.Exists ("ASF_Aktuelle_FolderViewWindow") Then
+		Application.Globals.Remove ("ASF_Aktuelle_FolderViewWindow")
+	End If
+
+End Sub
+
+
+
+'************************************************************************
+'*	ARCHIVE DLG LEBENSZYKLUS UND INTERAKTION
+'************************************************************************
+
+Private Sub myArchDlg_OnInit()
+	Dim lct As SWACTRLSLib.Label
+
+	Call setArchDlgCtrls
+End Sub
+
+Private Sub myDoc_OnRepresentationDeleted(ByVal Representation As Long)			'geht nicht - wird nicht aufgerufen !!
+	If myDoc.Representations.Count = 0 Then
+		Call myArchDlg_OnDocumentChanged(myArchDlg.Document)
+		'Ü004  GBA Files bleiben im Hintergrundspeicher hängen, wenn "Werte beibehalten" angehakt ist
+		If fileSavePos >= 0 Then
+			If myDoc.Representations.Count = 0 Then
+				'Set myDoc= newDoc
+				Call AddRepFromBuffer(myDoc)
+			ElseIf myDoc.Representations(myDoc.Representations.DefaultRepresentation).PartDocuments.Count= 0 Then
+				'Set myDoc= newDoc
+				Call AddRepFromBuffer(myDoc)
+			Else
+				Exit Sub
+			End If
+		End If
+		'/Ü004
+	End If
+End Sub
+
+Private Sub myButtonTake_OnClicked()
+	Set myDoc = myArchDlg.Document
+	Call AddRepFromBuffer(myDoc)
+End Sub
+
+Private Sub myArchDlg_OnDocumentChanged(ByVal newDoc As SWAFRAMELib.IDocument)
+	Dim i As Integer
+
+	Dim cct As SWACTRLSLib.CheckBox
+
+
+
+	Set myDoc= newDoc
+	'Ü003
+
+
+	If Not FilingEnvironmentWindow.ArchiveViewWindow.ViewerWindow.DocViewer Is Nothing Then
+		If myDoc.Representations.Count > 0 Then
+			If FilingEnvironmentWindow.ArchiveViewWindow.ViewerWindow.DocViewer.PartDocCount <>  myDoc.Representations(0).PartDocuments.Count Then
+				If Not ASFmail Is Nothing Then
+					myDoc.Representations(0).PartDocuments.RemoveAll
+					myDoc.Representations(0).PartDocuments.AddNew.DataObject = ASFmail.MSGFile
+					If ASFmail.AttachmentCount>0 Then
+						For i = 0 To ASFmail.AttachmentCount-1
+							myDoc.Representations(0).PartDocuments.AddNew.DataObject = ASFmail.Attachment(i)
+						Next
+					End If
+					Set ASFmail = Nothing
+				End If
+
+			End If
+		End If
+	End If
+	'/Ü003
+
+	Set cct= myArchDlg.ControlByName("cbKeepValues")
+	If Not cct Is Nothing Then
+		If cct.Checked Then
+			Exit Sub
+		End If
+	End If
+
+	If fileSavePos >= 0 Then
+		If myDoc.Representations.Count = 0 Then
+			'Set myDoc= newDoc
+			Call AddRepFromBuffer(myDoc)
+		ElseIf myDoc.Representations(myDoc.Representations.DefaultRepresentation).PartDocuments.Count= 0 Then
+			'Set myDoc= newDoc
+			Call AddRepFromBuffer(myDoc)
+		Else
+			Exit Sub
+		End If
+
+		Exit Sub				' myArchDlg.execute löst events aus (auch dieses) -> winCube hängt sich auf
+
+		Set cct= myArchDlg.ControlByName("cbKeepValues")
+		If Not cct Is Nothing Then
+			If cct.Checked Then
+				If myDoc.Representations.Count > 0 Then
+					If myDoc.Representations(myDoc.Representations.DefaultRepresentation).PartDocuments.Count= 1 Then
+						myArchDlg.Execute
+					End If
+				End If
+			End If
+		End If
+	End If
+
+End Sub
+
+
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+Private Sub FilingEnvironmentWindow_OnChangeArchiveDocClass(ByVal DocClass As SWAMDLib.ArchiveDocClass, ByRef Handled As Boolean)
+
+'*	aktuelle Akte wiederbeleben für Übergabe an Dokument(Ablagedialog-Script)
+	'Ü002
+	Set ASF_aktuelle_Akte = MyASF_aktuelle_Akte
+	'/Ü002
+	'Ü008
+	Set ASF_aktuelles_Register = MyASF_aktuelles_Register
+	'/Ü008
+	If FilingEnvironmentWindow.ArchiveViewWindow Is Nothing Then
+		myArchDlg= Nothing
+	Else
+		Set myArchDlg= FilingEnvironmentWindow.ArchiveViewWindow.ArchiveDlg
+		Set myDoc = myArchDlg.Document
+		Set myButtonTake= myArchDlg.ControlByName("btnTakeNext")
+	End If
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnArchiveDocClassChanged(ByVal DocClass As SWAMDLib.ArchiveDocClass, ByRef Handled As Boolean)
+
+'*	aktuelle Akte wieder leeren
+	'Ü002
+	Set ASF_aktuelle_Akte = Nothing
+	'/Ü002
+	'Ü008
+	Set ASF_aktuelles_Register = Nothing
+	'/Ü008
+
+	'Ü005
+	If DocClass.Name <> DOKKLASSE_BAUBESTAND Then
+		If Not FilingEnvironmentWindow.RibbonBar.Category(0).PanelByID("CADResult_Panel") Is Nothing Then
+			FilingEnvironmentWindow.RibbonBar.Category(0).RemovePanelByID ("CADResult_Panel")
+		End If
+	Else
+		If  FilingEnvironmentWindow.RibbonBar.Category(0).PanelByID("CADResult_Panel") Is Nothing Then
+			FilingEnvironmentWindow.RibbonBar.Category(0).AddPanel("CADResult_Panel", "CAD Dokument bearbeiten")
+			Call SER_ADD_DELETE_RIBBON_ELEMENTS(True,FilingEnvironmentWindow,"CADResult_Panel","CADDoArchive", "Neu ablegen", "CAD Dokument neu ablegen",08)
+		End If
+	End If
+	'/Ü005
+End Sub
+
+
+Private Sub FilingEnvironmentWindow_OnFileDrop(ByVal File As SWADATALib.DocData, ByRef Handled As Boolean)
+
+	Dim docImDlg	As Boolean
+	Dim fso   		As Object
+	Dim objFolder	As Object
+	Dim objfile 	As Object
+	Dim myDocData 	As DocData
+	Set fso = CreateObject("Scripting.FileSystemObject")
+
+	If fso.folderexists(File.fileName) Then
+		Handled= True
+
+    	'Verweis auf übergeordneten Ordner holen
+   		Set objFolder = fso.GetFolder(File.fileName)
+   		'Ü004
+
+   		If fileSavePos < 0 And objFolder.Files.Count > 1 Then
+			'GBA 2011-02-10
+			'neues Feature: Ganzer Ordner(Inhalt) kann auch in 1 Dokument zusammengefasst werden
+			'Macht nur Sinn, wenn:
+			' * keine Files im Hintergrund gespeichert sind, denn dann kommt dieser Ordnerinhalt danch
+			' * der Ordner mehrere Dateien enthält
+
+			Dim ret As Variant
+			Begin Dialog UserDialog 430,140,"Importieren mehrerer Dateien",.multiImport ' %GRID:10,7,1,1
+				Text 20,14,260,35,"Dieser Ordner enthält mehrere Dateien. Wie möchten Sie vorgehen?",.Text1
+				PushButton 20,56,390,28,"Alle Dateien in 1 winCube Dokument zusammenfassen",.btnTogether
+				PushButton 20,98,390,28,"Jede Datei als separates winCube Dokument archivieren",.btnSeperate
+				CancelButton 290,14,120,28
+			End Dialog
+			Dim dlg As UserDialog
+			ret= Dialog(dlg)
+
+			'MsgBox "ret = " & ret
+			If ret = 0 Then Exit Sub
+
+			If ret = 1 Then
+				'alle Dateien in 1 Dokument
+				Set myDoc = myArchDlg.Document
+
+				Dim newRep As Representation
+				Dim newPart As PartDocument
+				Dim firstPart As PartDocument
+
+				If myDoc.Representations.Count = 0 Then
+					Set newRep= myDoc.Representations.AddNew()
+				Else
+					Set newRep= myDoc.Representations(myDoc.Representations.DefaultRepresentation)
+				End If
+
+				For Each objfile In objFolder.Files
+					Set myDocData= New DocData
+					myDocData.SetFile(objfile, False)
+					Set newPart= newRep.PartDocuments.AddNew()
+					Set newPart.DataObject= myDocData
+					Set myDocData= Nothing
+		        Next
+		        Set firstPart= newRep.PartDocuments(0)
+		        'Ü009
+				'Call ASF_fill_file_control(firstPart.DataObject, myArchDlg, firstPart.DataObject.fileName, "AddRepFromBuffer")
+				Call ASF_fill_file_control(firstPart.DataObject, myArchDlg, firstPart.DataObject.Alias, "AddRepFromBuffer")
+				'/Ü009
+
+				Exit Sub
+			End If
+   		End If
+
+        bufferFiles= True
+        For Each objfile In objFolder.Files
+			Set myDocData= New DocData
+			myDocData.SetFile(objfile, False)
+        	MergeFile2Buffer(myDocData)
+			Set myDocData= Nothing
+        Next
+        '/Ü004
+
+		'Zuletzt: falls ablagedialog 'leer' dann gleich 1. Seite reinnehmen:
+		myArchDlg_OnDocumentChanged(myArchDlg.Document)
+		Exit Sub
+
+	Else  'kein Verzeichnis
+		Dim pseudoHandled As Boolean
+		Set myDoc= myArchDlg.Document
+		docImDlg= (myDoc.Representations.Count > 0)
+		If docImDlg Then docImDlg= (myDoc.Representations(myDoc.Representations.DefaultRepresentation).PartDocuments.Count > 0)
+
+		If fileSavePos < 0 Then		'Buffer leer?
+			If docImDlg Then
+				If Not isKnownDoc() Then
+					'fileCount= myDoc.Representations(myDoc.Representations.DefaultRepresentation).PartDocuments.Count
+					fileCount= 1
+				End If
+			Else
+				Call InitFileInsert(pseudoHandled)
+			End If
+		Else
+			If Not isKnownDoc() Then
+				Call InitFileInsert(pseudoHandled)
+			End If
+		End If
+	End If
+
+	If pseudoHandled Then
+		Handled= True
+		Exit Sub
+	End If
+
+	Call DoFileInsert(File, Handled)
+
+	Set fso= Nothing
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnFileDropped(ByVal File As SWADATALib.DocData, ByRef Handled As Boolean)
+
+	Dim fso As Object
+	Set fso = CreateObject("Scripting.FileSystemObject")
+
+	Call DoFileInserted()
+
+	If fso.folderexists(File.fileName) Then
+		Handled= True
+		Exit Sub
+	End If
+
+	'wichtig, da in isKnownDoc das aktuelle Doc (quasi als Signatur) gemerkt wird
+	Dim egal As Boolean
+	egal= isKnownDoc()
+
+	Set fso= Nothing
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnFileOpened(ByVal File As SWADATALib.DocData, ByRef Handled As Boolean)
+
+	Call DoFileInserted()
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnFileImport(ByRef Handled As Boolean)
+
+	Call InitFileInsert(Handled)
+	Exit Sub
+
+
+
+	'Wird aufgerufen, sobald der Button Import gedrückt wird
+	'Initialisierungen, damit man im open weis, dass ein neues Paket an Files beginnt
+	fileCount= 0
+
+	'If Not FilingEnvironmentWindow.ArchiveViewWindow.ArchiveDlg.Document Is Nothing Then
+	If fileSavePos >= 0 Then
+		'MsgBox "Es sind noch importierte Dateien vorhanden"
+		Dim ret As Variant
+		Begin Dialog UserDialog 500,140,"Dateien zwischengespeichert",.multiImport ' %GRID:10,7,1,1
+			Text 20,14,330,35,"Es sind noch (alte) Dateien zwischengespeichert. Wie möchten Sie vorgehen?",.Text1
+			PushButton 20,56,460,28,"Neue Dateien zum aktuellen winCube Dokument hinzufügen",.btnCurDok
+			PushButton 20,98,460,28,"Neue Dateien nach den alten Dateien zwischenspeichern",.btnAppend
+			CancelButton 360,14,120,28
+		End Dialog
+		Dim dlg As UserDialog
+		ret= Dialog(dlg)
+		If ret= 0 Then
+			Handled= True
+			Exit Sub
+		End If
+		bufferFiles= (ret = 2)
+
+	Else
+		bufferFiles = False
+	End If
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnFileOpen(ByVal File As SWADATALib.DocData, ByRef Handled As Boolean)
+
+	Call DoFileInsert(File, Handled)
+	Exit Sub
+
+
+
+
+	'Wird für jedes File, das Importiert wird, separat aufgerufen - Reihenfolge open1, opened1, open2, opened2, ...
+
+'	Dim retX As Integer
+	Dim bct As SWACTRLSLib.Button
+	Dim cct As SWACTRLSLib.CheckBox
+	Set bct= Nothing
+
+
+	If Not myArchDlg Is Nothing Then
+		Set bct= myArchDlg.ControlByName("btnTakeNext")
+	End If
+
+	fileCount= fileCount + 1
+	'If Not bct Is Nothing And Application.System.User.User = "SERbachmayrg" Then 'And Not bufferFiles Then
+	If 1 = 1 Then
+
+		'If (fileCount = 1 And fileSavePos >= 0) Or _
+		If (fileCount = 2 And fileSavePos < 0) Then
+
+
+			Dim ret As Variant
+
+			Begin Dialog UserDialog 430,140,"Importieren mehrerer Dateien",.multiImport ' %GRID:10,7,1,1
+				Text 20,14,220,35,"Sie importieren mehrere Dateien. Wie möchten Sie vorgehen?",.Text1
+				PushButton 20,56,390,28,"Alle Dateien in 1 winCube Dokument zusammenfassen",.btnTogether
+				PushButton 20,98,390,28,"Jede Datei als separates winCube Dokument archivieren",.btnSeperate
+				CancelButton 290,14,120,28
+			End Dialog
+			Dim dlg As UserDialog
+			ret= Dialog(dlg)
+
+
+			'retX= MsgBox("Sie importieren mehrere Dateien." & vbCrLf & vbCrLf & _
+			'			"Wollen Sie alle Dateien zusammen als 1 Dokument archivieren (= JA), " & vbCrLf & _
+			'			"oder jede Datei als separates Dokument archivieren? (= NEIN)", vbYesNo)
+
+			'bufferFiles= (retX = vbNo)
+			bufferFiles= (ret = 2)
+
+			If bufferFiles And Not myArchDlg Is Nothing Then
+				Set cct= myArchDlg.ControlByName("cbKeepValues")
+				If Not cct Is Nothing Then cct.Checked= True
+			End If
+			' vbYes -> 6&
+			' vbNo -> 7&
+		End If
+	End If
+
+
+'*************************************************
+
+
+	Call MergeFile2Buffer(File)
+	If bufferFiles Then
+		Handled= True
+	End If
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnDocumentExecute(ByVal Doc As SWAFRAMELib.IDocument, ByRef Continue As Boolean, ByRef Handled As Boolean)
+
+'Ü006
+	If Application.System.User.User = "PerformanceTest" Then
+		Dim XItaDoc As ItaDocument
+		Set XItaDoc = Doc
+		ASF_Performance_writePerformanceLogEntry "'Dokument speichern' ausgelöst. Dokumentklasse=" & Application.System.DocumentTypes.ItemByGUID(XItaDoc.DocumentTypeGUID).FullyQualifiedName
+	End If
+'/Ü006
+
+End Sub
+
+Private Sub FilingEnvironmentWindow_OnDocumentExecuted(ByVal Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean, ByRef Handled As Boolean)
+
+'Ü006
+	If Application.System.User.User = "PerformanceTest" Then
+		ASF_Performance_writePerformanceLogEntry "'Dokument gespeichert' ausgelöst. DokumentID=" & Doc.DocumentID
+	End If
+'/Ü006
+
+	Dim cct 		As SWACTRLSLib.CheckBox
+	Dim nextDoc 	As ItaDocument
+	Dim nextiDoc 	As IDocument
+	Dim deskDef 	As DescriptorDefinition
+	Dim deskBez 	As IDescriptor
+	Dim deskDate 	As IDescriptor
+	Dim deskDokId   As IDescriptor
+	Dim nameSplit() As String
+	Dim nameOnly 	As String
+	Dim anzIter 	As Integer
+	Dim anzFail		As Integer
+	Dim idct 		As SWACTRLSLib.Edit
+	Dim XNode As CNode
+	Dim XFolderViewWindow As FolderViewWindow
+	Dim baseDocStr  As String
+	Dim baseDocID   As Long
+	Dim lastDoc As ItaDocument
+	Dim xi As Integer
+	Dim assignedPD  As String					'Ü014 - 04.10.2015 - GBA
+	Dim cAssigPD	As SWACTRLSLib.SelectionBox
+	Dim wfErr		As Integer
+	Dim wfAnz		As Integer
+	Dim strErrMsg	As String
+	Dim myPI		As wfProcessInstance		'/Ü014 GBA
+	Dim msgText	    As String
+
+	On Error GoTo fError
+	If Succeeded Then
+
+		'Falls die Ablageumgebung aus einem Akt aufgerufen wurde, muss das Dokument dem Akt
+		'hinzugefügt werden, aber nur, wenn das Akten-Fenster offen ist
+
+		If Application.Globals.Exists ("ASF_Aktuelle_FolderViewWindow") Then
+			Set XFolderViewWindow = Application.Globals.Item ("ASF_Aktuelle_FolderViewWindow")
+			If XFolderViewWindow.Valid Then
+				If Not XFolderViewWindow.FolderTreeView Is Nothing Then			'Ü013 GBA 2014-04-29 Aktuelles Register holen
+					If Not XFolderViewWindow.FolderTreeView.SelectedNode Is Nothing Then
+						Set XNode =	XFolderViewWindow.FolderTreeView.SelectedNode
+					Else
+						Set XNode =	XFolderViewWindow.FolderTreeView.FocusedNode
+					End If
+				End If
+				If XNode Is Nothing And Application.Globals.Exists ("ASF_Aktuelles_Register") Then  '/Ü013
+					Set XNode =	Application.Globals.Item  ("ASF_Aktuelles_Register") 'FolderViewWindow.FolderTreeView.FocusedNode
+				End If
+			End If
+		End If
+
+		Set cct= myArchDlg.ControlByName("cbKeepValues")
+		If Not cct Is Nothing Then
+			If cct.Checked Then
+				anzIter= 0
+				anzFail= 0
+
+				'Ü014 - 04.10.2015 - GBA
+				'Information holen: ob/welcher Workflow zu starten ist
+				assignedPD= ""
+				Set cAssigPD= myArchDlg.ControlByName("SbVorgang")
+				If Not cAssigPD Is Nothing Then
+					assignedPD= cAssigPD.Data
+				End If
+				wfAnz= 0
+				wfErr= 0
+				'/Ü014 - 04.10.2015 - GBA
+
+				baseDocID= 0
+				If fileSavePos >= 0 Then		'2011-08-03 GBA: DocumentID's in einem Zug reservieren
+					baseDocStr= ASF_IDs_getNextDocId(fileSavePos + 1)
+					If baseDocStr = "" Then
+						MsgBox ((fileSavePos + 1) & " weitere Dokumente können nicht archiviert werden, " & _
+								"da keine DocumentID's zur Verfügung stehen!",vbExclamation, "Generierung DocumentID fehlgeschlagen")
+						Exit Sub
+					End If
+					baseDocID= CLng(baseDocStr)
+					If baseDocID < fileSavePos + 1 Then
+						MsgBox ((fileSavePos + 1) & " weitere Dokumente können nicht archiviert werden, " & _
+								"da keine korrekten DocumentID's generiert werden konntn!", vbExclamation, _
+								"Generierung DocumentID fehlgeschlagen")
+						Exit Sub
+					End If
+					baseDocID= baseDocID - fileSavePos - 1
+				End If
+
+				Set lastDoc = Doc
+				Do While (fileSavePos >= anzFail)
+
+					Set nextDoc= Application.System.CreateDocument(TDocumentType.ItaDocument)
+					Set nextiDoc= nextDoc
+
+					nextiDoc.CopyDescriptors(Doc)
+
+					Set deskDef= Application.System.DescriptorDefinitions.ItemByName("ASF_Bezeichnung")
+					If deskDef Is Nothing Then
+						MsgBox "DeskripterDEFINITION  ASF_Bezeichnung  nicht gefunden -> SER-GBA verständigen", vbCritical
+						Exit Sub
+					End If
+					Set deskBez= nextDoc.Descriptors.ItemByGUID(deskDef.GUID)
+					If deskBez Is Nothing Then
+						MsgBox "Deskripter  ASF_Bezeichnung  nicht gefunden -> SER-GBA verständigen", vbCritical
+						Exit Sub
+					End If
+
+					'*  Ü007: 13.04.2011 GBA: CR 14: Anlassdatum nicht mehr mit Filedatum überschreiben
+					'*  siehe auch ArchiveDlg Standard & BauBestandsDok, ASF GSC Global Skript: (ASF-fill_file_control)
+
+					'Set deskDef= Application.System.DescriptorDefinitions.ItemByName("ASF_Anlassdatum")
+					'If deskDef Is Nothing Then
+					'	MsgBox "DeskripterDEFINITION  ASF_Anlassdatum  nicht gefunden -> SER-GBA verständigen", vbCritical
+					'	Exit Sub
+					'End If
+					'Set deskDate= nextDoc.Descriptors.ItemByGUID(deskDef.GUID)
+					'If deskDate Is Nothing Then
+					'	MsgBox "Deskripter  ASF_Anlassdatum  nicht gefunden -> SER-GBA verständigen", vbCritical
+					'	Exit Sub
+					'End If
+
+					Set deskDef= Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_ID")
+					If deskDef Is Nothing Then
+						MsgBox "DeskripterDEFINITION  ASF_Dok_ID  nicht gefunden -> SER-GBA verständigen", vbCritical
+						Exit Sub
+					End If
+					Set deskDokId= nextDoc.Descriptors.ItemByGUID(deskDef.GUID)
+					If deskDokId Is Nothing Then
+						MsgBox "Deskripter  ASF_Dok_ID  nicht gefunden -> SER-GBA verständigen", vbCritical
+						Exit Sub
+					End If
+
+					'Deskriptor ASF_Ort_Ortsbezug_DokId vom Dokument entfernen
+					Set deskDef= Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_Ortsbezug_DokId")
+					For xi = 0 To nextDoc.Descriptors.Count - 1
+						If nextDoc.Descriptors.Item (xi).DescriptorDefinition.GUID = deskDef.GUID Then
+							nextDoc.Descriptors.Remove (xi)
+							Exit For
+						End If
+					Next
+
+					nameSplit= Split(fileBuffer(fileGetPos).fileName, "\")
+					nameOnly= nameSplit(UBound(nameSplit))
+					deskBez.RemoveValues
+					'Ü011
+					'deskBez.AddValue(nameOnly)
+					deskBez.AddValue(fileBuffer(fileGetPos).Alias)
+					'/Ü011
+
+					'*  Ü007: 13.04.2011 GBA: CR 14: Anlassdatum nicht mehr mit Filedatum überschreiben
+					'*  siehe auch ArchiveDlg, ASF GSC Global Skript: (ASF-fill_file_control)
+					'deskDate.RemoveValues
+					'deskDate.AddValue(fileBuffer(fileGetPos).Filedate)
+
+
+					'* 2011-08-03 GBA: DocumentID's in einem Zug reservieren
+					If deskDokId.ValueCount > 0 Then deskDokId.RemoveValues
+					deskDokId.AddValue(CStr(baseDocID + anzIter))
+
+					'TabEinordnung_ASFDokID.Data = ASF_IDs_getNextDocId()
+					'If anzIter = 0 Then		'1. automatisch archivierte Dok übernimmt die ASFDokID vom Dlg (bereits incrementiert)
+					'	Set idct= myArchDlg.ControlByName("TabEinordnung_ASFDokID")
+					'	If Not idct Is Nothing Then
+					'		If deskDokId.ValueCount > 0 Then
+					'			deskDokId.RemoveValues
+					'			deskDokId.AddValue(idct.Data)
+					'		End If
+					'	End If
+					'Else
+					'	deskDokId.RemoveValues
+					'End If
+					'If deskDokId.ValueCount > 0 Then	'Nach dem 1. Speichern wird die Laufnummer gleich vorbelegt
+					'	If deskDokId.Value(0) = LastStoredDokID Then  'ID muss unterschiedlich sein
+					'		deskDokId.RemoveValues
+					'		deskDokId.AddValue(ASF_IDs_getNextDocId())
+					'	End If
+					'Else
+					'	deskDokId.AddValue(ASF_IDs_getNextDocId())
+					'End If
+					'/ 2011-08-03 GBA: DocumentID's in einem Zug reservieren
+
+					Call AddRepFromBuffer(nextDoc)
+
+					Set nextDoc.Database = Doc.Database
+					nextiDoc.FilingView  = Doc.FilingView
+
+					LastStoredDokID= deskDokId.Value(0)
+
+					Dim MyASF_RLOrtsbezug 		As SWARESULLib.ResultList
+					Dim MyASF_RLOrtsbezugLE 	As SWARESULLib.ResultListLanguageExtension
+					Dim XSourceOrtsbezug As ItaDocument
+					Dim xl As Long
+					Dim XNewOrtsbezug As ItaDocument
+
+					'Ü015
+					nextDoc.Published = lastDoc.Published
+					If nextDoc.Published = False Then
+						nextDoc.CurrentVersion = True
+					End If
+
+					nextDoc.Commit
+
+					If nextDoc.Archived Then
+						'Dokument zum Akt hinzufügen
+						If Not XNode Is Nothing Then
+							XNode.Elements.AddNew(LT_DOCUMENT).Link = nextDoc.DocumentID
+						End If
+
+							'Nun müssen die Ortsbezüge des zuletzt archivierten Dokuments als Kopie in das nächste Dokument übernommen werden
+
+						'Ortsbezüge des zuletzt archivierten Dokuments in eine Trefferliste laden
+						ASF_Ortsbezug_initDialogAndObjectsNew(MyASF_RLOrtsbezug, _
+							MyASF_RLOrtsbezugLE, _
+							FilingEnvironmentWindow.ArchiveViewWindow.ArchiveDlg.ControlByName("TabOrtsbezug_CCResultList"), _
+							"Ortsbezug", "IndexOnly", "20100101", _
+							lastDoc.InternalDescriptors.ItemByGUID("UUID").Value(0))
+
+						Set deskDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID")
+
+						'Jeden Ortsbezug kopieren
+						For xl = 0 To MyASF_RLOrtsbezug.Resultset.TotalCount  - 1
+							Set XSourceOrtsbezug = Application.System.GetDocumentDirect(MyASF_RLOrtsbezug.Resultset.Document(xl).DocumentID)
+							Set XNewOrtsbezug = Application.System.CreateDocument(SWAFRAMELib.enumDocumentType.ItaDocument)
+							XNewOrtsbezug.Copy XSourceOrtsbezug,True  ,True ,True
+							XNewOrtsbezug.DocumentTypeGUID = XSourceOrtsbezug.DocumentTypeGUID
+							XNewOrtsbezug.IndexOnly = True
+
+							'UUID des neuen Dokuments auf die kopierten Ortsbezügen speichern
+							If Not XNewOrtsbezug.Descriptors.ItemByGUID(deskDef.GUID) Is Nothing Then
+								XNewOrtsbezug.Descriptors.ItemByGUID(deskDef.GUID).RemoveValues
+								XNewOrtsbezug.Descriptors.ItemByGUID(deskDef.GUID).AddValue nextDoc.InternalDescriptors.ItemByGUID("UUID").Value(0)
+							End If
+							XNewOrtsbezug.Commit
+
+							'DocID des Ortsbezugs am Dokument speichern
+							Call ASF_Ortsbezug_SaveOrtsbezugInDoc(XNewOrtsbezug, nextDoc)
+						Next xl
+
+						'Ü014 - 04.10.2015 - GBA
+						'Prüfen, ob ein Vorgang zu starten ist
+						If assignedPD <> "" Then
+							Set myPI = ASF_StartVorgangDokumentlebenszyklus(assignedPD, nextDoc, Application.System.User.User, strErrMsg)
+							If myPI Is Nothing Then
+								''Application.ShowError "Beim Starten des Vorgangs '" + SbVorgang.Data + "' ist ein Fehler aufgetreten!","Archive Dialog/Standard Dlg_OnExecuted",,,strErrMsg
+								wfErr= wfErr + 1
+							Else
+								Application.OpenWFWorkItem  myPI.WorkItems(0)
+								wfAnz= wfAnz + 1
+							End If
+						End If
+						'/Ü014 - 04.10.2015 - GBA
+
+						Set lastDoc = nextDoc
+					Else
+						'Dokument wieder 'aufheben'
+						MergeFile2Buffer(nextDoc.Representations(0).PartDocuments(0).DataObject)
+						anzFail= anzFail +1
+					End If
+
+					anzIter= anzIter +1
+
+					Set nextiDoc= Nothing
+					Set nextDoc= Nothing
+				Loop
+				If anzIter > 0 Then						'Ü014 - 04.10.2015 - GBA
+
+					If wfAnz + wfErr = 0 Then
+						msgText= (anzIter - anzFail + 1) & " von " & (anzIter + 1) & " Dokumenten erfolgreich gespeichert!"
+					Else
+						msgText= (anzIter - anzFail + 1) & " von " & (anzIter + 1) & " Dokumenten erfolgreich gespeichert!" & vbCrLf & vbCrLf & _
+							     (wfAnz + 1) & " von " & (wfAnz+wfErr+1) & " Vorgänge erfolgreich angelegt: " & assignedPD
+					End If
+
+					MsgBox msgText, vbInformation, "Massenablage"
+
+					If wfErr > 0 Then
+						MsgBox wfErr & " Vorgänge konnten NICHT angelegt werden: " & assignedPD & _
+								vbCrLf & vbCrLf & strErrMsg, vbExclamation, "WF-Start..."
+					End If								'/Ü014 - 04.10.2015 - GBA
+
+					Set idct= myArchDlg.ControlByName("TabEinordnung_ASFDokID")
+					If Not idct Is Nothing Then
+						idct.Data= ASF_IDs_getNextDocId()  'ID muss mit nächster Laufnummer vorbelegt werden
+					End If
+				End If
+			End If
+		End If
+	End If
+
+	' Workaround, da SET-Deskriptor MvASFGeschaeftspartner bei Dupletten-Belegung und Inhalte beibehalten,
+	' nach dem Archivieren und dem anschl. 're-Initialisieren' einen Fehler wirft.
+	' --> daher hier: manuelle Bereinigung der Dupletten im SET-Mehrfachfeld: MvASFGeschaeftspartner (GBA 2012-11-16)
+	Dim i As Integer
+	Dim j As Integer
+	Dim gp As Variant
+	Dim gesPartn As IMultivalueEdit
+	Set gesPartn= myArchDlg.ControlByName("TabBeschlagwortung_MvASFGeschaeftspartner")
+	If Not gesPartn Is Nothing Then
+		For i= 0 To gesPartn.DataCount -1
+			If i > gesPartn.DataCount -1 Then Exit For	    		 ' gesPartn.DataCount könnte mittlerweile unter i geschrumpft sein, for 'merkt' sich urspr. 'to' Wert
+			For j= i+1 To gesPartn.DataCount -1
+				If j > gesPartn.DataCount -1 Then Exit For    		 ' gesPartn.DataCount könnte mittlerweile unter j geschrumpft sein, for 'merkt' sich urspr. 'to' Wert
+				If gesPartn.GetData(i) = gesPartn.GetData(j) Then
+					gesPartn.DeleteData(j)
+					j= j-1
+				Else
+					Exit For		'Liste ist sortiert: bei Ungleichheit kann dahinter keine Gleichheit mehr auftreten
+				End If
+			Next
+		Next
+	End If
+
+finish:
+	Exit Sub
+fError:
+	Application.ShowError "Folgender Fehler ist aufgetreten!","Filing Environment/ Dokument FilingEnvironmentWindow_OnDocumentExecuted",,,Err.Description
+	GoTo finish
+End Sub
+
+
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Rem See DialogFunc help topic for more information.
+Private Function multiImport(DlgItem$, Action%, SuppValue?) As Boolean
+	Select Case Action%
+	Case 1 ' Dialog box initialization
+	Case 2 ' Value changing or button pressed
+		Rem multiImport = True ' Prevent button press from closing the dialog box
+	Case 3 ' TextBox or ComboBox text changed
+	Case 4 ' Focus changed
+	Case 5 ' Idle
+		Rem Wait .1 : multiImport = True ' Continue getting idle actions
+	Case 6 ' Function key
+	End Select
+End Function
+
+Private Sub DoFileInsert(ByVal File As SWADATALib.DocData, ByRef Handled As Boolean) ', ByVal onDrop As Boolean)
+
+	Dim bct As SWACTRLSLib.Button
+	Dim cct As SWACTRLSLib.CheckBox
+	Set bct= Nothing
+
+	If Not myArchDlg Is Nothing Then
+		Set bct= myArchDlg.ControlByName("btnTakeNext")
+	End If
+
+	fileCount= fileCount + 1
+	'If Not bct Is Nothing And Application.System.User.User = "SERbachmayrg" Then 'And Not bufferFiles Then
+	If 1 = 1 Then
+
+		'If (fileCount = 1 And fileSavePos >= 0) Or _
+
+		'If onDrop Then
+		'	onDrop= onDrop And (myDoc.Representations.Count > 0)
+			'if not ondrop then ondrop = mydoc.Representations(mydoc.Representations.DefaultRepresentation).PartDocuments.Count
+		'End If
+
+		If (fileCount = 2 And fileSavePos < 0) Then
+
+			Dim ret As Variant
+
+			Begin Dialog UserDialog 430,140,"Importieren mehrerer Dateien",.multiImport ' %GRID:10,7,1,1
+				Text 20,14,220,35,"Sie importieren mehrere Dateien. Wie möchten Sie vorgehen?",.Text1
+				PushButton 20,56,390,28,"Alle Dateien in 1 winCube Dokument zusammenfassen",.btnTogether
+				PushButton 20,98,390,28,"Jede Datei als separates winCube Dokument archivieren",.btnSeperate
+				CancelButton 290,14,120,28
+			End Dialog
+			Dim dlg As UserDialog
+			ret= Dialog(dlg)
+
+
+			'retX= MsgBox("Sie importieren mehrere Dateien." & vbCrLf & vbCrLf & _
+			'			"Wollen Sie alle Dateien zusammen als 1 Dokument archivieren (= JA), " & vbCrLf & _
+			'			"oder jede Datei als separates Dokument archivieren? (= NEIN)", vbYesNo)
+
+			'bufferFiles= (retX = vbNo)
+			bufferFiles= (ret = 2)
+
+			If bufferFiles And Not myArchDlg Is Nothing Then
+				Set cct= myArchDlg.ControlByName("cbKeepValues")
+				If Not cct Is Nothing Then cct.Checked= True
+			End If
+			' vbYes -> 6&
+			' vbNo -> 7&
+		End If
+	End If
+
+
+'*************************************************
+
+
+	Call MergeFile2Buffer(File)
+	If bufferFiles Then
+		Handled= True
+	End If
+End Sub
+
+Private Sub DoFileInserted()
+	Dim defRep As Representation
+	Dim firstPart As PartDocument
+
+	Set myDoc = myArchDlg.Document
+	If myDoc.Representations.Count = 0 Then Exit Sub
+
+	Set defRep= myDoc.Representations(myDoc.Representations.DefaultRepresentation)
+	If defRep.PartDocuments.Count = 0 Then Exit Sub
+
+	Set firstPart= defRep.PartDocuments(0)
+	'Ü009
+	Call ASF_fill_file_control(firstPart.DataObject, myArchDlg, firstPart.DataObject.Alias ,"DoFileInsert")
+	'/Ü009
+
+End Sub
+
+Private Function isKnownDoc() As Boolean
+	isKnownDoc= False
+
+	Dim myPart As PartDocument
+	Dim myData As DocData
+
+	If myDoc.Representations.Count = 0 Then
+		isKnownDoc= myKnownRepZero
+		myKnownRepZero= True
+		Exit Function
+	End If
+
+	If myDoc.Representations(myDoc.Representations.DefaultRepresentation).PartDocuments.Count = 0 Then
+		isKnownDoc= myKnownPartCount
+		myKnownPartCount= True
+		Exit Function
+	End If
+
+
+	isKnownDoc= False
+	Set myPart= myDoc.Representations(myDoc.Representations.DefaultRepresentation).PartDocuments(0)
+	Set myData= myPart.DataObject
+	If	myKnownDocID		= myDoc.DocumentID 		And _
+		myKnownPartCount	= myDoc.Representations(myDoc.Representations.DefaultRepresentation).PartDocuments.Count And _
+		myKnownPartAlias	= myData.Alias 			And _
+		myKnownPartName		= myData.fileName		Then
+
+		isKnownDoc= True
+		Exit Function
+	End If
+
+	myKnownDocID		= myDoc.DocumentID
+	myKnownPartCount	= myDoc.Representations(myDoc.Representations.DefaultRepresentation).PartDocuments.Count
+	myKnownPartAlias	= myData.Alias
+	myKnownPartName		= myData.fileName
+
+End Function
+
+Private Sub InitFileInsert(ByRef Handled As Boolean)
+	'Wird aufgerufen, sobald der Button Import gedrückt wird
+	'Initialisierungen, damit man im open weis, dass ein neues Paket an Files beginnt
+	fileCount= 0
+
+	'If Not FilingEnvironmentWindow.ArchiveViewWindow.ArchiveDlg.Document Is Nothing Then
+	If fileSavePos >= 0 Then
+		'MsgBox "Es sind noch importierte Dateien vorhanden"
+		Dim ret As Variant
+		Begin Dialog UserDialog 500,140,"Dateien zwischengespeichert",.multiImport ' %GRID:10,7,1,1
+			Text 20,14,330,35,"Es sind noch (alte) Dateien zwischengespeichert. Wie möchten Sie vorgehen?",.Text1
+			PushButton 20,56,460,28,"Neue Dateien zum aktuellen winCube Dokument hinzufügen",.btnCurDok
+			PushButton 20,98,460,28,"Neue Dateien nach den alten Dateien zwischenspeichern",.btnAppend
+			CancelButton 360,14,120,28
+		End Dialog
+		Dim dlg As UserDialog
+		ret= Dialog(dlg)
+		If ret= 0 Then
+			Handled= True
+			Exit Sub
+		End If
+		bufferFiles= (ret = 2)
+	Else
+		bufferFiles = False
+	End If
+End Sub
+
+Private Sub MergeFile2Buffer(ByVal File As SWADATALib.DocData)
+	Dim upbBuf As Integer
+
+	If bufferFiles Then
+		upbBuf = INIT_UPB_BUFFER
+
+		On Error GoTo AFTER_UPBND_CHECK
+			upbBuf= UBound(fileBuffer)
+AFTER_UPBND_CHECK:
+
+		On Error GoTo OnFileOpen_Err:
+		fileSavePos = fileSavePos + 1
+		If fileSavePos > upbBuf Then
+			upbBuf= fileSavePos
+			ReDim Preserve fileBuffer(upbBuf)
+		End If
+		Set fileBuffer(fileSavePos) = File
+		Call setArchDlgCtrls
+		'Handled= True
+	End If
+	Exit Sub
+
+OnFileOpen_Err:
+	MsgBox "Das Zwischenspeichern der Import-Dokumente ist fehlgeschlagen: " & Err.Number & " / " & Err.Description, vbExclamation
+	Err.Clear
+End Sub
+
+
+Private Sub setArchDlgCtrls
+	Dim anzImHG As Integer
+	Dim lct As SWACTRLSLib.Label
+	Dim bct As SWACTRLSLib.Button
+
+	If Not myArchDlg Is Nothing Then
+		anzImHG= fileSavePos - fileGetPos +1
+		Set lct= myArchDlg.ControlByName("MsgLabel")
+		Set bct= myArchDlg.ControlByName("btnTakeNext")
+		If anzImHG <= 0 Then
+			If Not lct Is Nothing Then lct.Caption= ""
+			If Not bct Is Nothing Then bct.Visible= False
+			If Not bct Is Nothing Then bct.Enabled= False
+			If Not bct Is Nothing Then bct.Height= 0			'weils mit visible nicht funktioniert
+		ElseIf anzImHG = 1 Then
+			If Not lct Is Nothing Then lct.Caption= anzImHG & " Datei zwischengespeichert"
+			If Not bct Is Nothing Then bct.Enabled= False
+			If Not bct Is Nothing Then bct.Visible= False
+			If Not bct Is Nothing Then bct.Height= 16			'weils mit visible nicht funktioniert
+		Else
+			If Not lct Is Nothing Then lct.Caption= anzImHG & " Dateien zwischengespeichert"
+			If Not bct Is Nothing Then bct.Enabled= False
+			If Not bct Is Nothing Then bct.Visible= False
+			If Not bct Is Nothing Then bct.Height= 16			'weils mit visible nicht funktioniert
+		End If
+		Set lct= Nothing
+		Set bct= Nothing
+	End If
+End Sub
+
+Private Sub AddRepFromBuffer(ByRef destDoc As ItaDocument)
+	Dim newRep As Representation
+	Dim newPart As PartDocument
+	Dim firstPart As PartDocument
+
+	'Set myDoc = myArchDlg.Document
+
+	'Stop
+
+	If fileSavePos > 0 And fileGetPos > fileSavePos Then
+		MsgBox "Fehler:  fileGetPos > fileSavePos   GBA verständigen"
+		Exit Sub
+	End If
+
+	'If myDoc.Representations.Count = 0 And fileSavePos >= 0 Then
+	If fileSavePos >= 0 Then
+		'MsgBox "Hier neues Dokument aus Buffer einfügen. - Werte beibehalten der Deskriptoren noch einstellen"
+		'Stop
+
+		'Idee: Hier in diesem Skript, oben onOpen im if: alle deskriptoren des dialogs auf werte beibehalten stellen
+		' aber zusätzlich sollte ein häkchen auch am Dialog sein, ob man das tatsächlich will.
+		' dieses häkchen könnte aber oben im onOpen im if defaultmäßig gesetzt werden (auch visuell)
+
+		If destDoc.Representations.Count = 0 Then
+			Set newRep= destDoc.Representations.AddNew()
+		Else
+			Set newRep= destDoc.Representations(destDoc.Representations.DefaultRepresentation)
+		End If
+		Set newPart= newRep.PartDocuments.AddNew()
+
+		Set newPart.DataObject= fileBuffer(fileGetPos)
+		fileGetPos= fileGetPos + 1
+
+		Set firstPart= newRep.PartDocuments(0)
+		'Ü009
+		Call ASF_fill_file_control(firstPart.DataObject, myArchDlg, firstPart.DataObject.fileName, "AddRepFromBuffer")
+		'/Ü009
+
+
+		If fileGetPos > fileSavePos Then
+			fileSavePos= -1
+			fileGetPos = 0
+
+			'MsgBox "Letztes File aus dem Zwischenspeicher erreicht."
+		End If
+		Call setArchDlgCtrls()
+	End If
+End Sub
+

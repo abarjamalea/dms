@@ -1,0 +1,1992 @@
+'#Reference {00020430-0000-0000-C000-000000000046}#2.0#0#C:\Windows\SysWOW64\stdole2.tlb#OLE Automation#stdole
+'#Reference {00000206-0000-0010-8000-00AA006D2EA4}#2.6#0#C:\Program Files (x86)\Common Files\System\ado\msado26.tlb#Microsoft ActiveX Data Objects 2.6 Library#ADODB
+'#Reference {00020813-0000-0000-C000-000000000046}#1.8#0#C:\Program Files (x86)\Microsoft Office\Office15\EXCEL.EXE#Microsoft Excel 15.0 Object Library#Excel
+'#Reference {420B2830-E718-11CF-893D-00A0C9054228}#1.0#0#C:\Windows\SysWOW64\scrrun.dll#Microsoft Scripting Runtime#Scripting
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	Global Script/ SER MLA Globale Funktionen
+'*	erstellt am / von	:	1.12.2015/ Michael Lämmle, SER
+'* 	Ü001: Michael Lämmle, SER, 21.1.2016	:  Via IECM-Link wird nachgefragt, ob die aktuelle Version geöffnet werden soll.
+'*  DMS-423: Stpehan Wagner 09.02.2017 : Funktion zur Ermittlung der Ebene eines Registers
+'*  DMS-281 :   06.04.2017, Stephan Wagner, SER: Application_OnInit - Startseite
+'*  DMS-424 :   06.04.2017, Stephan Wagner, SER: Admin soll immer "Logisch löschen" dürfen
+
+Option Explicit
+
+Dim WithEvents mySystem As SWAFRAMELib.System
+Dim WithEvents myArchiveViewWindow As ArchiveViewWindow
+Dim WithEvents myArchiveDlg As ArchiveDlg
+
+'Public Buttons
+Dim WithEvents myRW As ResultWindow
+Const cGIS001_Link1 = "http://gis.asbnet.at/GIS/externalcall.jsp?project=gis&Query=km&KeyName=RT&keyvalue="
+Const cGIS001_Link2 = "&m_from=
+Const cGIS001_Link3 = "&m_to=
+Private Declare Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" (ByVal hwnd As Long, ByVal lpOperation As String, ByVal lpFile As String, ByVal lpParameters As String, ByVal lpDirectory As String, ByVal nShowCmd As Long) As Long
+'/Public Buttons
+
+Dim mySourceDoc As ItaDocument
+Dim mySourceNode As INode
+Dim createLink As Boolean
+Public myRW_ As ResultWindow
+
+'Für Massenortsbezugspeicherung: Globaler Dialog
+Public myPublicArchDlg As ArchiveDlg
+
+'Startseite
+Dim myStartseite As ActiveXWindow
+
+'DMS-423
+Dim m_LevelCountOfRegister As Integer
+
+'Subs for public buttons
+
+Public Sub addFurtherOptions_RL (myRW_ As ResultWindow, Optional docMode As Boolean = True)
+
+	Set myRW = myRW_
+
+	On Error Resume Next
+
+	Dim XRC As RibbonCategory
+	Dim XRP As RibbonPanel
+	Dim mySecurityObject As SecurityModule
+
+	Set mySecurityObject = Application.System.SecurityModule
+    Set XRC = myRW.RibbonBar.CategoryByName("Ergebnisse")
+
+    If XRC Is Nothing Then
+    	Set XRC = myRW.RibbonBar.CategoryByName("Results")
+    End If
+
+    If XRC.PanelByID("ADMIN01") Is Nothing Then
+	    XRC.AddPanel("ADMIN01", "Administrative Funktionen")
+
+		If docMode Then
+
+	    If mySecurityObject.CheckRight (bfRight05 ,"DMS Dokumente","ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_GetWebLink", "WebLink kopieren", "kopiert das ausgewählte Dokument als WebLink in die Zwischenablage", 48,48
+		End If
+		If mySecurityObject.CheckRight (bfRight04 ,"DMS Dokumente","ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_GetDocumentID", "Dokument-ID kopieren", "kopiert die Dokument-ID des ausgewählten Dokuments in die Zwischenablage", 73, 73
+		End If
+		If mySecurityObject.CheckRight (bfRight06 ,"DMS Dokumente","ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_ExportCSV", "Trefferliste als CSV-Datei exportieren", "exportiert die Deskriptoren der ausgewählten Dokumente als CSV-Datei", 62, 62
+		End If
+		If mySecurityObject.CheckRight (bfRight03 ,"DMS Dokumente","ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_GISLink", "GIS", "Öffnet die Koordinaten des Dokuments im GIS System", 54,54
+		End If
+		If mySecurityObject.CheckRight (bfRight01 ,"DMS Dokumente","ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_SetDocInValid", "Dokument ungültig setzen", "Setzt das ausgewählte Dokument auf den Status 'ungültig'", 09,09
+		End If
+		If mySecurityObject.CheckRight (bfRight02 ,"DMS Dokumente", "ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_ResetDocInValid", "ungültig setzen aufheben", "Der Ungültig-Status für das Dokument wird aufgehoben", 03,03
+		End If
+		If mySecurityObject.CheckRight (bfRight07 ,"DMS Dokumente", "ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_CreatePoststück", "Poststück erstellen", "Erstellt aus dem ausgewählten Dokument ein Poststück", 64,64
+		End If
+		If  mySecurityObject.CheckRight (bfRight08 ,"DMS Dokumente", "ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_CreateBC", "Barcode erzeugen", "Erzeugt einen Barcode vom ausgewählen Dokument", 61,61
+		End If
+		If  mySecurityObject.CheckRight (bfRight09 ,"DMS Dokumente", "ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_MassKeyChange", "Beschlagwortung ändern", "Ändert die Beschlagwortung aller selektierten Dokumente der Trefferliste auf einmal.", 47,47
+		End If
+		If  mySecurityObject.CheckRight (bfRight10 ,"DMS Dokumente", "ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_Exportversionhistory", "Export Versionshistorie", "Exportiert die Versionshistorie.", 79,79
+		End If
+		XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_CopyIECM", "Link kopieren", "Kopiert den Link zur Akte oder dem Dokument in die Zwischenablage.",48
+
+		If XRC.PanelByID("VIEWER01") Is Nothing Then
+		    XRC.AddPanel("VIEWER01", "Viewer")
+			'XRC.PanelByID("VIEWER01").AddElement rtButton, "ID_ChangeViewer", "Viewer ändern", "Ändert die Viewereinstellungen", 69,69
+			XRC.PanelByID("VIEWER01").AddElement rtCheckBox, "ID_ChangeViewer", "Anzeige Originalanwendung", "Anzeige entweder im internen Viewer oder In der Originalanwendung"
+		End If
+
+	Set XRP = XRC.AddPanel("IDRLweitere", "weitere Funktionen")
+		If Not XRP Is Nothing Then
+			XRP.AddElement(rtButton, SER_ExpRLDocs_ID, SER_ExpRLDocs_Name, SER_ExpRLDocs_Help, SER_ExpRLDocs_SMI, SER_ExpRLDocs_LMI) 'GBA 2014-10-29 Ü001  CR6, Tr7
+		End If
+
+	Else
+
+		XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_CopyIECM", "Link kopieren", "Kopiert den Link zur Akte oder dem Dokument in die Zwischenablage.",48, 48
+
+		If mySecurityObject.CheckRight (bfRight03 ,"DMS Dokumente","ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_GISLink", "GIS", "Öffnet die Koordinaten des Dokuments im GIS System", 54,54
+		End If
+
+		If mySecurityObject.CheckRight (bfRight06 ,"DMS Dokumente","ASF - Funktionsrechte") Then
+			XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_ExportCSV", "Trefferliste als CSV-Datei exportieren", "exportiert die Deskriptoren der ausgewählten Dokumente als CSV-Datei", 62, 62
+		End If
+
+	End If
+
+		If Application.System.User.User = "Supervisor" Then
+			If  mySecurityObject.CheckRight (bfRight10 ,"DMS Dokumente", "ASF - Funktionsrechte") Then
+				XRC.PanelByID("ADMIN01").AddElement rtButton, "ID_Grundstück", "Nachindizierung Grundstücke", "achindizierung Grundstücke", 79,79
+			End If
+		End If
+    End If
+
+finish:
+	Set mySecurityObject= Nothing
+End Sub
+
+
+Function exNumeric(Str As String) As String
+
+	Dim i As Integer
+	Dim strg As String
+	Dim Chr As String
+
+	For i = 1 To Len(Str)
+	    Chr = Mid(Str, i, 1)
+	    If IsNumeric(Chr) Or Chr = "." Or Chr = "/" Then strg = strg & Chr
+	Next i
+
+	exNumeric = strg
+
+End Function
+
+
+Public Sub myRW_GlobalOnRibbonElementClicked(ByVal ElementID As String, ByRef Handled As Boolean)
+
+Dim XDocTypes(2) As String
+Dim myResultlist As IResultList
+
+
+	'On Error Resume Next
+
+    Select Case ElementID
+    	Case "ID_CopyIECM"
+			If myRW.ResultList.SelectedCount = 1 Then
+				Clipboard myRW.ResultList.SelectedDocument(0).iecmLink
+				Application.ShowMessage "Der Link wurde in die Zwischenanlage kopiert"
+			End If
+		Case "ID_Grundstück"
+			Call StartIndexing
+    	Case SER_ExpRLDocs_ID																	'GBA 2014-10-29 Ü009  CR6, Tr7
+			SER_ExportResultListDocs(Nothing, Nothing, myRW)
+
+    	Case "ID_GISLink"
+
+			openGISLink(myRW.ResultList.SelectedDocument(0),myRW)
+
+        Case "ID_GetDocumentID"
+    		If myRW.ResultList.SelectedCount = 1 Then
+    			Clipboard myRW.ResultList.SelectedDocument(0).DocumentID
+    			MsgBox "Die Dokument-ID des ausgewählten Dokuments wurde in die Zwischenablage kopiert.", vbInformation, "Info"
+			End If
+		Case "ID_ExportCSV"
+				SER_Export2CSV(myRW.ResultList,myRW)
+		Case "ID_GetWebLink"
+				If myRW.ResultList.SelectedCount = 0 Then
+					Application.ShowMessage "Sie müssen ein Dokument auswählen!"
+					Exit Sub
+				End If
+				ASF_GetWebLink (myRW.ResultList.SelectedDocuments(0))
+		Case "ID_SetDocInValid"
+				If myRW.ResultList.SelectedCount = 0 Then
+					Application.ShowMessage "Sie müssen ein Dokument auswählen!"
+					Exit Sub
+				End If
+				If MsgBox ("Soll das Dokument ungültig gesetzt werden?",vbYesNo,"Frage") =vbYes Then
+					ASF_SetDocInValid(myRW.ResultList.SelectedDocuments(0))
+				End If
+		Case "ID_ResetDocInValid"
+				If myRW.ResultList.SelectedCount = 0 Then
+					Application.ShowMessage "Sie müssen ein Dokument auswählen!"
+					Exit Sub
+				End If
+				If MsgBox ("Soll der Ungültig-Status des Dokuments aufgehoben werden?",vbYesNo,"Frage") =vbYes Then
+					ASF_ResetDocInValid(myRW.ResultList.SelectedDocuments(0))
+				End If
+		Case "ID_CopyIECM"
+			If myRW.ResultList.SelectedCount = 1 Then
+				Clipboard myRW.ResultList.SelectedDocument(0).iecmLink
+				Application.ShowMessage "Der Link wurde in die Zwischenanlage kopiert."
+			End If
+		Case "ID_CreatePoststück"
+				If myRW.ResultList.SelectedCount = 0 Then
+					Application.ShowMessage "Sie müssen ein Dokument auswählen!"
+					Exit Sub
+				End If
+				If MsgBox ("Soll aus diesem Dokument ein Poststück erstellt werden?",vbYesNo,"Frage") =vbYes Then
+					If ASF_CreatePoststück(myRW.ResultList.SelectedDocuments(0)) = True Then
+						'<Ü013>
+						'--> Erfolgreich
+						Dim xDoc As ItaDocument
+						Dim xDesc As Descriptor
+						Dim xDescDef As DescriptorDefinition
+
+						'Error-Handling einschalten
+						On Error GoTo ErrHandler
+
+						'Dokument aus der Trefferliste holen
+						Set xDoc = myRW.ResultList.SelectedDocuments(0)
+
+						'Deskriptor "Poststück" auf 'True' festlegen
+						Set xDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Poststueck")
+						If xDescDef Is Nothing Then
+							'Fehlermeldung anzeigen
+							Application.ShowError "Beim Erstellen des Poststücks ist ein Fehler aufgetreten!","DocViewer/Standard: ViewerWindow_OnRibbonElementClicked",,0,"The descriptor definition for item 'ASF_Poststueck' could not be loaded!"
+							Exit Sub
+						End If
+
+						'Deskriptor "Poststück" holen
+						Set xDesc = xDoc.Descriptors.ItemByGUID(xDescDef.GUID)
+						If xDesc Is Nothing Then Set xDesc = xDoc.Descriptors.AddNewByGUID(xDescDef.GUID)
+
+						'vorhandene Werte entfernen
+						xDesc.RemoveValues
+
+						'True als neuen Wert festlegen
+						xDesc.AddValue(True)
+
+						'Änderungen speichern
+						If xDoc.isDirty Then xDoc.Commit
+
+						'Fertig
+						Exit Sub
+
+					ErrHandler:
+						'Fehlermeldung anzeigen
+						Application.ShowError "Beim Erstellen des Poststücks ist ein Fehler aufgetreten!","DocViewer/Standard: ViewerWindow_OnRibbonElementClicked",,Err.Number,Err.Description
+						Err.Clear
+						'</Ü013>
+					End If
+				End If
+		Case "ID_CreateBC"
+				If myRW.ResultList.SelectedCount = 0 Then
+					Application.ShowMessage "Sie müssen ein Dokument auswählen!"
+					Exit Sub
+				End If
+				If MsgBox ("Soll aus diesem Dokument ein Barcode erzeugt werden?",vbYesNo,"Frage") =vbYes Then
+					'ASF_CreatePoststück(myRW.ResultList.SelectedDocuments(0))
+					ASF_CreateBCfromResultlist(myRW)
+				End If
+		'Ü008
+		'Ü004
+		Case "ID_MassKeyChange"
+				XDocTypes(0) = "Standard"
+				XDocTypes(1) = "BauBestandsDok"
+
+				Set myResultlist = myRW.ResultList
+				'Prüfung, ob alle selektierten Dokummente die gleiche Dokumentenklasse haben
+				If ASF_MassKeyChangeCheckDocTypes(myResultlist) Then
+					Begin Dialog UserDialog 330,231,"Zieldokumentenklasse wählen" ' %GRID:10,7,1,1
+						ListBox 20,14,290,56,XDocTypes(),.ListBox1
+						OKButton 20,196,90,21
+						CancelButton 140,196,90,21
+						GroupBox 20,84,280,105,"Optionen",.GroupBox1
+						CheckBox 40,105,220,14,"Beschlagwortung beibehalten",.chkBeschlagwortungBeibehalten
+						CheckBox 40,133,210,14,"Originaldokument löschen",.chkOriginalDokLoeschen
+						Text 60,154,210,28,"(Gilt nur für die Änderung von Dokumentenklassen.)",.Text1
+					End Dialog
+					Dim dlg As UserDialog
+					dlg.chkBeschlagwortungBeibehalten = 1
+					dlg.chkOriginalDokLoeschen = 1
+					Dim myDoc As ItaDocument
+					Dim changeDocumentClass As Boolean
+					Select Case Dialog(dlg)
+						Case -1 'OK
+							If myResultlist.SelectedCount = 0 Then
+								MsgBox "Sie müssen zumindest ein Dokument aus der Trefferliste selektieren!"
+							Else
+								'Wenn die Dokumentenklasse der selektierten Dokumente der ausgewählten Dokumentenklasse entspricht,
+								'wird eine Massen-Schlüsseländerung durchgeführt.
+								'Wenn nicht, wird eine Änderung der Dokumentenklasse durchgeführt
+								Set myDoc = myResultlist.SelectedDocument(0)
+								If myDoc.DocumentTypeGUID = Application.System.DocumentTypes.ItemByName(XDocTypes(dlg.ListBox1)).GUID  Then
+									changeDocumentClass = False
+								Else
+									changeDocumentClass = True
+								End If
+									Call ASF_MassKeyChange(XDocTypes(dlg.ListBox1), myRW, dlg.chkBeschlagwortungBeibehalten, _
+											changeDocumentClass, dlg.chkOriginalDokLoeschen)
+							End If
+						Case 0 'Cancel
+					End Select
+				Else
+					MsgBox "Ein oder mehrere selektierte Dokumente sind unterschiedlichen Dokumentenklassen zugeordnet!" + _
+						vbCrLf + "Alle selektierte Dokumente müssen die gleiche Dokumentenklasse haben."
+				End If
+		'/Ü004
+		'/Ü008
+		'Ü005
+		 Case "ID_ChangeViewer"
+		 	If myRW.ResultList.DocumentCount = 0 Then
+				Application.ShowMessage "Die Trefferliste beinhaltet keine Dokumente!" & vbCr & "Vieweränderung nicht möglich."
+				Exit Sub
+			End If
+			If myRW.ResultList.SelectedCount <> 1 Then
+				Application.ShowMessage "Für diese Aktion kann nur 1 Dokument ausgewählt werden!" & vbCr & "Vieweränderung nicht möglich."
+				Exit Sub
+			End If
+			If myRW.ResultList.SelectedDocument(0).Type <> 0 Then
+				Application.ShowMessage "Diese Aktion kann nur für Dokumente verwendet werden!" & vbCr & "Vieweränderung nicht möglich."
+				Exit Sub
+			End If
+
+			If SER_get_compound_document(myRW.ResultList.SelectedDocument(0)) = True Then
+				'Application.ShowMessage "Diese Aktion kann nicht für Compound-Dokumente verwendet werden!" & vbCr & "Vieweränderung nicht möglich."
+				Application.ShowMessage "Das gewählte Dokument besteht aus mehreren Dateien (gemischtes Dokument), " _
+					&  "daher kann das Dokument nur im Viewer angezeigt werden." & vbCrLf _
+					& "Im Viewer kann die gewünschte Datei ausgewählt und in der Originalanwendung geöffnet werden."
+
+				Exit Sub
+			End If
+
+			Call SER_set_viewer4document(myRW.ResultList.SelectedDocument(0))
+
+			'SaveSetting("SER","PDF","ORIGINAL","1")
+			'MsgBox(GetSetting("SER","PDF","ORIGINAL"))
+			'DeleteSetting("SER","PDF","ORIGINAL")
+			'MsgBox(GetSetting("SER","PDF","ORIGINAL"))
+
+		'/Ü005
+		 'Ü006
+		Case "ID_Exportversionhistory"
+			Call ASF_doexportversionshistory(myRW.ResultList,myRW)
+		'/Ü006
+		Case Else
+    End Select
+End Sub
+
+
+Public Sub openGISLink (myDoc As IDocument, Optional myRW As ResultWindow = Nothing)
+
+	Dim sGISLink As String
+	Dim sStrecke As String
+	Dim sKM As String
+	Dim toKM As String
+
+
+	Dim myOrtsbezüge() As ItaDocument
+	Dim myDescriptorDefStr As DescriptorDefinition
+	Dim myDescriptorDefKmVon As DescriptorDefinition
+	Dim myDescriptorDefKmBis As DescriptorDefinition
+	Dim myDescriptorOrtsbezug As DescriptorDefinition
+	Dim myDescriptorGrundstück As DescriptorDefinition
+
+	If Not myRW Is Nothing Then
+			If myRW.ResultList.SelectedCount <> 1 Then
+				Application.ShowMessage "Sie müssen genau ein Dokument auswählen um die GIS Schnittstelle aufrufen zu können!"
+				Exit Sub
+			End If
+	End If
+			sStrecke = ""
+			sKM = ""
+
+			myOrtsbezüge() = getOrtsbezügeForDocument(myDoc.InternalDescriptors.ItemByName("UUID").Value(0))
+
+			Set myDescriptorDefStr = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_Straße")
+			Set myDescriptorDefKmVon = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmVon")
+			Set myDescriptorDefKmBis = Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_KmBis")
+			Set myDescriptorOrtsbezug = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Strasse")
+			Set myDescriptorGrundstück = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_Nr")
+
+			'Not yet finished
+			Dim dlgResult As Integer
+				If Not myDoc.Descriptors.ItemByGUID(myDescriptorOrtsbezug.GUID) Is Nothing And Not myDoc.Descriptors.ItemByGUID(myDescriptorGrundstück.GUID) Is Nothing Then
+					If myDoc.Descriptors.ItemByGUID(myDescriptorOrtsbezug.GUID).ValueCount > 0 And myDoc.Descriptors.ItemByGUID(myDescriptorGrundstück.GUID).ValueCount > 0 Then
+							Begin Dialog UserDialog 480,112,"GIS" ' %GRID:10,7,1,1
+								PushButton 180,63,140,21,"Grundstück",.PushButton1
+								PushButton 320,63,140,21,"Strecke",.PushButton2
+								CancelButton 370,84,91,21
+								Text 10,21,460,35,"Dieses Dokument besitzt einen oder mehrere Strecken- und Grundstücksverweis(e). Welchen Typen möchten Sie in GIS öffnen?",.Text1
+							End Dialog
+					End If
+
+				Else
+
+			If Not myDoc.Descriptors.ItemByGUID(myDescriptorOrtsbezug.GUID) Is Nothing Then
+				dlgResult = 2
+			End If
+
+			If Not myDoc.Descriptors.ItemByGUID(myDescriptorGrundstück.GUID) Is Nothing Then
+				dlgResult = 1
+			 End If
+			 GoTo ignoreDlg
+	End If
+
+				Dim GISdlg As UserDialog
+				dlgResult = Dialog (GISdlg)
+
+			ignoreDlg:
+
+				Select Case dlgResult
+				Case 0 'Cancel
+					Exit Sub
+				Case 1
+					Dim myLinkLeftSide As String
+					Dim myLinkRightSide As String
+					Dim myLinkValues As String
+					Dim myCompleteLink As String
+				myLinkLeftSide = "http://gis.asbnet.at/GIS/synserver?project=gis&query=GST&keyname=KG_GNR&keyvalue="
+				myLinkRightSide = "&stateID=9975ce84-5a9d-4fb4-971c-2a55288918f9"
+
+					Dim i As Integer
+					For i = 0 To myDoc.Descriptors.ItemByGUID(myDescriptorGrundstück.GUID).ValueCount - 1
+						If i < myDoc.Descriptors.ItemByGUID(myDescriptorGrundstück.GUID).ValueCount - 1 Then
+							myLinkValues = myLinkValues + exNumeric(myDoc.Descriptors.ItemByGUID(myDescriptorGrundstück.GUID).Value(i)) + ";"
+								Else
+							myLinkValues = myLinkValues + exNumeric(myDoc.Descriptors.ItemByGUID(myDescriptorGrundstück.GUID).Value(i))
+						End If
+
+					Next
+
+				myCompleteLink = myLinkLeftSide + myLinkValues + myLinkRightSide
+				ShellExecute Application.hWnd,"open",myCompleteLink,"","",0
+
+
+				Case 2
+
+
+
+
+							For i = 0 To UBound(myOrtsbezüge())
+								If Not myOrtsbezüge(i) Is Nothing Then
+									If Not myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefStr.GUID) Is Nothing Or Not myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmVon.GUID) Is Nothing Or Not myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmBis.GUID) Is Nothing Then
+											If Not i = UBound(myOrtsbezüge()) - 1 Then
+													sStrecke = sStrecke + myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefStr.GUID).Value(0) + ";"
+													sKM = sKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmVon.GUID).Value(0),",",".") + ";"
+													toKM = toKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmBis.GUID).Value(0),",",".") + ";"
+													Else
+													sStrecke = sStrecke + myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefStr.GUID).Value(0)
+													sKM = sKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmVon.GUID).Value(0),",",".")
+													toKM = toKM + Replace(myOrtsbezüge(i).Descriptors.ItemByGUID(myDescriptorDefKmBis.GUID).Value(0),",",".")
+												End If
+										End If
+								End If
+							Next
+
+				'/Ü013
+							If Trim(sStrecke) <> "" And Trim(sKM) <> "" Then
+				    			sGISLink = cGIS001_Link1 + sStrecke + cGIS001_Link2 + sKM + cGIS001_Link3 + toKM
+				    			'Application.ShowMessage "GIS Link: " + sGISLink
+								ShellExecute Application.hWnd,"open",sGISLink,"","",0
+
+				    		Else
+				    			Application.ShowMessage "Das Dokument besitzt keinen Streckenbezug, kein GIS Aufruf möglich!"
+				    		End If
+End Select
+End Sub
+
+Private Sub showACL(ByRef pItaDocument As ItaDocument)
+
+	If IsMissing(pItaDocument) Then Exit Sub
+
+	Dim XSecObj As SWASMLib.SecurityObject
+	Set XSecObj = pItaDocument
+
+	Dim xl As Long
+	Dim xt As String
+	For xl = 0 To XSecObj.SecurityEntries.Count - 1
+		If XSecObj.SecurityEntries(xl).EntryType = enumEntryType.rtAllow Then
+			xt = xt & XSecObj.SecurityEntries(xl).Identifier.Name & " erlaubt (" & Str(XSecObj.SecurityEntries(xl).RightMask) & ")" & vbLf
+		End If
+	Next
+	MsgBox xt
+
+End Sub
+
+'/Public Buttons
+
+Public Sub searchInTreeNodeByID(myNodes As INodes, ID As String, ByRef myReturnNode As INode)
+
+	Dim i As Integer
+	For i = 0 To myNodes.Count - 1
+		If myNodes.Item(i).ChildNodes.Count <> 0 Then
+			If myNodes.Item(i).ID = ID Then
+				Set myReturnNode = myNodes.Item(i)
+				Exit Sub
+			End If
+			searchInTreeNodeByID(myNodes.Item(i).ChildNodes, ID,myReturnNode)
+		Else
+			If myNodes.Item(i).ID = ID Then
+				Set myReturnNode = myNodes.Item(i)
+				Exit Sub
+			End If
+		End If
+	Next
+
+End Sub
+
+
+Public Sub resetAllControls(myDlg As ArchiveDlg)
+	Dim i As Integer
+	For i = 0 To myDlg.ControlCount - 1
+		On Error Resume Next
+		myDlg.Control(i).ResetDirtyStatus
+	Next
+End Sub
+
+
+Public Function ArrayIsInitialized(ByRef arr As Variant) As Boolean
+    On Error Resume Next
+    ArrayIsInitialized = False
+    If UBound(arr) >= 0 Then If Err.Number = 0 Then ArrayIsInitialized = True
+End Function
+
+Public Sub createCustomCopyOfDocument(sourceDoc As ItaDocument,Optional sourceNode As INode = Nothing)
+
+	Begin Dialog UserDialog 540,147,"Kopie ablegen" ' %GRID:10,7,1,1
+		CheckBox 20,14,230,14,"Dokumentdaten übernehmen",.CheckBox1
+		CheckBox 20,42,230,14,"Indizierung übernehmen",.CheckBox2
+		CheckBox 20,70,230,14,"Annotationen übernehmen",.CheckBox3
+		CheckBox 20,98,290,14,"Aktenbezug übernehmen (Falls verfügbar)",.CheckBox4
+		OKButton 450,119,80,21
+		CancelButton 350,119,90,21
+		GroupBox 320,7,210,105,"Hinweis",.GroupBox1
+		Text 330,28,190,70,"Ortsbezüge und/oder Grundstücke werden nach der Speicherung übernommen! Änderungen an diesen sind erst dann möglich.",.Text1
+	End Dialog
+
+	Dim dlg As UserDialog
+	With dlg
+		.checkbox1 = True
+		.checkbox2 = True
+		.checkbox3 = True
+		.checkbox4 = True
+	End With
+	Select Case Dialog(dlg)
+	Case 0 'Cancel
+		Exit Sub
+	Case -1 'OK
+
+		Dim myNewDoc As ItaDocument
+		Set myNewDoc = Application.System.CreateDocument(TDocumentType.ItaDocument)
+		Set mySourceDoc = sourceDoc
+		Set mySourceNode = sourceNode
+
+		If dlg.checkbox4 = 1 Then
+			createLink = True
+		Else
+			createLink = False
+		End If
+
+		'Daten kopieren
+		myNewDoc.Copy(sourceDoc,dlg.CheckBox2,dlg.CheckBox1,dlg.CheckBox3)
+		myNewDoc.Database = sourceDoc.Database
+		myNewDoc.DocumentTypeGUID = sourceDoc.DocumentTypeGUID
+
+
+		Set myArchiveViewWindow = Application.OpenKeyChange2(myNewDoc)
+		Set myArchiveDlg = myArchiveViewWindow.ArchiveDlg
+		Dim myTabCntrl As TabbedDlgControl
+		Set myTabCntrl = myArchiveDlg.ControlByName("TabDlg")
+		myTabCntrl.TabVisible(2) = False
+		myTabCntrl.TabVisible(3) = False
+
+		If Not myNewDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Poststueck").GUID) Is Nothing Then
+			myNewDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Poststueck").GUID).RemoveValues
+		End If
+
+		myArchiveViewWindow.ArchiveDlg.ControlByName("TabBeschlagwortung_ASFDokID").Data = ASF_IDs_getNextDocId()
+
+
+	End Select
+End Sub
+
+Private Sub myArchiveDlg_OnExecuted(ByVal Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean)
+
+	Dim myOrtsbezüge() As ItaDocument
+	Dim myNewDoc As ItaDocument
+
+	If Succeeded Then
+
+		Set myNewDoc = Doc
+		myOrtsbezüge() = getOrtsbezügeForDocument(mySourceDoc.InternalDescriptors.ItemByName("UUID").Value(0))
+
+		If ArrayIsInitialized(myOrtsbezüge()) Then
+			Dim myNewOrtsbezug As ItaDocument
+			Dim y As Integer
+			For y = 0 To UBound(myOrtsbezüge()) - 1
+				Set myNewOrtsbezug = Application.System.CreateDocument(TDocumentType.ItaDocument)
+				myNewOrtsbezug.Copy(myOrtsbezüge(y),True,True,True)
+				myNewOrtsbezug.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID").GUID).RemoveValues
+				myNewOrtsbezug.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID").GUID).AddValue(myNewDoc.InternalDescriptors.ItemByName("UUID").Value(0))
+				myNewOrtsbezug.Commit
+			Next
+		End If
+
+		'Grundstücke kopieren
+		If Not mySourceDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID) Is Nothing Then
+			If mySourceDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID).ValueCount > 0 Then
+				Dim x As Integer
+				Dim myNewGrundstück As ItaDocument
+				myNewDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID).RemoveValues
+
+				For x=0 To mySourceDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID).ValueCount - 1
+					Set myNewGrundstück = Application.System.CreateDocument(TDocumentType.ItaDocument)
+					myNewGrundstück.Copy(Application.System.GetDocumentDirect(mySourceDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID).Value(x)),True,True,True)
+					myNewGrundstück.Commit
+					myNewDoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID).AddValue(myNewGrundstück.DocumentID)
+				Next
+				myNewDoc.Commit
+			End If
+		End If
+
+		'Falls Akte vorhanden. Verknüpfung erzeugen
+		If createLink = True Then
+			Dim myFolder As ItaFolder
+			Dim myNodes As CNodes
+			Dim mynewlink As CElement
+			Dim e As Integer
+			Dim u As Integer
+
+			On Error Resume Next
+
+			For u=0 To mySourceDoc.GetReferencingDocuments.AvailableCount - 1
+			If mySourceDoc.GetReferencingDocuments.Document(u).Type = 6 Or mySourceDoc.GetReferencingDocuments.Document(u).Type = 6 Then
+				Set myFolder =mySourceDoc.GetReferencingDocuments().Document(u)
+				Set myNodes = myFolder.Nodes
+				Dim n As Integer
+				For n = 0 To myNodes.Count - 1
+					For e = 0 To myNodes.Item(n).Elements.Count - 1
+						If myNodes.Item(n).Elements.Item(e).Link = mySourceDoc.DocumentID Then
+							Set mynewlink = Nothing
+							Set mynewlink = myNodes.Item(n).Elements.AddNew(LT_DOCUMENT)
+							mynewlink.Link = myNewDoc.DocumentID
+							myFolder.Commit
+						End If
+					Next
+
+					If myNodes.Item(n).ChildNodes.Count >= 1 Then
+						Dim c As Integer
+						For c = 0 To myNodes.Item(n).ChildNodes.Count - 1
+							For e = 0 To myNodes.Item(n).ChildNodes.Item(c).Elements.Count - 1
+								If mySourceDoc.DocumentID = myNodes.Item(n).ChildNodes.Item(c).Elements.Item(e).Link Then
+									Set mynewlink = Nothing
+									Set mynewlink = myNodes.Item(n).ChildNodes.Item(c).Elements.AddNew(LT_DOCUMENT)
+									mynewlink.Link = myNewDoc.DocumentID
+									myFolder.Commit
+								End If
+							Next
+
+							If myNodes.Item(n).ChildNodes.Item(c).ChildNodes.Count >= 1 Then
+								Dim cc As Integer
+								For cc = 0 To myNodes.Item(n).ChildNodes.Item(c).ChildNodes.Count - 1
+									For e = 0 To myNodes.Item(n).ChildNodes.Item(c).Elements.Count - 1
+										If mySourceDoc.DocumentID = myNodes.Item(n).ChildNodes.Item(c).ChildNodes.Item(cc).Elements.Item(e).Link Then
+											Set mynewlink = Nothing
+											Set mynewlink = myNodes.Item(n).ChildNodes.Item(c).ChildNodes.Item(cc).Elements.AddNew(LT_DOCUMENT)
+											mynewlink.Link = myNewDoc.DocumentID
+											myFolder.Commit
+										End If
+									Next
+
+								Next
+							End If
+
+						Next
+					End If
+
+				Next
+
+
+				End If
+
+				If Not myFolder Is Nothing Then
+					myFolder.Commit
+				End If
+
+				Debug.Print(Error)
+				Next
+			End If
+	End If
+
+Stop
+
+Exit Sub
+
+End Sub
+
+Public Sub StopMe
+	Debug.Print("STOP")
+End Sub
+
+
+Public Sub setPredefinedValuesFromStringmatrix (myTargetDlg As FilingEnvironmentWindow) 'In Entwiucklung
+
+	Dim mySM As StringMatrix
+	Set mySM = Application.MetaData.StringMatrices.ItemByName("ASF_Vorbelegungen")
+	Dim i As Integer
+	Dim valueFromFolder As String
+
+	If Not ASF_aktuelle_Akte Is Nothing Then
+		If Not mySM Is Nothing Then
+			For i = 0 To mySM.RowCount - 1
+				If mySM.Value(i,0) = ASF_aktuelle_Akte.FolderTypeGUID Then
+					If Not mySM.Value(i,1) = "" Then
+						valueFromFolder = ASF_aktuelle_Akte.Descriptors.ItemByGUID(mySM.Value(i,1)).Value(0)
+						myTargetDlg.ArchiveViewWindow.ArchiveDlg.Document.Descriptors.ItemByGUID(mySM.Value(i,3)).AddValue(valueFromFolder)
+					End If
+				End If
+			Next
+		End If
+	End If
+
+
+End Sub
+
+
+
+'Ü001
+Private Sub Application_OnDocumentVerb(ByVal Document As SWAFRAMELib.IDocument, ByVal Verb As winCube.enumVerb, ByRef bHandled As Boolean)
+ 	Dim XVI As DocumentVersionInfo
+    Dim XItaDoc As ItaDocument
+
+	If Document.Type <> TDocumentType.ItaDocument Then
+		Exit Sub
+	End If
+
+    Set XItaDoc = Document
+    Set XVI = XItaDoc.GetDocumentVersionInfo
+
+    If XItaDoc.Version <> XVI.Version(XVI.Count - 1) Then
+			bHandled = True
+            Application.OpenDocument(Application.System.GetDocument(XVI.DocumentID(XVI.Count - 1), ""))
+    End If
+
+End Sub
+
+'DMS-281, SWA 06.04.2017
+Public Sub openStartseite()
+
+	On Error Resume Next
+
+	'If LCase(Application.System.User.User) = "sewagnerst" Or LCase(Application.System.User.User) = "muelleda" Or LCase(Application.System.User.User) = "veitsbth" Then
+		Set myStartseite = Application.CreateActiveXWindow("21059005-3656-4f9e-8602-0985b29d4994",wtFrame)
+		myStartseite.Open(wsModeless,Application.hWnd)
+	'End If
+
+End Sub
+
+'DMS-281, SWA 06.04.2017
+Private Sub Application_OnInit()
+
+	Set mySystem = Application.System
+	openStartseite
+
+End Sub
+
+'Überschreibt Verhalten der Miniaturansicht im DocViewer. Wenn nicht änderbar ist D&D gesperrt.
+
+Private Sub mySystem_OnOverrideObjectRights(ByVal Obj As Object, ByVal ObjType As SWAFRAMELib.enumAuditTrailRecordObjectType, ByVal RightRange As SWASMLib.enumRightRange, ByRef RightMask As Long)
+     Select Case ObjType
+     Case SWAFRAMELib.objtypeItaDocument
+         If RightRange = SWASMLib.rtRange1 Then
+             Dim oItaDoc As SWAFRAMELib.ItaDocument
+             Set oItaDoc = Obj
+             If oItaDoc.Representations.Count > 0 Then
+                 If oItaDoc.Representations.Item(oItaDoc.Representations.DefaultRepresentation).AllowedModifications = SWAFRAMELib.modificationNone Then
+                     RightMask = RightMask And Not SWAFRAMELib.rtArchiveDocClass_AppendDoc
+                     'RightMask = RightMask And Not SWAFRAMELib.rtArchiveDocClass_AppendDocRep
+                 End If
+             End If
+         End If
+     End Select
+ End Sub
+
+
+
+Public Sub callDMSDatabaseConnectionForLog(table As String ,docid As String, oDate As String, oldValue As String, newValue As String, wasFrozen As Boolean, deskriptor As String)
+
+	Dim myConnectionDef As DBConnectionDefinition
+	Dim myConnection As ADODB.Connection
+	Dim oRecSet As ADODB.Recordset
+	Dim myStatement As String
+	Dim wasFrozenInt As Integer
+
+Set oRecSet = New ADODB.Recordset
+Set myConnection = Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").ADOConnection
+
+	wasFrozenInt = 0
+	If wasFrozen Then
+		wasFrozenInt = 1
+	End If
+
+If table = "ChangelogDocuments" Then
+	myStatement = "INSERT INTO " & table &" VALUES ('"& docid &"','"& oDate &"','"& oldValue &"','"& newValue &"','" & Application.System.User.User & "'," & wasFrozenInt &",'"& deskriptor &"')"
+End If
+
+If table = "ChangelogRecords" Then
+	myStatement = "INSERT INTO " & table &" VALUES ('"& docid &"','"& oDate &"','"& oldValue &"','"& newValue &"','" & Application.System.User.User & "','"& deskriptor &"')"
+End If
+
+
+Set oRecSet = myConnection.Execute (myStatement)
+
+
+End Sub
+
+
+Public Sub StartIndexing()
+
+	Dim fHandle As Long
+	Dim logFile As String
+	Dim userPAth As String
+	Dim excelpath As String
+
+If Application.System.User.User <> "Supervisor" Then
+	Exit Sub
+End If
+
+	On Error GoTo fError
+
+	userPAth = Environ("USERNAME")
+	fHandle = FreeFile
+	Debug.Clear
+
+	logFile = "C:\Users\" + userPAth + "\Documents\Grundstück.log"
+	excelpath = "C:\Users\AignerCh\Desktop\BMG GE Asfinag Aktenauswertung.xlsx"
+
+	Open logFile For Append As #fHandle
+	Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": ********************START*********************************"
+	Call doExcelDescriptorSync(excelpath, fHandle)
+
+finish:
+	Close #fHandle
+	Exit Sub
+fError:
+	Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": " + Err.Description
+	GoTo finish
+End Sub
+
+Public Function getUnitsFromUser (pUser As String) As String()
+Dim myOrga As Organisation
+Dim myPerson As Person
+Dim myUnitsString() As String
+ReDim myUnitsString(0)
+Set myOrga = Application.System.Organisation
+
+Set myPerson =myOrga.Persons.ItemByName(pUser)
+If Not myPerson Is Nothing Then
+	ReDim myUnitsString(myPerson.Roles.Count)
+	Dim i As Integer
+	For i = 0 To myPerson.Roles.Count - 1
+		If Not myPerson.Roles.Item(i).ParentUnit Is Nothing Then
+		 	myUnitsString(i) = myPerson.Roles.Item(i).ParentUnit.Name
+		End If
+	Next
+End If
+
+getUnitsFromUser = myUnitsString
+
+End Function
+
+
+Private Sub checkExistingGrundstueckAndAdd(myitadoc As ItaDocument, myws As Excel.Worksheet, rowIndex As Integer, fHandle As Long)
+
+Dim SpaltenListe(15) As String
+'Namen der BezugsDeskriptoren im Excel-File auf Doxis gemapped
+	SpaltenListe(0)  = "ASF_Dok_ID"
+	SpaltenListe(1) = "ASF_Bundesland"
+	SpaltenListe(2) = "ASF_KG_Nummer"
+	SpaltenListe(3) = "ASF_KG_Name"
+	SpaltenListe(4) = "ASF_Grundstueck_Nr"
+	SpaltenListe(5) = "ASF_PolBezirk_Name"
+
+	SpaltenListe(6) = "ASF_Ort_Straße"
+	SpaltenListe(7) = "ASF_Ort_KmVon"
+	SpaltenListe(8) = "ASF_Ort_KmBis"
+	SpaltenListe(9) = "ASF_Ort_AStVon"
+	SpaltenListe(10) = "ASF_Ort_AStBis"
+	SpaltenListe(11) = "ASF_Ort_Richtung"
+	SpaltenListe(12) = "ASF_Ort_Objekttyp"
+	SpaltenListe(13) = "ASF_Ort_Objekt"
+	SpaltenListe(14) = "ASF_Ort_Objektdetail"
+
+Dim DokumentDescriptoren(15) As String
+'Namen der DokumentDeskriptoren im Excel-File auf Doxis gemapped
+
+	DokumentDescriptoren(1) = "ASF_Dok_Bundesland"
+	DokumentDescriptoren(2) = "ASF_Dok_KG_Nummer"
+	DokumentDescriptoren(3) = "ASF_Dok_KG_Name"
+	DokumentDescriptoren(4) = "ASF_Dok_Grundstueck_Nr"
+	DokumentDescriptoren(5) = "ASF_Dok_PolBezirk_Name"
+
+
+'Grundstücke suchen
+
+Dim aktGSnr() As Variant
+Dim aktGSsb() As IDocument
+Dim sql As String
+Dim sError As String
+Dim DocG As IDocument
+Dim gBexists As Boolean
+Dim vFromEx As String
+Dim vFromDesc As String
+Dim grundstücksdaten As String
+
+On Error GoTo fError
+
+If Not myitadoc Is Nothing Then
+	gBexists = False
+	If Not myitadoc.Descriptors.ItemByGUID("d9e32b15-310b-450e-814b-a3892b976d4d") Is Nothing Then
+
+		aktGSnr() = myitadoc.Descriptors.ItemByGUID("d9e32b15-310b-450e-814b-a3892b976d4d").Values
+
+
+		If Not UBound(aktGSnr()) = -1 Then
+
+			ReDim Preserve aktGSsb(UBound(aktGSnr))
+
+			Dim cn As Integer
+			For cn = 0 To UBound(aktGSnr)
+				Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Ermittle Grundstück zur DokID : " & aktGSnr(cn)
+				Set	aktGSsb(cn) = Application.System.GetDocumentDirect(aktGSnr(cn))
+			Next
+			If Not UBound(aktGSsb()) = -1 Then
+
+				For Each DocG In aktGSsb()
+					Dim Dcn As Integer
+
+					gBexists = True
+					For Dcn = 1 To 5
+						If DocG.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(SpaltenListe(Dcn)).GUID) Is Nothing Then
+							vFromEx = myws.UsedRange.Cells(rowIndex + 1, Dcn + 1)
+							If vFromEx <> ""	Then
+								gBexists = gBexists  And False
+							Else
+								gBexists = gBexists  And True
+							End If
+						End If
+
+						If Not DocG.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(SpaltenListe(Dcn)).GUID) Is Nothing Then
+							'Checken ob dieser Ortsbezug schon am Dokument ist
+							vFromEx = myws.UsedRange.Cells(rowIndex + 1, Dcn + 1)
+							vFromDesc = DocG.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(SpaltenListe(Dcn)).GUID).Value(0)
+							gBexists = gBexists  And (vFromEx = vFromDesc)
+						End If
+					Next
+					If gBexists Then Exit For
+				Next
+			End If
+		End If
+	End If
+End If
+If gBexists Then
+		Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Grundstück schon vorhanden. Lege kein neues an!"
+Else
+
+	'Neues Grundstück anlegen
+
+	Dim newDok As SWAFRAMELib.ItaDocument
+	Dim newDescriptor As Descriptor
+
+	'Dokumentenklasse und Deskriptoren hinzufügen. Werte auf Deskriptoren setzen
+
+	Set newDok = Application.System.CreateDocument(enumDocumentType.ItaDocument)
+	newDok.Database = Application.System.FilingDatabases.ItemByName("IndexOnly")
+	newDok.FilingView = "d4f9213c-f30d-4009-8e5c-cf22f0617ca5" 'Grundstückssdokumentklasse
+	newDok.IndexOnly = True
+
+
+	Dim doCommit As Boolean
+	doCommit = False
+
+	Dim Dcn2 As Integer
+	For Dcn2 = 1 To 5
+
+		Dim newValue As String
+		newValue = myws.UsedRange.Cells(rowIndex + 1, Dcn2 + 1)
+		If newValue <> "" Then
+
+			doCommit = True
+			'Neue Wertlogik Werte auf Grunstücksdokumentdescriptoren setzen.
+			Set newDescriptor = newDok.Descriptors.AddNew
+			newDescriptor.DescriptorDefinition = Application.System.DescriptorDefinitions.ItemByName(SpaltenListe(Dcn2))
+			If newValue <> "" Then
+				newDescriptor.AddValue(newValue)
+			End If
+			grundstücksdaten = grundstücksdaten + ";" + newValue
+
+
+
+		End If
+	Next
+
+	'If doCommit Then
+	'	Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Neues Grundstück " + grundstücksdaten + " angelegt und am Dokument hinzugefügt"
+	'End If
+	'doCommit = False
+	If doCommit Then
+
+
+		'MultivalueWerte auf Dokument schreiben
+
+		Dim newGsdaten() As String
+		newGsdaten() = Split(grundstücksdaten,";")
+		Dim DescC As Integer
+
+		For DescC = 1 To 5
+
+			If myitadoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(DokumentDescriptoren(DescC)).GUID) Is Nothing Then
+				Set newDescriptor = myitadoc.Descriptors.AddNew
+				newDescriptor.DescriptorDefinition = Application.System.DescriptorDefinitions.ItemByName(DokumentDescriptoren(DescC))
+				If newGsdaten(DescC) <> "" Then
+					newDescriptor.AddValue(newGsdaten(DescC))
+				End If
+
+			Else
+				Set newDescriptor = myitadoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(DokumentDescriptoren(DescC)).GUID)
+				newDescriptor.DescriptorDefinition = Application.System.DescriptorDefinitions.ItemByName(DokumentDescriptoren(DescC))
+				If newGsdaten(DescC) <> "" Then
+					newDescriptor.AddValue(newGsdaten(DescC))
+				End If
+			End If
+
+		Next
+
+		newDok.Commit
+
+		If myitadoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID) Is Nothing Then
+			Set newDescriptor = myitadoc.Descriptors.AddNew
+			newDescriptor.DescriptorDefinition = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId")
+			newDescriptor.AddValue (newDok.DocumentID)
+		Else
+			myitadoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_Grundstueck_DokId").GUID).AddValue(newDok.DocumentID)
+		End If
+
+		myitadoc.Commit
+		Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Neues Grundstück " + grundstücksdaten + " angelegt und am Dokument hinzugefügt"
+
+	Else
+		Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Werte in Tabelle leer. Grundstück wird nicht angelegt!"
+		Exit Sub
+	End If
+
+
+End If
+Exit Sub
+fError:
+	Err.Raise 1000, "checkExistingGrundstueckAndAdd",Err.Description
+End Sub
+
+
+Private Sub checkExistingOrtsbezugAndAdd(myitadoc As ItaDocument, myws As Excel.Worksheet, rowIndex As Integer, fHandle As Long)
+
+
+
+Dim SpaltenListe(16) As String
+'Namen der Deskriptoren im Excel-File auf Doxis gemapped
+	SpaltenListe(0)  = "ASF_Dok_ID"
+	SpaltenListe(1) = "ASF_Bundesland"
+	SpaltenListe(2) = "ASF_KG_Nummer"
+	SpaltenListe(3) = "ASF_KG_Name"
+	SpaltenListe(4) = "ASF_Grundstueck_Nr"
+	SpaltenListe(5) = "ASF_PolBezirk_Name"
+
+	SpaltenListe(6) = "ASF_Ort_Straße"
+	SpaltenListe(7) = "ASF_Ort_KmVon"
+	SpaltenListe(8) = "ASF_Ort_KmBis"
+	SpaltenListe(9) = "ASF_Ort_AStVon"
+	SpaltenListe(10) = "ASF_Ort_AStBis"
+	SpaltenListe(11) = "ASF_Ort_Richtung"
+	SpaltenListe(12) = "ASF_Ort_Objekttyp"
+	SpaltenListe(13) = "ASF_Ort_Objekt"
+	SpaltenListe(14) = "ASF_Ort_Objektdetail"
+	SpaltenListe(15) = "ASF_Ort_Objekttyp_ID"
+
+	Dim DokumentDescriptoren(16) As String
+'Namen der Deskriptoren im Excel-File auf Doxis gemapped
+	DokumentDescriptoren(0)  = "ASF_Dok_ID"
+	DokumentDescriptoren(1) = "ASF_Dok_Bundesland"
+	DokumentDescriptoren(2) = "ASF_Dok_KG_Nummer"
+	DokumentDescriptoren(3) = "ASF_Dok_KG_Name"
+	DokumentDescriptoren(4) = "ASF_Dok_Grundstueck_Nr"
+	DokumentDescriptoren(5) = "ASF_Dok_PolBezirk_Name"
+
+	DokumentDescriptoren(6) = "ASF_Dok_Straße"
+	DokumentDescriptoren(7) = "ASF_Dok_StrKmVon"
+	DokumentDescriptoren(8) = "ASF_Dok_StrKmBis"
+	DokumentDescriptoren(9) = "Platzhalter"
+	DokumentDescriptoren(10) = "Platzhalter"
+	DokumentDescriptoren(11) = "Platzhalter"
+	DokumentDescriptoren(12) = "ASF_Dok_Objekttyp"
+	DokumentDescriptoren(13) = "ASF_Dok_Objekt"
+	DokumentDescriptoren(14) = "ASF_Dok_Objektdetail"
+	DokumentDescriptoren(15) = "Platzhalter
+
+Dim aktDokNr As String
+Dim aktDokUUID As String
+Dim sError As String
+Dim sql As String
+Dim aktOrtsb() As IDocument
+Dim DocC As IDocument
+Dim OBexists As Boolean
+Dim ortsbezugDaten As String
+OBexists = True
+Dim myDescDef As DescriptorDefinition
+On Error GoTo fError
+
+OBexists = False
+If Not myitadoc Is Nothing Then
+
+	If Not myitadoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(SpaltenListe(0)).GUID) Is Nothing Then
+		aktDokNr = myitadoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(SpaltenListe(0)).GUID).Value(0)
+
+		'Ortsbezugsuche
+		aktDokUUID = myitadoc.InternalDescriptors.ItemByGUID("UUID").Value(0) 'Standarddokument
+
+		Set myDescDef = Application.System.DescriptorDefinitions.ItemByName ("ASF_Dok_DokFolderUUID")
+		sql = "select * where " & myDescDef.QueryLiteral & "  = '" & aktDokUUID & "'"
+
+		aktOrtsb() = SER_searchDocumentsOrFolders("IndexOnly", "20050101", sql ,sError)
+
+		For Each DocC In aktOrtsb()'In jedem Ortsbezugsdok welches UUID des Standarddokuments, checke Deskriptoren
+			OBexists = True
+			'Check ob Ortsbezug schon in DOXIS verfügbar
+
+
+			Dim allChkd As Integer ' Variable  ob alle Felder gleich sind
+			allChkd = 0
+			Dim vFromEx As String
+			Dim vFromDesc As String
+			Dim Dcn As Integer
+			For Dcn = 6 To UBound(SpaltenListe) - 1
+				If DocC.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(SpaltenListe(Dcn)).GUID) Is Nothing Then
+					vFromEx = myws.UsedRange.Cells(rowIndex + 1, Dcn + 1)
+					If vFromEx <> ""	Then
+						OBexists = OBexists  And False
+					Else
+						OBexists = OBexists  And True
+					End If
+					allChkd = allChkd + 1
+				End If
+
+				If Not DocC.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(SpaltenListe(Dcn)).GUID) Is Nothing Then
+					'Checken ob dieser Ortsbezug schon am Dokument ist
+					vFromEx = myws.UsedRange.Cells(rowIndex + 1, Dcn + 1)
+					vFromDesc = DocC.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(SpaltenListe(Dcn)).GUID).Value(0)
+					OBexists = OBexists  And (vFromEx = vFromDesc)
+				End If
+			Next
+			If OBexists Then Exit For
+			Debug.Print
+		Next
+	'Ortsbezugdurchlauf Ende
+	'Checke ob gefunden wurden, wenn nein lege neues Dokument an
+		If OBexists Then
+			Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Ortsbezug schon vorhanden. Lege keinen neuen an!"
+			Exit Sub
+		Else
+			Dim newDok As SWAFRAMELib.ItaDocument
+			Dim newDescriptor As Descriptor
+
+			'Ortsbezug und Deskriptoren hinzufügen. Werte auf Deskriptoren setzen
+
+			Set newDok = Application.System.CreateDocument(enumDocumentType.ItaDocument)
+			newDok.Database = Application.System.FilingDatabases.ItemByName("IndexOnly")
+			newDok.FilingView = "333727f2-6203-4e06-b64b-8f1e820de6f1" 'Ortsbezugsdokumentklasse
+			newDok.IndexOnly = True
+
+
+
+			Dim Dcn2 As Integer
+			For Dcn2 = 6 To UBound(SpaltenListe) - 1
+				Dim newValue As String
+
+				If SpaltenListe(Dcn2) = "ASF_Ort_KmVon" Or SpaltenListe(Dcn2) = "ASF_Ort_KmBis" Then
+					newValue = myws.UsedRange.Cells(rowIndex + 1, Dcn2 + 1)
+					If newValue <> "" Then
+						Set newDescriptor = newDok.Descriptors.AddNew
+						newDescriptor.DescriptorDefinition = Application.System.DescriptorDefinitions.ItemByName(SpaltenListe(Dcn2))
+						newDescriptor.AddValue(CDbl(newValue))
+					End If
+				Else
+					newValue = myws.UsedRange.Cells(rowIndex + 1, Dcn2 + 1)
+					If newValue <> "" Then
+					'	Select Case newValue
+					'	Case "unabhängig"
+					'		newValue = "UN"
+						'Case Empty
+						'	newValue = " "
+					'	End Select
+						Set newDescriptor = newDok.Descriptors.AddNew
+						newDescriptor.DescriptorDefinition = Application.System.DescriptorDefinitions.ItemByName(SpaltenListe(Dcn2))
+						If newValue <> "" Then
+							newDescriptor.AddValue(newValue)
+						End If
+					End If
+				End If
+
+				ortsbezugDaten = ortsbezugDaten + ";" + CStr(newValue)
+
+
+'Neue Wertlogik ende
+			Next
+			If newDok.Descriptors.Count > 0 Then
+			'MultivalueWerte auf Dokument schreiben
+
+				Dim newOrtsbezugsdaten() As String
+				newOrtsbezugsdaten() = Split(ortsbezugDaten,";")
+				Dim DescC As Integer
+				Dim nValue As String
+
+'Deskrioren auf Dokument schreiben
+				For DescC = 6 To UBound(DokumentDescriptoren()) - 1
+					nValue = newOrtsbezugsdaten(DescC - 5)
+
+					If DokumentDescriptoren(DescC) = "ASF_Dok_StrKmVon" Then
+						nValue = newOrtsbezugsdaten(1) + "  |" + Replace(newOrtsbezugsdaten(2),",","")
+					End If
+
+					If DokumentDescriptoren(DescC) = "ASF_Dok_StrKmBis" Then
+						nValue = newOrtsbezugsdaten(1) + "  |" + Replace(newOrtsbezugsdaten(3),",","")
+					End If
+
+
+						If Not Application.System.DescriptorDefinitions.ItemByName(DokumentDescriptoren(DescC)) Is Nothing Then
+
+							If myitadoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(DokumentDescriptoren(DescC)).GUID) Is Nothing Then
+								Set newDescriptor = myitadoc.Descriptors.AddNewByGUID(Application.System.DescriptorDefinitions.ItemByName(DokumentDescriptoren(DescC)).GUID)
+								'newDescriptor.DescriptorDefinition = Application.System.DescriptorDefinitions.ItemByName(DokumentDescriptoren(DescC))
+								If nValue <> "" Then
+									newDescriptor.AddValue(nValue)
+								End If
+							Else
+								Set newDescriptor = myitadoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName(DokumentDescriptoren(DescC)).GUID)
+								If nValue <> "" Then
+									newDescriptor.AddValue(nValue)
+								End If
+							End If
+							Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Neuer Wert am Dokument "+ DokumentDescriptoren(DescC) + " : " + nValue
+						End If
+				Next
+
+			'Dokument ID auf Ortsbezug setzen
+				'If 0 = 1 Then
+					Set newDescriptor = newDok.Descriptors.AddNewByGUID (Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID").GUID)
+					newDescriptor.AddValue(aktDokUUID)
+					newDok.Commit
+					'OrtsbezugId auf DOkument schreiben
+					If myitadoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_Ortsbezug_DokId").GUID) Is Nothing Then
+						Set newDescriptor = myitadoc.Descriptors.AddNewByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_Ortsbezug_DokId").GUID)
+						newDescriptor.AddValue(newDok.DocumentID)
+					Else
+						Set newDescriptor = myitadoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Ort_Ortsbezug_DokId").GUID)
+						newDescriptor.AddValue(newDok.DocumentID )
+					End If
+					myitadoc.Commit
+				'End If
+				Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Neuer Ortbezug wurde angelegt: " + ortsbezugDaten
+			Else
+				Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Es wurde kein Ortsbezug angelegt
+			End If
+		End If
+	End If
+End If
+Exit Sub
+fError:
+	Err.Raise 1000, "checkExistingOrtsbezugAndAdd",Err.Description
+End Sub
+
+
+Public Function searchDocByID (dokId As String) As ItaDocument
+
+	Dim que As Query
+	Dim sql As String
+	Dim rs As IResultset
+
+
+	sql = "SELECT * WHERE " & Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_ID").QueryLiteral & " = '" & dokId & "'"
+
+
+	Set que = Application.System.CreateQuery
+
+	que.Databases.Add(Application.System.QueryDatabases.ItemByName("ASFiNAG"))
+	que.Databases.Add(Application.System.QueryDatabases.ItemByName("BauBestand"))
+	que.Databases.Add(Application.System.QueryDatabases.ItemByName("Indiv"))
+	que.RangeStart = "20050101"
+	que.SQLStatement = sql
+
+
+	Set rs = que.Execute
+
+	If Not rs Is Nothing Then
+		If Not rs.AvailableCount = 0 Then
+			If Not rs.Document(0) Is Nothing Then
+				Set searchDocByID = rs.Document(0)
+				End If
+		End If
+	End If
+End Function
+
+Public Function getOrtsbezügeForDocument (dokId As String) As ItaDocument()
+
+	Dim que As Query
+	Dim sql As String
+	Dim rs As IResultset
+	Dim returnArray() As ItaDocument
+
+
+	sql = "SELECT * WHERE " & Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID").QueryLiteral & " = '" & dokId & "'"
+
+
+	Set que = Application.System.CreateQuery
+
+	que.Databases.Add(Application.System.QueryDatabases.ItemByName("IndexOnly"))
+	que.RangeStart = "19900101"
+	que.SQLStatement = sql
+
+	Set rs = que.Execute
+
+	If Not rs Is Nothing Then
+		If Not rs.AvailableCount = 0 Then
+			ReDim returnArray(rs.AvailableCount)
+			Dim i As Integer
+			For i = 0 To rs.AvailableCount - 1
+				Set returnArray(i) = rs.Document(i)
+			Next
+		getOrtsbezügeForDocument = returnArray
+		End If
+	End If
+End Function
+
+Public Sub doExcelDescriptorSync (excelpath As String, fHandle As Long)
+
+
+
+	Dim excelApp As Excel.Application
+    Dim excelWB As Excel.Workbook
+    Dim excelWS As Excel.Worksheet
+    Dim rowCount As Integer
+        Dim colCount As Integer
+        Dim myRange As Excel.Range
+        Dim foundRange As Excel.Range
+
+
+
+
+        Set excelApp = New Excel.Application
+        Set excelWB = excelApp.Workbooks.Add
+
+        excelApp.Visible = False
+
+
+        Set excelWS = excelApp.Workbooks.Open(excelpath).Worksheets(1)
+
+        rowCount = excelWS.UsedRange.Rows.Count
+        colCount = excelWS.UsedRange.Columns.Count
+
+        Set myRange = excelWS.Range("A" & "2", "A" & rowCount - 1)
+
+        Dim cn As Integer
+        Dim list() As String
+		ReDim list(rowCount)
+		For cn = 1 To rowCount -1
+			list(cn) = myRange.Cells(cn, 1).Value()
+		Next
+
+		Dim DocCounter As Integer
+		Dim myitadoc As ItaDocument
+
+		For DocCounter = 1 To rowCount -1
+			Set myitadoc = searchDocByID(list(DocCounter))
+			If Not myitadoc Is Nothing Then
+				Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Bearbeite Zeile: " & CStr(DocCounter)
+				Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Bearbeite Dokument mit ASF-DokId: " + CStr(list(DocCounter))
+
+				On Error Resume Next
+				Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Prüfe Ortsbezüge"
+				checkExistingOrtsbezugAndAdd(myitadoc, excelWS, DocCounter, fHandle)
+
+				If Err.Number <> 0 Then
+					Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Dokument mit Fehler bearbeitet: " + Err.Description
+					Err.Clear
+				End If
+
+				On Error Resume Next
+				Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Prüfe Grundstücke"
+				checkExistingGrundstueckAndAdd(myitadoc, excelWS, DocCounter, fHandle)
+
+				If Err.Number <> 0 Then
+					Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Dokument mit Fehler bearbeitet: " + Err.Description
+					Err.Clear
+				End If
+			Else
+				Print #fHandle, Format(Now, "YYYYMMDD hh:nn:ss") + ": Das Dokument mit der ASF-DokId: " + CStr(list(DocCounter)) + " ist gelöscht!"
+			End If
+		Next
+
+excelApp.Workbooks.Close
+excelApp.Application.Quit
+
+End Sub
+
+
+'Diese Funktion exportiert das Dokument und setzt das Erstellungsdatum auf einen Deskriptorwert
+Public Sub newExport(myrl As IResultList)
+
+	Dim myPartDoc As PartDocument
+	Dim myitadoc As ItaDocument
+	Dim timeDescriptorValue As String
+	Dim myTimeDescriptor As Descriptor
+	Dim myNewDate As String
+	Dim lastCounter As Integer
+	Dim lastCounterDim As Integer
+
+	Dim curData As DocData
+	Dim curDataArray() As DocData
+	Dim myExportPath As String
+
+
+	Dim hFile As Long
+	Dim DebugV As Long
+
+	Dim splittedDate() As Variant
+	Dim myDocNameDesc As Descriptor
+
+myExportPath = SER_SelectPath("Exportieren nach", 100)
+If Not myExportPath = "" Then
+
+	Dim cnt As Integer
+	lastCounterDim = 0
+	For cnt = 0 To myrl.SelectedCount - 1
+
+	Set myitadoc = myrl.SelectedDocument(cnt)
+
+'Gehe durch alle Parts der Repräsentation
+		If Not myitadoc Is Nothing Then
+			Dim cntr As Integer
+			Set myDocNameDesc = myitadoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Bezeichnung").GUID)
+
+			ReDim curDataArray(myitadoc.Representations.Item(myitadoc.Representations.DefaultRepresentation()).PartDocuments.Count)
+			For cntr = 0 To myitadoc.Representations.Item(myitadoc.Representations.DefaultRepresentation()).PartDocuments.Count - 1
+				On Error GoTo Fehler
+				Set curDataArray(cntr) = myitadoc.Representations.Item(myitadoc.Representations.DefaultRepresentation()).PartDocuments(cntr).DataObject
+				Debug.Print (curDataArray(cntr).Size)
+				If myitadoc.Representations.Item(myitadoc.Representations.DefaultRepresentation()).PartDocuments.Count = 1 Then
+					If Right(curDataArray(cntr).Alias,InStr(1,StrReverse(curDataArray(cntr).Alias),".")) = Right(myDocNameDesc.Value(0),InStr(1,StrReverse(myDocNameDesc.Value(0)),".")) Then
+						curDataArray(cntr).SaveData(myExportPath & "\" & myDocNameDesc.Value(0))
+						SER_SetFileDateByDocDescriptor(myExportPath+ "\" & myDocNameDesc.Value(0), myitadoc, "635b8a4b-f8b4-4fa5-aa1c-201326adc76d")
+					Else
+						curDataArray(cntr).SaveData(myExportPath & "\" & myDocNameDesc.Value(0) & Right(curDataArray(cntr).Alias,InStr(1,StrReverse(curDataArray(cntr).Alias),".")))
+						SER_SetFileDateByDocDescriptor(myExportPath+ "\" & myDocNameDesc.Value(0) & Right(curDataArray(cntr).Alias,InStr(1,StrReverse(curDataArray(cntr).Alias),".")), myitadoc, "635b8a4b-f8b4-4fa5-aa1c-201326adc76d")
+					End If
+				Else
+				lastCounterDim = lastCounterDim + 1
+				If Right(curDataArray(cntr).Alias,InStr(1,StrReverse(curDataArray(cntr).Alias),".")) = Right(myDocNameDesc.Value(0),InStr(1,StrReverse(myDocNameDesc.Value(0)),".")) Then
+					curDataArray(cntr).SaveData(myExportPath & "\" & lastCounterDim & "_"&  myDocNameDesc.Value(0))
+					SER_SetFileDateByDocDescriptor(myExportPath+ "\" & myDocNameDesc.Value(0), myitadoc, "635b8a4b-f8b4-4fa5-aa1c-201326adc76d")
+				Else
+					curDataArray(cntr).SaveData(myExportPath & "\" & lastCounterDim & "_"&  myDocNameDesc.Value(0) & Right(curDataArray(cntr).Alias,InStr(1,StrReverse(curDataArray(cntr).Alias),".")))
+					SER_SetFileDateByDocDescriptor(myExportPath+ "\" & myDocNameDesc.Value(0) & Right(curDataArray(cntr).Alias,InStr(1,StrReverse(curDataArray(cntr).Alias),".")), myitadoc, "635b8a4b-f8b4-4fa5-aa1c-201326adc76d")
+
+				End If
+			End If
+
+
+			Next
+
+		End If
+	Next
+			Application.ShowMessage ("Repräsentation(en) erfolgreich exportiert")
+			Exit Sub
+End If
+Fehler:
+MsgBox "Fehler beim Speichern der Datei. Prüfen Sie, ob diese WinCube-Instanz die erfoderlichen Schreibrechte besitzt, oder ein korrekter Pfad gewählt wurde!" + vbCrLf + Error
+End Sub
+
+'Diese Funktion überprüft, ob die DefaultRepresentation einen unbekannten Mime-Type hat und gibt ein Handled-> True zurück
+Public Function checkIfCorrectMimeForPDF(ByVal Handled As Boolean, ByRef ResultWindow As ResultWindow ) As Boolean
+	'Ü010
+	Dim cntr As Long
+	For cntr = 0 To ResultWindow.ResultList.SelectedCount -1
+		Dim myDoc As ItaDocument
+
+			If Not ResultWindow.ResultList.SelectedDocument(cntr) Is Nothing Then
+				Set myDoc = ResultWindow.ResultList.SelectedDocument(cntr)
+			If myDoc.Representations.Item(myDoc.Representations.DefaultRepresentation).MimeType() = "application/octet-stream" Then
+				Handled = True
+				checkIfCorrectMimeForPDF = Handled
+
+			Application.ShowError "Dieses Format wird nicht für die PDF-Ausgabe unterstützt"
+			Exit Function
+					End If
+					'/Ü010
+			End If
+Next
+End Function
+
+
+Public Sub ASF_Grundstueck_initDialogAndObjectsFromFolder(	ByRef pRLGrundstueck As ResultList, _
+													ByRef pRLGrundstueckLE As ResultListLanguageExtension, _
+													ByRef pCCResultList As ControlContainer, _
+													ByVal pResultDlgDefinitionName As String, _
+													ByVal pQueryDatabaseName As String, _
+													ByVal pRangeStartDate As String, _
+													ByRef pMvASFDokGrundstueckDokId As Descriptor)
+
+'*	Info
+'	Initialisiert die Resultlist der zugeordneten Grundstücke sowie
+'	die Objekte zum Grundstücks-Bezug am Dialog
+
+'*	Checks
+	If IsMissing(pRLGrundstueck) Then Exit Sub
+	If IsMissing(pRLGrundstueckLE) Then Exit Sub
+	If pCCResultList Is Nothing Then Exit Sub
+	If pResultDlgDefinitionName = "" Then Exit Sub
+	If pQueryDatabaseName = "" Then Exit Sub
+	If pRangeStartDate = "" Then Exit Sub
+	If pMvASFDokGrundstueckDokId Is Nothing Then Exit Sub
+
+'*	Lokale Objekte
+	Dim XQuery As Query
+	Dim xl As Integer
+	Dim DokId As String
+
+'**	Business Logik
+'*	Controls initialisieren
+	Set pRLGrundstueck = pCCResultList.Control
+	Set pRLGrundstueckLE = pCCResultList.Control
+	With pRLGrundstueck
+		Set .System = Application.System
+		Set .ResultDlgDefinition = Application.MetaData.ResultDlgDefinitions.ItemByName(pResultDlgDefinitionName)
+		.ShowGroupPanel = False
+		.ToolbarVisible = False
+	End With
+'*	zugeordnete Ortsbezüge laden
+	Set XQuery = Application.System.CreateQuery
+	With XQuery
+		.Databases.Add Application.System.QueryDatabases.ItemByName(pQueryDatabaseName)
+		.RangeStart = pRangeStartDate
+		.RangeEnd = Format(Now, "YYYYMMDD")
+		.HitLimit = 100
+		.SQLStatement = "SELECT * WHERE 1=0"
+		Set pRLGrundstueck.Resultset = .Execute
+	End With
+	For xl = 0 To pMvASFDokGrundstueckDokId.ValueCount - 1
+
+		DokId = pMvASFDokGrundstueckDokId.Value(xl)
+		pRLGrundstueck.Resultset.AppendDocument(Application.System.GetDocumentDirect(DokId))
+	Next
+
+End Sub
+
+Private Sub Application_OnBasicCommand(ByVal Para1 As Variant, ByVal Para2 As Variant, ByVal Para3 As Variant, ByRef Ret As Variant)
+Dim myQRW As QueryResultWindow
+Dim myStreetDBRS As DBRecordSelector
+Dim myOrtsbezugMatrix As StringMatrix
+
+'On Error GoTo ferror
+
+If Para1 = "openMyWorkbasket" Then
+	If Not Application.wfSession Is Nothing Then
+		If Not Application.wfSession.Workbaskets.ItemByName(Application.System.User.User) Is Nothing Then
+			Application.OpenWFWorkBasket(Application.wfSession.Workbaskets.ItemByName(Application.System.User.User), False)
+			Else
+				MsgBox "Dieser Benutzer hat keinen eigenen Postkorb! Bitte zuteilen."
+		End If
+	Else
+	MsgBox "Kein Postkorb verfügbar. Kontaktieren Sie den Administrator!"
+	End If
+End If
+
+If UCase(Para1) = "SEARCH" Then
+
+
+	Set myQRW = Application.OpenQueryClass(Application.MetaData.QueryDocClasses.ItemByName(Para2).GUID,True)
+
+'---Vorbelegung Kategorie, Dokumentenart und Strassenzug via Para 3---
+'Beispiel:  iecm://Mandant@CSBHOST:8080/.../SEARCH;BauBestandsdoku;ASF__Bau__Und__Bestand,7.__Bestandsdokumentation,Plan,A02,A02*.bas
+
+
+	Dim myPara3Array() As String
+	myPara3Array = Split(Para3,",",-1)
+
+	Dim i As Integer
+	For i = 0 To UBound(myPara3Array)
+		myPara3Array(i) = Replace(myPara3Array(i),"__"," ")
+	Next
+If UBound(myPara3Array) = 4 Then
+
+		If Not myPara3Array(0) = "" Or  myPara3Array(1) = "" Then
+
+			Dim myCatTreeCon As CategoryTreeControl
+			Set myCatTreeCon = myQRW.QueryDlg.ControlByName("TabBasisinfo_CtcASFKategorie")
+			If Not myCatTreeCon Is Nothing Then
+				myCatTreeCon.ConnectionString = ASF_DMS_Daten.ConnectionString
+				myCatTreeCon.RetrieveData
+				myCatTreeCon.AddData(ASF_getCategoryIdByParentCategoryShortNameAndCategoryShortName(myPara3Array(0),myPara3Array(1)))
+
+				myQRW.QueryDlg.ControlByName("TabBasisinfo_ASFKategorie").Data = ASF_getCategoryNameByCategoryId(myCatTreeCon.Data(0))
+				ASF_loadDokumentartenToSelectionBox(myCatTreeCon.StartId, myQRW.QueryDlg.ControlByName("TabBasisinfo_SbASFDokArt"), myCatTreeCon.Data(0), True)
+		End If
+
+	If Not myPara3Array(2) = "" Then
+		myQRW.QueryDlg.ControlByName("TabBasisinfo_SbASFDokArt").Data = myPara3Array(2)
+	End If
+
+	If Not myPara3Array(3) = "" Then
+
+			ASF_db_initDbrsWithRecordsetDefinition(myQRW.QueryDlg.ControlByName("TabOrtsbezug_DbrsASFOrtStrasse"), "OrtsbezugStraßenzüge")
+			Set myStreetDBRS = myQRW.QueryDlg.ControlByName("TabOrtsbezug_DbrsASFOrtStrasse")
+			myStreetDBRS.AddData(myPara3Array(3))
+
+				With myQRW.QueryDlg.ControlByName("TabOrtsbezug_DbrsASFOrtAStVon")
+					If .DBRecordsetDefinition.Name = "(leer)" Then .DBRecordsetDefinition = Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").DBRecordsetDefinitions.ItemByName("OrtsbezugAnschlussstellen")
+					.SQLQuery = ASF_Ortsbezug_getSqlSelectAnschlussstellen(myStreetDBRS)
+					.RetrieveData
+				End With
+				With myQRW.QueryDlg.ControlByName("TabOrtsbezug_DbrsASFOrtAStBis")
+					If .DBRecordsetDefinition.Name = "(leer)" Then .DBRecordsetDefinition = Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").DBRecordsetDefinitions.ItemByName("OrtsbezugAnschlussstellen")
+					.SQLQuery = ASF_Ortsbezug_getSqlSelectAnschlussstellen(myStreetDBRS)
+					.RetrieveData
+				End With
+			'	km-von und km-bis laden
+				myQRW.QueryDlg.ControlByName("TabOrtsbezug_ASFDokStrKmVon").Data = myStreetDBRS.Recordset.Fields("kmvon")
+				myQRW.QueryDlg.ControlByName("TabOrtsbezug_ASFDokStrKmBis").Data = myStreetDBRS.Recordset.Fields("kmbis")
+	End If
+
+	End If
+
+	If Not myPara3Array(4) = "" Then
+	  myQRW.QueryDlg.ControlByName("TabBasisinfo_ASFBezeichnung").Data = myPara3Array(4)
+	End If
+'--- Vorbelegung Ende ---
+
+Else
+	Application.ShowMessage ("Die Parameteranzahl für diesen Aufruf ist nicht passend")
+	Exit Sub
+End If
+	myQRW.QueryDlg.Execute
+End If
+
+'---Vorbelegung Suchklasse und Objekt via ExternalID---
+'Beispiel:  iecm://Mandant@CSBHOST:8080/SEARCH_RECORD_LOCATION;BAV-Akten;1337.bas
+Dim in_mySearchClassName As String
+
+If UCase(Para1) = "SEARCH_RECORD_LOCATION" Then
+
+			Dim myObjektCntr As Edit
+
+			in_mySearchClassName = Para2
+
+			If Application.MetaData.QueryDocClasses.ItemByName(in_mySearchClassName) Is Nothing Then
+				Application.ShowError("Die angegebene Suchklasse '" + in_mySearchClassName + "' steht nicht zur Verfügung")
+				Exit Sub
+			End If
+
+			Set myQRW = Application.OpenQueryClass(Application.MetaData.QueryDocClasses.ItemByName(in_mySearchClassName).GUID,True)
+			Set myObjektCntr =  myQRW.QueryDlg.ControlByName("TabOrtsbezug_ASFDokObjekt")
+			If myObjektCntr Is Nothing Then
+				Application.ShowError("Das Control TabOrtsbezug_ASFDokObjekt wurde nicht gefunden!")
+			End If
+			Set myOrtsbezugMatrix = Application.MetaData.StringMatrices.ItemByName("ASF_DB_OrtsbezugObjekte")
+
+			If myOrtsbezugMatrix Is Nothing Then
+				Application.ShowMessage("Datenbankverbindung konnte nicht hergestellt werden. Bitte kontakieren Sie den Administrator.")
+				Exit Sub
+			End If
+
+			Dim in_ExternalID As String
+			Dim myOrtsbezugToSearch As String
+
+			in_ExternalID = Para3
+
+			If Not (IsEmpty(in_mySearchClassName) And IsEmpty(in_ExternalID) ) Then
+
+					Dim y As Integer
+					For y = 0 To myOrtsbezugMatrix.RowCount - 1
+						If in_ExternalID = myOrtsbezugMatrix.Value(y,7) Then
+							myOrtsbezugToSearch = myOrtsbezugMatrix.Value(y,2)
+							Exit For
+						End If
+					Next
+
+					If Not myOrtsbezugToSearch = "" Then
+
+						myObjektCntr.Data = myOrtsbezugToSearch
+					Else
+						Application.ShowError("Es wurde bisher kein entsprechendes Objekt im DOXiS angelegt." + vbCrLf + "Bitte kontrollieren Sie Ihre Eingabe bzw. wenden Sie sich an die DMS Koordinatoren")
+						Exit Sub
+					End If
+			End If
+		myQRW.QueryDlg.Execute
+
+		If myQRW.ResultWindow.ResultList.Resultset.TotalCount = 1 Then
+			If myQRW.ResultWindow.ResultList.Resultset.Document(0).Type = TDocumentType.dtItaFolder Then
+				Application.OpenFolder(myQRW.ResultWindow.ResultList.Resultset.Document(0))
+			Else
+				Application.OpenDocument(myQRW.ResultWindow.ResultList.Resultset.Document(0))
+			End If
+			myQRW.Close
+		End If
+
+End If
+'---Vorbelegung Suchklasse und Objekt via ExternalID---
+'Beispiel:  iecm://Mandant@CSBHOST:8080/SEARCH_RECORD_LOCATION_PROP;BAV-Akten;23233/123.bas
+
+If UCase(Para1) = "SEARCH_RECORD_LOCATION_PROP" Then
+
+			Dim myGrundstücksNummerCntr As Edit
+
+			in_mySearchClassName = Para2
+
+			If Application.MetaData.QueryDocClasses.ItemByName(in_mySearchClassName) Is Nothing Then
+				Application.ShowError("Die angegebene Suchklasse '" + in_mySearchClassName + "' steht nicht zur Verfügung")
+				Exit Sub
+			End If
+
+			Set myQRW = Application.OpenQueryClass(Application.MetaData.QueryDocClasses.ItemByName(in_mySearchClassName).GUID,True)
+			Set myGrundstücksNummerCntr =  myQRW.QueryDlg.ControlByName("TabImmoBeschlagwortung_ASFBezeichnung")
+			If myGrundstücksNummerCntr Is Nothing Then
+			Set myGrundstücksNummerCntr =  myQRW.QueryDlg.ControlByName("TabBeschlagwortung_ASFBezeichnung")
+			End If
+			If myGrundstücksNummerCntr Is Nothing Then
+				Application.ShowError("Das Control für die Vorbelegung wurde nicht gefunden!")
+			End If
+
+
+			Dim in_GN As String
+			Dim myGrundstückToSearch As String
+
+			in_GN = Para3
+
+			If Not (IsEmpty(in_mySearchClassName) And IsEmpty(in_GN) ) Then
+
+					myGrundstücksNummerCntr.Data = in_GN
+
+			End If
+		myQRW.QueryDlg.Execute
+
+		If myQRW.ResultWindow.ResultList.Resultset.TotalCount = 1 Then
+			If myQRW.ResultWindow.ResultList.Resultset.Document(0).Type = TDocumentType.dtItaFolder Then
+				Application.OpenFolder(myQRW.ResultWindow.ResultList.Resultset.Document(0))
+			Else
+				Application.OpenDocument(myQRW.ResultWindow.ResultList.Resultset.Document(0))
+			End If
+			myQRW.Close
+		End If
+
+End If
+
+Exit Sub
+
+fError:
+Application.ShowError("Fehler im BAS Aufruf","Application_OnBasicCommand (IECM/BAS Aufruf)",0,0,Error)
+End Sub
+
+Private Sub Application_OnDebugResume()
+
+End Sub
+
+Public Sub checkRemoveRight(ByRef Handled As Boolean, ByRef ResultWindow As ResultWindow)
+
+	Dim myDoc As ItaDocument
+	Dim i As Integer
+	Dim i1 As Integer
+
+	Dim myDescDefDocName As DescriptorDefinition
+	Dim dokBezeichnung As String
+	Dim strErrMsg As String
+	Dim myversion As DocumentVersionInfo
+	Dim docid As String
+	Dim idoc As IDocument
+	Dim ivglversion As Integer
+	Dim ivglindex As Integer
+	Dim arrversion() As String
+
+
+
+	On Error GoTo fError
+
+	Set myDescDefDocName = Application.System.DescriptorDefinitions.ItemByName("ASF_Bezeichnung")
+	If  myDescDefDocName Is Nothing Then
+		Application.ShowError "Es ist ein Fehler aufgetreten!","Result List/ Allgemein ResultWindow_OnRemoveDocument",,,"Die Deskriptor-Definition ASF_Bezeichnung existiert nicht!"
+		Handled = True
+		Exit Sub
+	End If
+
+	For i = 0 To ResultWindow.ResultList.SelectedCount - 1
+		Set myDoc = ResultWindow.ResultList.SelectedDocuments (i)
+		If Not myDoc.Descriptors.ItemByGUID(myDescDefDocName.GUID) Is Nothing Then
+			dokBezeichnung = myDoc.Descriptors.ItemByGUID(myDescDefDocName.GUID).Values(0)
+		End If
+
+		Set myversion=myDoc.GetDocumentVersionInfo
+
+		For i1 = 0 To myversion.Count -1
+			arrversion=Split(myversion.Version(i1),".")
+			If CInt(arrversion(0)) > ivglversion Then
+				ivglversion=	CInt(arrversion(0))
+				ivglindex=i1
+			End If
+
+		Next
+
+		docid=myversion.DocumentID(ivglindex)
+		Set idoc= Application.System.GetDocumentDirect(docid)
+
+		'DMS-424, SWA
+		If LCase(Application.System.User.Role) <> "admins" Then
+			If idoc.Creator.User <> Application.System.User.User Then
+				Application.ShowMessage "Sie haben keine Berechtigung, das Dokument mit dem Namen '" + dokBezeichnung + "' logisch zu löschen!" + vbCrLf + _
+				"Nur der Dokumentenersteller besitzt das Recht zu löschen."
+				Handled = True
+				Exit Sub
+			Else
+				Handled = False
+			End If
+		Else
+			Handled = False
+		End If
+		'/DMS-424
+
+		Set myDoc = Nothing
+	Next i
+
+finish:
+	Set myDoc = Nothing
+	Exit Sub
+fError:
+	Application.ShowError "Beim log. Löschen ist ein Fehler aufgetreten!","Result List/ Allgemein ResultWindow_OnRemoveDocument",,,Err.Description
+	Handled = True
+	GoTo finish
+End Sub
+
+Public Sub MLA_ExportNodeAdvancedForSelection(ByVal curNode As CNode, ByVal startPfad As String, ByVal curPfad As String, ByVal expMode As String, ByRef mapList As String, ByRef fehlerCnt As Integer)
+
+	Dim curFehler As Integer
+	'Dim curObj As Object
+	Dim fso As Object
+	Dim ciDoc As IDocument
+	Dim curDoc As ItaDocument
+	Dim i As Integer
+	Dim subPfad As String
+	Dim curElem As IElement
+
+On Error GoTo ERR_MILE
+
+	If curNode.Elements.Count = 0 And _
+	   curNode.ChildNodes.Count = 0 Then
+		Exit Sub							' Leeres Register = Rekursionsboden
+	End If
+
+	If fehlerCnt >= 1000 Then Exit Sub		' Abbruch
+
+	subPfad= SER_FilterString(curNode.Name)
+	If subPfad = "" Then subPfad = "NoRegName"
+	curPfad= curPfad & "\" & subPfad & "\"
+
+	If LCase(expMode) = "rec-test" Then
+		For i= 0 To curNode.Elements.Count -1
+			Set curElem= curNode.Elements(i)
+			If Not curElem Is Nothing Then
+				SER_ExportDocByIdOrDoc(curElem.Link, Nothing, False, startPfad, curPfad, expMode, mapList)
+				If mapList = "2 long" Then Exit Sub
+			End If
+		Next i
+
+		For i= 0 To curNode.ChildNodes.Count -1
+			SER_ExportNodeAdvanced(curNode.ChildNodes(i), startPfad, curPfad, expMode, mapList, fehlerCnt)
+			If mapList = "2 long" Then Exit Sub
+		Next i
+
+	ElseIf LCase(expMode) = "rec-nested" Then				'Bei doppelten Dateiname (wegen eindeutiger ASF-DocID eigentl. nicht möglich)
+															'könnten hier Mappings in Form von Laufnummern (und dann ggf Abschneiden nötig werden
+		mapList= ""											'diese werden nicht protokolliert, da wegen ASF-DocID nicht möglich
+		Set fso= CreateObject("Scripting.FileSystemObject")
+		If fso.FolderExists(curPfad) Then
+			fehlerCnt= fehlerCnt + 10000
+			MsgBox "Sub-Ordner bereits vorhanden" & vbCrLf & vbCrLf & curPfad & _
+						vbCrLf & vbCrLf & "Bitte wählen Sie ein leeres Exportverzeichnus aus.", vbExclamation, "Export Register"
+			Exit Sub
+		End If
+		MkDir(curPfad)
+		If Not fso.FolderExists(curPfad) Then
+			MsgBox "Anlegen des Ordners fehlgeschlagen" & vbCrLf & vbCrLf & curPfad , vbExclamation, "Export Register"
+			Exit Sub
+		End If
+		For i= 0 To curNode.Elements.Count -1
+			Set curElem= curNode.Elements(i)
+			If Not curElem Is Nothing Then
+				SER_ExportDocByIdOrDoc(curElem.Link, Nothing, True, startPfad, curPfad, expMode, mapList)
+			End If
+		Next i
+
+		For i= 0 To curNode.ChildNodes.Count -1
+			SER_ExportNodeAdvanced(curNode.ChildNodes(i), startPfad, curPfad, expMode, mapList, fehlerCnt)
+		Next i
+
+	ElseIf LCase(expMode) = "rec-flat" Then
+
+		For i= 0 To curNode.Elements.Count -1
+			Set curElem= curNode.Elements(i)
+			If Not curElem Is Nothing Then
+				SER_ExportDocByIdOrDoc(curElem.Link, Nothing, True, startPfad, curPfad, expMode, mapList)
+			End If
+		Next i
+
+		For i= 0 To curNode.ChildNodes.Count -1
+			SER_ExportNodeAdvanced(curNode.ChildNodes(i), startPfad, curPfad, expMode, mapList, fehlerCnt)
+		Next i
+
+	ElseIf LCase(expMode) ="just-rec" Then
+
+		If curNode.Elements.Count = 0 Then
+			Set fso= Nothing
+			Exit Sub
+		End If
+
+		mapList= ""											'diese werden nicht protokolliert, da wegen ASF-DocID nicht möglich
+		Set fso= CreateObject("Scripting.FileSystemObject")
+		If fso.FolderExists(curPfad) Then
+			fehlerCnt= fehlerCnt + 10000
+			MsgBox "Sub-Ordner bereits vorhanden" & vbCrLf & vbCrLf & curPfad & _
+						vbCrLf & vbCrLf & "Bitte wählen Sie ein leeres Exportverzeichnus aus.", vbExclamation, "Export Register"
+			Exit Sub
+		End If
+		MkDir(curPfad)
+		If Not fso.FolderExists(curPfad) Then
+			MsgBox "Anlegen des Ordners fehlgeschlagen" & vbCrLf & vbCrLf & curPfad , vbExclamation, "Export Register"
+			Exit Sub
+		End If
+		For i= 0 To curNode.Elements.Count -1
+			Set curElem= curNode.Elements(i)
+			If Not curElem Is Nothing Then
+				SER_ExportDocByIdOrDoc(curElem.Link, Nothing, True, startPfad, curPfad, expMode, mapList)
+			End If
+		Next i
+
+	End If
+
+	Set fso= Nothing
+	Exit Sub
+ERR_MILE:
+	Application.ShowError "Fehler in MLA_ExportNodeAdvanced!", Err.Source, 0, Err.Number, Err.Description, 0
+	Err.Clear
+	Set fso= Nothing
+End Sub
+
+'DMS-423, SWA ermittelt, in welcher Ebene sich ein Register befindet
+Public Function getLevelOfRegister(ByVal RegisterNode As FolderManager.CNode) As Integer
+
+	On Error Resume Next
+
+	'SWA, den Counter resetten
+	m_LevelCountOfRegister = 0
+
+	LoopRegister(RegisterNode)
+	getLevelOfRegister = m_LevelCountOfRegister
+
+End Function
+
+'DMS423 SWA
+Private Sub LoopRegister(RegisterNode As FolderManager.CNode)
+
+	On Error Resume Next
+
+	If Not RegisterNode.Parent Is Nothing Then
+		If RegisterNode.Parent <> "" Then
+			m_LevelCountOfRegister = m_LevelCountOfRegister +1
+			LoopRegister (RegisterNode.Parent)
+		End If
+	End If
+
+End Sub
+

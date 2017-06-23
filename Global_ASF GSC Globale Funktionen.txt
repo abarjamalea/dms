@@ -1,0 +1,1598 @@
+'#Reference {2A75196C-D9EB-4129-B803-931327F72D5C}#2.8#0#C:\Programme\Gemeinsame Dateien\System\ado\msado15.dll#Microsoft ActiveX Data Objects 2.8 Library#ADODB
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script	:	Global Script/ ASF GSC Globale Functionen
+'*	Autor	:	Günther F. Schinko, SER Solutions Österreich GmbH
+'*	Datum	:	27.07.2010
+'*
+'************************************************************************
+'Ü*001	SER/GSC	2011/01/27	Ersteller wird zu Geschäftspartner hinzugefügt
+'							Löschen auch bei Single-Mail-Markierung möglich
+'Ü*002	SER/GBA	2011/04/13	CR 14: Anlassdatum nicht mehr mit Filedatum überschreiben (aber weiterhin mit Maildatum)
+'							siehe auch ArchiveDlg, FilingEnvironment
+'Ü*003	SER/GSC	2011/08/17	CR 50: Neuanlage Geschäftspartner
+'
+'Ü*004	SER/GSC	2011/10/21	CR 54: Dateiname Attachment anstatt kryptischen Namen
+'
+'Ü*005	SER/GSC	2011/11/24	CR 67: GP mit LIKE
+'Ü*006	SER/GSC	2012/10/24	CR 9 Tranche 4: Export Versionshistorie
+'Ü*007	SER/GSC	2013/04/07  Fkt. ASF_IDs_getNextBAVGeschäftsfallID und ASF_Sub_getNextBAVGeschäftsfallID für BAV hinzugefügt
+
+Option Explicit
+
+
+Const CBKEEPVAL = "cbKeepValues"
+
+Dim MyRst As New ADODB.Recordset
+
+Public ASFmail As SWATOOLSLib.MSGReader
+
+
+Private Sub Application_OnDebugResume()
+
+
+End Sub
+
+
+
+
+	'*	Lokale Objekte
+	'**	Business Logik
+
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub openLocalRecordset(	ByVal pSQL As String, _
+								Optional ByVal pCallerName As String, _
+								Optional ByVal pCursorType As CursorTypeEnum = adOpenStatic, _
+								Optional ByVal pLockType As LockTypeEnum = adLockReadOnly)
+
+	On Error GoTo ErrorHandler
+
+	If MyRst.State = adStateOpen Then MyRst.Close
+	If Not ASF_DMS_Daten.State = adStateOpen Then
+		ASF_DMS_Daten.Open Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").ADOConnectionString
+	End If
+	MyRst.Open pSQL, ASF_DMS_Daten, pCursorType, pLockType
+
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler beim Abfragen von Daten aus der Datenbank ASF_DMS_Daten!", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in openLocalRecordset(" & pSQL & ")" & vbCrLf & "aufgerufen von " & pCallerName, 0
+End Sub
+
+Private Sub closeLocalRecordset(Optional ByVal pCallerName As String)
+	On Error GoTo ErrorHandler
+
+	If MyRst.State = adStateOpen Then MyRst.Close
+	If MyRst.State <> adStateClosed Then
+		DoEvents
+		MyRst.Close
+	End If
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler beim Schließen eines Recordsets", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "aufgerufen von " & pCallerName, 0
+End Sub
+'Ü*003
+Rem See DialogFunc help topic for more information.
+Private Function gpanlegen(DlgItem$, Action%, SuppValue?) As Boolean
+	Select Case Action%
+		Case 1 ' Dialog box initialization
+		Case 2 ' Value changing or button pressed
+			Rem multiImport = True ' Prevent button press from closing the dialog box
+		Case 3 ' TextBox or ComboBox text changed
+		Case 4 ' Focus changed
+		Case 5 ' Idle
+			Rem Wait .1 : multiImport = True ' Continue getting idle actions
+		Case 6 ' Function key
+	End Select
+End Function
+
+
+Private Function ASF_getGPSqlSelect(GPName As String,APName As String, _
+									GPStrasse As String,GPLand As String, _
+									GPplz As String,GPort As String) As String
+
+	Dim xt As String
+	xt =	"SELECT GPName as Firma,APName as Ansprechpartner,[Straße],PLZ,Ort,Land,ID " & _
+			"FROM Geschäftspartner " & _
+			"WHERE 1=1 "
+'Ü*005
+			If GPName <> "" Then xt = xt & "AND GPName LIKE '%" & GPName & "%' "
+			If APName <> "" Then xt = xt & "AND APNAme LIKE '%" & APName & "%' "
+			If GPStrasse <> "" Then xt = xt & "AND [Straße] LIKE '%" & GPStrasse & "%' "
+			If GPLand <> "" Then xt = xt & "AND Land LIKE '%" & GPLand & "%' "
+			If GPplz <> "" Then xt = xt & "AND PLZ LIKE '%" & GPplz & "%' "
+			If GPort <> "" Then xt = xt & "AND Ort LIKE '%" & GPort & "%' "
+
+'/Ü*005
+	xt = xt & "ORDER BY GPName,APName"
+	ASF_getGPSqlSelect = xt
+
+End Function
+'/Ü*003
+
+
+Rem See DialogFunc help topic for more information.
+Private Function multiImport(DlgItem$, Action%, SuppValue?) As Boolean
+	Select Case Action%
+	Case 1 ' Dialog box initialization
+	Case 2 ' Value changing or button pressed
+		Rem multiImport = True ' Prevent button press from closing the dialog box
+	Case 3 ' TextBox or ComboBox text changed
+	Case 4 ' Focus changed
+	Case 5 ' Idle
+		Rem Wait .1 : multiImport = True ' Continue getting idle actions
+	Case 6 ' Function key
+	End Select
+End Function
+
+
+
+'************************************************************************
+'*	Wird nicht mehr verwendet
+'************************************************************************
+Private Sub ASF_Save_Desc(ByVal pdlg As Object,ByRef pdesc() As String,ByRef pbfirst As Boolean)
+	'*	Lokale Objekte
+
+Exit Sub
+	Dim i As Integer
+
+
+
+	'**	Business Logik
+
+	With pdlg
+		ReDim pdesc(.ControlCount)
+		On Error Resume Next
+		For i = 0 To .ControlCount -1
+			'For i1 = 0 To .Item(i).ValueCount
+				'pdesc(i)=.Item(i).Value(i1)
+				pdesc(i)=.Control(i).Data
+			'Next
+		Next
+		On Error GoTo 0
+	End With
+	pbfirst=False
+End Sub
+
+'************************************************************************
+'*	Wird nicht mehr verwendet
+'************************************************************************
+Private Sub ASF_Restore_Desc(ByVal pdlg As Object,ByRef pdesc() As String)
+	'*	Lokale Objekte
+
+Exit Sub
+	Dim i As Integer
+	Dim arrmatrix() As String
+
+
+	'**	Business Logik
+
+	With pdlg
+		On Error Resume Next
+
+		For i=0 To .ControlCount -1
+			.Control(i).Data=pdesc(i)
+		Next
+
+		'* DOCID muß weitergezählt werden
+
+		If ASF_GetMailcontrol("ASF_Mailcontrols",.DialogDefinition.FullyQualifiedName,"DOCID",arrmatrix)=True Then
+			On Error Resume Next
+			If Not .ControlByName(arrmatrix(2)) Is Nothing Then
+				.ControlByName(arrmatrix(2)).Data =ASF_IDs_getNextDocId()
+
+				On Error GoTo 0
+			End If
+		Else
+			Application.ShowError("Werteliste 'ASF_Mailcontrol/DOCID' für '" & .DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+		End If
+		On Error GoTo 0
+	End With
+
+End Sub
+
+
+
+'************************************************************************
+'*	Wird nicht mehr verwendet
+'************************************************************************
+Private Function ASF_connectmail(ByRef pdoc As SWAFRAMELib.IDocument,ByRef panhaenge As Integer, _
+									ByRef padataobjects()  As SWADATALib.IData,ByRef pfilenames() As String, _
+									ByRef psender As String,ByRef pbetreff As String,pdatabase As String, _
+									Optional pCallerName As String) As Boolean
+	'*	Lokale Objekte
+
+	Dim oMailDoc 			As ItaDocument
+    Dim oAttachmentDoc 		        As ItaDocument
+    Dim oRep 				As SWAFRAMELib.Representation
+    Dim oPD 				As SWAFRAMELib.PartDocument
+    Dim iAC 				As Integer
+    Dim i					As Long
+
+	Dim fileName			As String
+	Dim mailfrom			As String
+	Dim subject				As String
+
+
+	Dim arrmatrix() 		As String
+
+
+	'**	Business Logik
+	ASF_connectmail=False
+	On Error GoTo errorhandler
+
+	If panhaenge > 0 Then
+
+
+       For iAC = 0 To panhaenge -1
+           Set oAttachmentDoc = Application.System.CreateDocument(SWAFRAMELib.enumDocumentType.ItaDocument)
+           Set oRep = oAttachmentDoc.Representations.AddNew
+           Set oPD = oRep.PartDocuments.AddNew
+           Set oPD.DataObject = padataobjects(iAC)
+
+		   Set oMailDoc = pdoc
+
+			' Deskriptoren zum Attachment hinzufügen
+			If SER_getKeyValueFromStringMatrixByName("ASF_Maildesc","FILENAME",arrmatrix,False) = True Then
+				If Not Application.System.DescriptorDefinitions.ItemByFullyQualifiedName(arrmatrix(1)) Is Nothing Then
+					oAttachmentDoc.Descriptors.AddNewByGUID(Application.System.DescriptorDefinitions.ItemByFullyQualifiedName(arrmatrix(1)).GUID).AddValue(iAC & " | " & pfilenames(iAC))
+				End If
+			Else
+				Application.ShowError("Werteliste 'ASF_Maildesc/FILENAME' nicht/falsch konfiguriert")
+			End If
+
+			If psender <> "" Then
+				If SER_getKeyValueFromStringMatrixByName("ASF_Maildesc","MAILFROM",arrmatrix,False) = True Then
+					If Not Application.System.DescriptorDefinitions.ItemByFullyQualifiedName(arrmatrix(1)) Is Nothing Then
+						oAttachmentDoc.Descriptors.AddNewByGUID(Application.System.DescriptorDefinitions.ItemByFullyQualifiedName(arrmatrix(1)).GUID).AddValue(psender)
+					End If
+				Else
+					Application.ShowError("Werteliste 'ASF_Maildesc/MAILFROM' nicht/falsch konfiguriert")
+				End If
+			End If
+
+			If pbetreff <> "" Then
+				If SER_getKeyValueFromStringMatrixByName("ASF_Maildesc","SUBJECT",arrmatrix,False) = True Then
+					If Not Application.System.DescriptorDefinitions.ItemByFullyQualifiedName(arrmatrix(1)) Is Nothing Then
+						oAttachmentDoc.Descriptors.AddNewByGUID(Application.System.DescriptorDefinitions.ItemByFullyQualifiedName(arrmatrix(1)).GUID).AddValue(pbetreff)
+					End If
+				Else
+					Application.ShowError("Werteliste 'ASF_Maildesc/SUBJECT' nicht/falsch konfiguriert")
+				End If
+			End If
+
+
+            'Set Document Class and Database (automatically)
+			If SER_getKeyValueFromStringMatrixByName("ASF_Maildesc","MAILATTACHMENTCLASS",arrmatrix,False) = True Then
+	            oAttachmentDoc.DocumentTypeGUID = Application.MetaData.ArchiveDocClasses.ItemByGUID(arrmatrix(1)).GUID
+	            'Set oAttachmentDoc.Database = Application.System.FilingViews.ItemByGUID(AttachmentClass).DefaultFilingDatabase
+
+	            'Datenbank bestimmen
+	            Set oAttachmentDoc.Database = Application.System.FilingDatabases.ItemByName(pdatabase)
+
+				'Das Mail Dokument als Verknüpfung zum AttachmentDok hinzufügen
+	            oAttachmentDoc.DocumentLinks.AddNew.DocumentID = oMailDoc.DocumentID
+	            oAttachmentDoc.Commit
+
+	            'Das Attachment Dok als Verknüpfung zum MailDok hinzufügen
+	            oMailDoc.DocumentLinks.AddNew.DocumentID = oAttachmentDoc.DocumentID
+	        Else
+				Application.ShowError("Werteliste 'ASF_Maildesc/MAILATTACHMENTCLASS' nicht/falsch konfiguriert")
+				Exit Function
+			End If
+
+       Next iAC
+       ' Commit zum Speichern der Dokumenten Links
+       oMailDoc.Commit
+
+	End If
+	ASF_connectmail=True
+	Exit Function
+
+ErrorHandler:
+	Application.ShowError "Fehler bei ASF_Connectmail", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_connectmail" &  vbCrLf & "aufgerufen von " & pCallerName, 0
+End Function
+
+
+
+'Public Sub ASF_splitmail(ByVal pMail As SWATOOLSLib.MSGReader,ByRef pdlg As Object,ByRef paDataObjects()  As SWADATALib.IData,ByRef pfilenames() As String,ByRef psender As String,ByRef pBetreff As String,ByRef pAnhaenge As Long)
+Private Function ASF_splitmail(ByVal pMail As Object,ByRef pdlg As Object,ByRef padataobjects()  As SWADATALib.IData, _
+								ByRef pfilenames() As String,ByRef psender As String,ByRef pbetreff As String, _
+								ByRef panhaenge As Integer,ByRef picheckexport As Integer,Optional ByVal pCallerName As String) As Boolean
+	'*	Lokale Objekte
+
+	Dim myDoc 				As SWAFRAMELib.ItaDocument
+	Dim oIDoc				As SWAFRAMELib.IDocument
+	Dim myDesc 				As SWAFRAMELib.Descriptor
+	Dim myControl 			As SWACTRLSLib.IControlInternal
+	Dim i 					As Long
+	Dim oPD 				As SWAFRAMELib.PartDocument
+
+
+
+
+
+	'**	Business Logik
+	ASF_splitmail=False
+	On Error GoTo errorhandler
+
+	Set oIDoc = pdlg.Document
+	Set myDoc = oIDoc
+
+
+	If myDoc.Representations.Count = 0 Then
+		myDoc.Representations.AddNew.PartDocuments.AddNew.DataObject = pMail.MSGFile
+		Call ASF_fill_mail_control(pMail,pdlg,psender,pbetreff,"ASF_Splitmail")
+
+
+	Else
+			'MsgBox "Es befindet sich bereits eine Mail in der Ablage.", vbExclamation, "Abbruch"
+			If picheckexport <> 1 Then
+				If myDoc.Representations(0).PartDocuments.Count=0 Then
+					ASF_splitmail(pMail,pdlg,padataobjects,pfilenames,psender,pbetreff,panhaenge,picheckexport)
+					ASF_splitmail=True
+					Exit Function
+				End If
+			Else
+				Set oPD = myDoc.Representations(0).PartDocuments.AddNew
+				Set oPD.DataObject=pMail.MSGFile
+				Call ASF_fill_mail_control(pMail,pdlg,psender,pbetreff,"ASF_Splitmail")
+			End If
+
+	End If
+
+
+	With pdlg
+
+		ReDim Preserve pfilenames(pMail.AttachmentCount + 1)
+		ReDim Preserve padataobjects(pMail.AttachmentCount + 1)
+
+		For i =  0 To pMail.AttachmentCount - 1
+			' LISTE FÜLLEN MIT DEN ATTACHMENTS
+			pfilenames(i) = pMail.Attachment(i).fileName
+			Set padataobjects(i) = pMail.Attachment(i)
+			'
+			Set oPD = myDoc.Representations(0).PartDocuments.AddNew
+			Set oPD.DataObject=pMail.Attachment(i)
+			'
+
+		Next i
+	End With
+
+	ASF_splitmail=True
+
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler bei ASF_Splitmail", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_Splitmail" &  vbCrLf & "aufgerufen von " & pCallerName, 0
+End Function
+
+
+'************************************************************************
+'*	Wird nicht mehr verwendet
+'************************************************************************
+'Public Sub ASF_OnMailDrop(ByRef pMail As SWATOOLSLib.MSGReader,ByRef pdlg As Object)
+Private Function ASF_OnMailDrop(ByRef pMail As Object,ByRef pdlg As Object, Optional pCallerName As String) As Boolean
+	'Dim myDoc As SWAFRAMELib.ItaDocument
+
+	'Dim myDesc As SWAFRAMELib.Descriptor
+	'Dim myControl As SWACTRLSLib.IControlInternal
+	'Dim i As Integer
+	'*	Lokale Objekte
+
+	Dim myDoc 				As SWAFRAMELib.ItaDocument
+	Dim oIDoc				As SWAFRAMELib.IDocument
+	Dim myDesc 				As SWAFRAMELib.Descriptor
+	Dim myControl	        As SWACTRLSLib.IControlInternal
+	Dim i 					As Long
+
+
+
+	'**	Business Logik
+	ASF_OnMailDrop=False
+	On Error GoTo errorhandler
+	Set oIDoc = pdlg.Document
+	Set myDoc = oIDoc
+
+
+
+	If myDoc.Representations.Count = 0  Then
+		myDoc.Representations.AddNew.PartDocuments.AddNew.DataObject = pMail.MSGFile
+		With pdlg
+			Call ASF_fill_mail_control(pMail,pdlg,,,"ASF_OnMailDrop")
+		End With
+		ASF_OnMailDrop=True
+	Else
+		'MsgBox "Es befindet sich bereits eine Mail in der Ablage.", vbExclamation, "Abbruch"
+		If myDoc.Representations(0).PartDocuments.Count=0 Then
+			ASF_OnMailDrop(pMail,pdlg)
+		End If
+
+	End If
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler ASF_OnMailDrop!", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_Maildrop" &  vbCrLf & "aufgerufen von " & pCallerName,0
+End Function
+
+
+
+
+
+Private Function ASF_deletemail(ByVal poapplication As Object,ByVal psid As String, _
+	ByVal psmsgfilename As String,ByRef pideletemail As Integer,picheckexport As Integer,Optional ByVal pCallerName As String) As Boolean
+	'**	Business Logik
+	Dim i As Integer
+	Dim intEmailanzahl As Integer
+	Dim intemailzaehler As Integer
+
+	Dim ssid As String
+	Dim smsgfilename As String
+	Dim senv As String
+
+
+	ASF_deletemail=False
+	On Error GoTo errorhandler
+
+	If pideletemail <> 1 Then
+		ASF_deletemail = True
+		Exit Function
+	End If
+
+	If poapplication.ActiveExplorer.Selection.Count = 0 Then
+		ASF_deletemail=True
+		Exit Function
+	End If
+
+    intemailzaehler = poapplication.ActiveExplorer.Selection.Count
+	Select Case picheckexport
+			Case 1		'Gesamt
+				senv=Environ("TEMP")
+
+				For i = intemailzaehler To 1 Step - 1
+					ssid=poapplication.ActiveExplorer.Selection(i).EntryID
+					smsgfilename=senv & "\" & ssid & ".msg"
+					poapplication.ActiveExplorer.Selection(i).Delete
+					DoEvents
+					If Dir(psmsgfilename) <> "" Then Kill(psmsgfilename)
+
+
+				Next
+				ASF_deletemail=True
+			Case 2		'Einzeln
+				For i = intemailzaehler To 1 Step -1
+					If psid=poapplication.ActiveExplorer.Selection(i).EntryID Then
+						poapplication.ActiveExplorer.Selection(i).Delete
+						DoEvents
+
+						If Dir(psmsgfilename) <> "" Then Kill(psmsgfilename)
+						ASF_deletemail=True
+						Exit For
+					End If
+				 	'intemailzaehler = intemailzaehler - 1
+			        'i = 0
+			        'If intemailzaehler = 0 Then Exit For
+			    Next
+			Case Else
+				picheckexport=-1
+				Exit Function
+		End Select
+
+
+
+    Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler ASF_Deletemail! " & psmsgfilename, Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in Fehler ASF_Deletemail!" &  vbCrLf & "aufgerufen von " & pCallerName,0
+End Function
+
+
+Public Sub ASF_call_ie(p_inputtext As String)
+	'*	Lokale Objekte
+
+	Const URL1="http://chart.apis.google.com/chart?cht=qr&chs=200x200&chl="
+	Const URL2="&chld=H"
+	Dim objexplorer As Object
+	Dim url As String
+
+	'**	Business Logik
+	Set objexplorer = CreateObject("InternetExplorer.Application")
+
+
+	url=URL1 & SER_URLEncode(p_inputtext) & URL2
+
+	'MsgBox(url)
+	objexplorer.Navigate url
+
+	'objExplorer.Navigate "http://chart.apis.google.com/chart?cht=qr&chs=200x200&chl=DOXiS4%20iECM-Suite&chld=H"
+	objexplorer.Toolbar = 1
+	objexplorer.StatusBar = 1
+	objexplorer.Width=300
+	objexplorer.Height = 500
+	objexplorer.Left = 0
+	objexplorer.Top = 0
+	objexplorer.Visible = 1
+End Sub
+
+
+
+
+
+'************************************************************************
+'*	GLOBALE BUSINESS LOGIK
+'************************************************************************
+
+'Ü*003
+Public Function ASF_newGP(ByRef mydlg As Object,ByRef MyGP As ASF_Geschaeftspartner,ByRef errMsg As String) As Boolean
+	Dim ret As Variant
+	Dim listarray() As String
+	Dim land() As String
+	Dim templand() As String
+
+	Dim xt As String
+	Dim i As Long
+	Dim bfound As Boolean
+
+
+	ReDim land(0)
+	ASF_newGP = False
+
+
+	xt = "SELECT * FROM supLänderKürzelNamenISO3166 where 1=1 ORDER BY Name,Kürzel  "
+	Call openLocalRecordset xt, "ASF_newGP", adOpenKeyset, adLockPessimistic
+	If MyRst.State <> adStateOpen Then
+		errMsg= "Öffnen des Recordsets fehlgeschlagen!" & vbCrLf & "Recordset.State= " & MyRst.State & _
+				"SQL-Statement= " & xt & vbCrLf & _
+				"Connection.State= " & ASF_DMS_Daten.State & vbCrLf & _
+				"ConnectionString= " & Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").ADOConnectionString
+
+		closeLocalRecordset("ASF_newGP")
+		Exit Function
+	End If
+
+	With MyRst
+		.MoveFirst
+
+		While Not .EOF
+			'g_land(i)=.Fields("Kürzel")
+			i=i+1
+			.MoveNext
+
+		Wend
+		ReDim land(i)
+		i=0
+		.MoveFirst
+
+		While Not .EOF
+			land(i)=.Fields("Name") & "@" & .Fields("Kürzel")
+			i=i+1
+			.MoveNext
+
+		Wend
+
+	End With
+	closeLocalRecordset("ASF_newGP")
+
+
+	Begin Dialog UserDialog 980,343,"Geschäftspartner anlegen",.gpanlegen ' %GRID:10,7,1,1
+		OKButton 50,315,120,28
+		CancelButton 220,315,120,28
+		Text 10,14,50,14,"Firma",.TXFirma
+		Text 10,42,120,14,"Ansprechpartner",.TXAnsprechpartner
+		Text 10,70,80,14,"Strasse",.TXAdressdaten
+		Text 240,98,120,14,"Postleitzahl/Ort",.TXAdressdaten2
+
+		TextBox 130,14,400,21,.Firma
+		TextBox 130,42,270,21,.Ansprechpartner
+		TextBox 130,70,420,21,.Strasse
+		TextBox 380,98,70,21,.PLZ
+		TextBox 480,98,250,21,.ORT
+		ComboBox 10,98,210,210,land(),.Land,2
+
+
+	End Dialog
+	Dim dlg1 As UserDialog
+	dlg1.Land="Österreich@AT"
+	ret= Dialog(dlg1)
+
+	bfound=False
+	Select Case ret
+
+		Case 0			'Abbruch
+			Exit Function
+		Case -1			'OK
+			If dlg1.firma="" Then
+				Application.ShowMessage "Das Pflichtfeld 'Firma' wurde nicht befüllt!"
+				Exit Function
+			End If
+			If dlg1.land="" Then
+				Application.ShowMessage "Das Pflichtfeld 'Land' wurde nicht befüllt!"
+				Exit Function
+			End If
+
+			xt = ASF_getGPSqlSelect(dlg1.Firma,dlg1.Ansprechpartner,dlg1.Strasse,dlg1.Land,dlg1.PLZ,dlg1.ORT)
+			Call openLocalRecordset xt, "ASF_newGP", adOpenKeyset, adLockPessimistic
+			If MyRst.State <> adStateOpen Then
+				errMsg= "Öffnen des Recordsets fehlgeschlagen!" & vbCrLf & "Recordset.State= " & MyRst.State & _
+						"SQL-Statement= " & xt & vbCrLf & _
+						"Connection.State= " & ASF_DMS_Daten.State & vbCrLf & _
+						"ConnectionString= " & Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").ADOConnectionString
+
+				closeLocalRecordset("ASF_newGP")
+				Exit Function
+			End If
+			templand()=Split(dlg1.land,"@")
+			With MyRst
+				If Not .EOF Then
+					.MoveFirst
+					If MyRst.Fields("Firma") = dlg1.firma And _
+						MyRst.Fields("Ansprechpartner") = dlg1.ansprechpartner And _
+						MyRst.Fields("Land") = templand(1) And _
+						MyRst.Fields("[Straße]") = dlg1.Strasse And _
+						MyRst.Fields("Plz") = dlg1.PLZ And _
+						MyRst.Fields("Ort") = dlg1.Ort Then
+						bfound=True
+					End If
+				End If
+				If bfound = False Then
+					'einfügen
+
+
+					With MyGP
+						.GPName = dlg1.firma
+						.APName = dlg1.ansprechpartner
+						.Strasse = dlg1.Strasse
+						.Land = templand(1)
+
+						.PLZ = dlg1.PLZ
+						.Ort = dlg1.ORT
+					End With
+					ASF_GP_doSaveGP(MyGP)
+					mydlg.ControlByName("ASFGPGPName").Data=dlg1.firma
+					mydlg.ControlByName("ASFGPAPName").Data=dlg1.ansprechpartner
+					mydlg.ControlByName("ASFGPStrasse").Data=dlg1.strasse
+					mydlg.ControlByName("ASFGPPLZ").Data=dlg1.plz
+					mydlg.ControlByName("ASFGPOrt").Data=dlg1.ort
+					mydlg.ControlByName("DbrsASFGPLand").Data(0)=templand(1)
+				Else
+					Application.ShowError("Geschäftspartner bereits vorhanden")
+				End If
+
+
+			End With
+
+	End Select
+	Exit Function
+FEHLER:
+	'Application.ShowError "Fehler bei ASF_Sub_getNextDocId", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_fill_file_control", 0
+	errMsg= "Src: " & Err.Source & vbCrLf & "Nr:   " & Err.Number & vbCrLf & "Msg: " & Err.Description & vbCrLf & "Ort: ASF_Sub_getNextDocId"
+	Err.Clear
+End Function
+'/'Ü*003
+
+
+'************************************************************************
+'*	MAIL AUS OUTLOOK HOLEN
+'************************************************************************
+
+Public Sub ASF_getdocument_from_outlook(ByRef poapplication As Object,ByRef picheckexport As Integer, _
+										ByRef pideletemail As Integer ,ByRef piduplicatemeta As Integer, ByRef pdlg As Object,ByRef psid As String, _
+										ByRef psmsgfilename As String,ByVal parchiveviewwindow As Object, _
+										ByRef padataobjects() As SWADATALib.IData, _
+										ByRef pfilenames() As String,ByRef psender As String, _
+										ByRef pbetreff As String,ByRef pdatum As Date, _
+										ByRef panhaenge As Integer)
+	'*	Lokale Objekte
+
+	Dim i As Integer
+	Dim intEmailanzahl As Integer
+	Dim intemailzaehler As Integer
+	Dim Mail As MSGReader
+
+	Dim senv As String
+
+	'Dim bfirst As Boolean
+	Dim arr_desc() As String
+	'Dim bsplitarchive As Boolean
+	Dim bkeepvalues As Boolean
+
+	Dim myDoc 				As SWAFRAMELib.ItaDocument
+	Dim oIDoc				As SWAFRAMELib.IDocument
+	Dim idoc 				As Long
+
+
+
+
+
+	'**	Business Logik
+
+	picheckexport = -1
+	piduplicatemeta = -1
+
+	Set poapplication = CreateObject("Outlook.Application")
+	If poapplication.ActiveExplorer Is Nothing Then
+			Application.ShowError("Outlook ist nicht bereit")
+			Exit Sub
+	End If
+
+
+	Dim ret As Variant
+
+
+	Select Case poapplication.ActiveExplorer.Selection.Count
+		Case 0
+			Application.ShowError("Es wurden keine Mails ausgewählt")
+			Exit Sub
+		Case Is > 1
+
+
+
+			Begin Dialog UserDialog 430,161,"Importieren mehrerer Dateien",.multiImport ' %GRID:10,7,1,1
+				Text 20,14,220,35,"Sie importieren mehrere Dateien. Wie möchten Sie vorgehen?",.Text1
+				PushButton 20,56,390,28,"Alle Dateien in 1 winCube Dokument zusammenfassen",.btnTogether
+				PushButton 20,98,390,28,"Jede Datei als separates winCube Dokument archivieren",.btnSeperate
+				CancelButton 290,14,120,28
+				CheckBox 30,140,320,14,"Mail(s) nach dem Archivieren löschen?",.delmail
+			End Dialog
+			Dim dlg As UserDialog
+			ret= Dialog(dlg)
+
+			Select Case ret
+				Case 1		'Gesamt
+					picheckexport=1
+				Case 2		'Einzeln
+					picheckexport=2
+				Case Else
+					picheckexport=-1
+					Exit Sub
+			End Select
+
+			Select Case dlg.delmail			'Checkbox gesetzt
+				Case 1
+					pideletemail= 1
+				Case Else
+					pideletemail= 0
+			End Select
+
+
+		    'Select Case MsgBox("Gesamt archivieren",vbYesNoCancel,"Abfrage")
+			'    Case vbYes
+			'    	picheckexport = 1
+			'    Case vbNo
+			'    	picheckexport = 2
+			'    Case Else
+			'   	picheckexport = -1
+			'    	Exit Sub
+			'
+		    'End Select
+
+			'If picheckexport = 2 Then
+
+			'	Select Case MsgBox("Beschlagwortung übernehmen?",vbYesNoCancel,"Abfrage")
+			'	    Case vbYes
+				    	piduplicatemeta = 1
+				    	With pdlg
+							For i=0 To .ControlCount -1
+								If .Control(i).Name = CBKEEPVAL  Then
+									bkeepvalues=.Control(i).Checked
+									.Control(i).Checked=True
+									Exit For
+								End If
+							Next
+						End With
+
+				    	'cbKeepValues.KeepValues= True
+			'	    Case vbNo
+			'	    	piduplicatemeta = 2
+			'	    Case Else
+			'	    	piduplicatemeta = -1
+			'	    	Exit Sub
+			'    End Select
+			'End If
+
+'Ü*001
+		Case Is = 1
+
+	Begin Dialog UserDialog 350,84,"Importieren einer Datei",.multiImport ' %GRID:10,7,1,1
+		OKButton 30,42,120,28
+		CancelButton 190,42,120,28
+		CheckBox 30,14,320,14,"Mail nach dem Archivieren löschen?",.delmail
+
+	End Dialog
+			Dim dlg1 As UserDialog
+			ret= Dialog(dlg1)
+
+			Select Case ret
+				Case 0
+					picheckexport=-1
+					Exit Sub
+			End Select
+
+			picheckexport=1		'Gesamt archivieren
+
+			Select Case dlg1.delmail			'Checkbox gesetzt
+				Case 1
+					pideletemail= 1
+				Case Else
+					pideletemail= 0
+			End Select
+
+	End Select
+
+	senv=Environ("TEMP")
+
+    intemailzaehler = poapplication.ActiveExplorer.Selection.Count
+
+	'picheckexport=2		'Anhaenge werden als zus. Teildokumente archiviert
+	'Select Case MsgBox("Mail nach Archivierung löschen?",vbYesNoCancel,"Abfrage")
+	'    Case vbYes
+	'    	pideletemail= True
+	'    Case vbNo
+	'    	pideletemail=False
+	'    Case Else
+	'    	pideletemail=False
+	'    	If piduplicatemeta = 1 Then
+	'			With pdlg
+	'				For i=0 To .ControlCount -1
+	'					If .Control(i).Name = CBKEEPVAL  Then
+	'						.Control(i).Checked=bkeepvalues
+	'						Exit For
+	'					End If
+	'				Next
+	'			End With
+	'   	End If
+	'    	Exit Sub
+   'End Select
+
+
+
+
+    For i = intemailzaehler To 1 Step -1
+		Set oIDoc = pdlg.Document
+		Set myDoc = oIDoc
+
+		If myDoc.Representations.Count > 0 Then
+			If myDoc.Representations(0).PartDocuments.Count > 0 Then
+					If picheckexport=2 Then pdlg.Execute
+			End If
+
+			'myDoc.Representations.RemoveAll
+		End If
+
+
+		If poapplication.ActiveExplorer.Selection(i).MessageClass = "IPM.Note" Then	'nur Mails
+
+				Set Mail = New SWATOOLSLib.MSGReader
+				psid=poapplication.ActiveExplorer.Selection(i).EntryID
+				psmsgfilename=senv & "\" & psid & ".msg"
+				poapplication.ActiveExplorer.Selection(i).SaveAs(psmsgfilename,3)	'mail wird gespeichert 'olMSG=3
+				DoEvents
+				Mail.MSGFileName = psmsgfilename
+				'Mail.MSGID=poapplication.ActiveExplorer.Selection(i).EntryID
+				Mail.MSGID=psid
+				If ASF_splitmail(Mail,parchiveviewwindow.ArchiveDlg,padataobjects,pfilenames,psender,pbetreff,panhaenge,picheckexport) = False Then
+					Exit Sub
+				End If
+		End If
+
+        DoEvents
+
+        'intemailzaehler = intemailzaehler - 1
+        'i = 0
+        'If intemailzaehler = 0 Then Exit For
+
+    Next i
+
+	If piduplicatemeta = 1 Then
+		With pdlg
+			For i=0 To .ControlCount -1
+				If .Control(i).Name = CBKEEPVAL  Then
+					.Control(i).Checked=bkeepvalues
+					Exit For
+				End If
+			Next
+		End With
+	End If
+
+End Sub
+
+
+
+
+'************************************************************************
+'*	MAIL IN OUTLOOK LÖSCHEN
+'************************************************************************
+
+Public Sub ASF_Deletemail_after_archiving(ByRef picheckexport As Integer,ByRef poapplication As Object,ByRef psid As String, ByRef psmsgfilename As String, _
+											ByRef psender As String, ByRef pbetreff As String, ByVal pdoc As Object,ByRef panhaenge As Integer, _
+											ByRef padataobjects() As SWADATALib.IData, ByRef pfilenames() As String,ByRef pideletemail As Integer,ByVal pdocdb As String)
+
+
+	'**	Business Logik
+
+	Select Case picheckexport
+			Case 1	'Gesamt
+				'mail löschen
+					If ASF_deletemail(poapplication,psid,psmsgfilename,pideletemail,picheckexport) = True Then
+
+					End If
+			Case 2	'Einzeln
+				'If ASF_connectmail(pdoc,panhaenge,padataobjects,pfilenames,psender,pbetreff,pdocdb) = True Then
+					'myDoc.Representations.RemoveAll
+					'evtl. repr löschen
+					'mail löschen
+					If ASF_deletemail(poapplication,psid,psmsgfilename,pideletemail,picheckexport) = True Then
+
+					End If
+				'End If
+			Case Else
+		End Select
+End Sub
+
+
+'************************************************************************
+'*	MAILCONTROLS BESTIMMEN BZW. BEFÜLLEN
+'************************************************************************
+
+Public Function ASF_GetMailcontrol(ByVal pmatrixname As String,ByVal pdlgname As String, _
+					ByVal pmailcontrol As String, ByRef pmatrixarray() As String) As Boolean
+
+	Dim i As Integer
+	Dim i1 As Integer
+	Dim i2 As Integer
+
+	Dim controlall() As String
+
+
+	ASF_GetMailcontrol=False
+	ReDim pmatrixarray(4)
+
+	If SER_getgloballist_all(pmatrixname,controlall)=True Then
+		For i = 0 To UBound(controlall)
+			For i1=0 To 3
+				If controlall(i,0) = pdlgname Then
+					If pmailcontrol=controlall(i,i1) Then
+						For i2=0 To 3
+							pmatrixarray(i2)=controlall(i,i2)
+						Next
+						ASF_GetMailcontrol=True
+						Exit Function
+					End If
+				End If
+			Next
+
+		Next
+	End If
+End Function
+
+
+Public Sub ASF_fill_mail_control(ByVal pMail As Object,ByRef pdlg As Object, _
+								Optional ByRef psender As String, Optional ByRef pbetreff As String, _
+								Optional ByVal pCallerName As String)
+	Dim i As Integer
+	Dim arrmatrix() As String
+
+	'On Error GoTo errorhandler
+	On Error Resume Next 'Unterdrücken von Fehlermeldungen bzgl. Mehrfachnennung
+	With pdlg
+		'Ü*001
+		'If ASF_GetMailcontrol("ASF_Mailcontrols",.DialogDefinition.FullyQualifiedName,"MAILFROM",arrmatrix)=True Then
+		'	On Error Resume Next
+		'	If Not .ControlByName(arrmatrix(2)) Is Nothing Then
+		'		psender = pMail.Sender
+		'		.ControlByName(arrmatrix(2)).Data = psender
+		'		DoEvents
+		'		On Error GoTo 0
+		'	End If
+		'Else
+		'	Application.ShowError("Werteliste 'ASF_Mailcontrol/MAILFROM' für '" & .DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+		'End If
+		If ASF_GetMailcontrol("ASF_Mailcontrols",.DialogDefinition.FullyQualifiedName,"MAILFROM",arrmatrix)=True Then
+			If Not .ControlByName(arrmatrix(2)) Is Nothing Then
+				If CInt(arrmatrix(3)) = 1 Then					'1= Resetcontent
+					.ControlByName(arrmatrix(2)).ResetContent
+				End If
+				psender = pMail.Sender
+				.ControlByName(arrmatrix(2)).AddData psender
+			End If
+		Else
+			Application.ShowError("Werteliste 'ASF_Mailcontrol/MAILFROM' für '" & .DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+		End If
+
+		If ASF_GetMailcontrol("ASF_Mailcontrols",.DialogDefinition.FullyQualifiedName,"MAILTOMULT",arrmatrix)=True Then
+			If Not .ControlByName(arrmatrix(2)) Is Nothing Then
+				If CInt(arrmatrix(3)) = 1 Then					'1= Resetcontent
+					.ControlByName(arrmatrix(2)).ResetContent
+				End If
+
+				For i =  0 To pMail.RecipientCount-1
+					.ControlByName(arrmatrix(2)).AddData pMail.Recipient(i)
+				Next i
+			End If
+		Else
+			Application.ShowError("Werteliste 'ASF_Mailcontrol/MAILTOMULT' für '" & .DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+		End If
+
+		If ASF_GetMailcontrol("ASF_Mailcontrols",.DialogDefinition.FullyQualifiedName,"MAILTOCCMULT",arrmatrix)=True Then
+			If Not .ControlByName(arrmatrix(2)) Is Nothing Then
+				If CInt(arrmatrix(3)) = 1 Then					'1= Resetcontent
+					.ControlByName(arrmatrix(2)).ResetContent
+				End If
+
+				For i =  0 To pMail.CCCount-1
+					.ControlByName(arrmatrix(2)).AddData pMail.CC(i)
+				Next i
+			End If
+		Else
+			Application.ShowError("Werteliste 'ASF_Mailcontrol/MAILTOCCMULT' für '" & .DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+		End If
+
+
+		If ASF_GetMailcontrol("ASF_Mailcontrols",.DialogDefinition.FullyQualifiedName,"SUBJECT",arrmatrix)=True Then
+
+			If Not .ControlByName(arrmatrix(2)) Is Nothing Then
+				If pMail.Subject <> "" Then
+					.ControlByName(arrmatrix(2)).Data = pMail.Subject
+				Else
+					.ControlByName(arrmatrix(2)).Data="kein Betreff"
+				End If
+				pbetreff = .ControlByName(arrmatrix(2)).Data
+			End If
+		Else
+			Application.ShowError("Werteliste 'ASF_Mailcontrol/SUBJECT' für '" & .DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+		End If
+
+		If ASF_GetMailcontrol("ASF_Mailcontrols",.DialogDefinition.FullyQualifiedName,"MAILDATE",arrmatrix)=True Then
+
+			If Not .ControlByName(arrmatrix(2)) Is Nothing Then
+				.ControlByName(arrmatrix(2)).Data = pMail.Date
+				On Error GoTo 0
+			End If
+		Else
+			Application.ShowError("Werteliste 'ASF_Mailcontrol/MAILDATE' für '" & .DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+		End If
+
+	End With
+
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler bei ASF_fill_Mail_Control", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_fill_Mail_Control" &  vbCrLf & "aufgerufen von " & pCallerName, 0
+End Sub
+
+
+'GBA 2011-03-03. Abgespeckte Verstion von ASF_fill_mail_control - ohne die Mail-Dinger:
+Public Sub ASF_fill_notiz_control(ByVal pMail As Object,ByRef pdlg As Object, _
+								Optional ByVal pCallerName As String)
+	Dim i As Integer
+	Dim arrmatrix() As String
+
+	On Error GoTo errorhandler
+	With pdlg
+		If ASF_GetMailcontrol("ASF_Mailcontrols",.DialogDefinition.FullyQualifiedName,"SUBJECT",arrmatrix)=True Then
+			If Not .ControlByName(arrmatrix(2)) Is Nothing Then
+				If pMail.Subject <> "" Then
+					.ControlByName(arrmatrix(2)).Data = pMail.Subject
+				Else
+					' ev. nicht benötigt: .ControlByName(arrmatrix(2)).Data="kein Betreff"
+				End If
+			End If
+		Else
+			Application.ShowError("Werteliste 'ASF_Mailcontrol/SUBJECT' für '" & .DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+		End If
+
+		If ASF_GetMailcontrol("ASF_Mailcontrols",.DialogDefinition.FullyQualifiedName,"MAILDATE",arrmatrix)=True Then
+			On Error Resume Next
+			If Not .ControlByName(arrmatrix(2)) Is Nothing Then
+				.ControlByName(arrmatrix(2)).Data = pMail.Date
+				On Error GoTo 0
+			End If
+		Else
+			Application.ShowError("Werteliste 'ASF_Mailcontrol/MAILDATE' für '" & .DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+		End If
+	End With
+
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler bei ASF_fill_Notiz_Control", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_fill_Mail_Control" &  vbCrLf & "aufgerufen von " & pCallerName, 0
+End Sub
+
+
+'************************************************************************
+'*	FILECONTROLS BESTIMMEN BZW. BEFÜLLEN
+'************************************************************************
+
+Public Sub ASF_fill_file_control(ByVal pFile As Object,ByRef pdlg As Object, _
+								ByVal pname As String, _
+								Optional ByVal pCallerName As String)
+	Dim i As Integer
+	Dim arrmatrix() As String
+	Dim arrfilename() As String
+
+
+	On Error GoTo errorhandler
+	With pdlg
+		If ASF_GetMailcontrol("ASF_Mailcontrols",.DialogDefinition.FullyQualifiedName,"SUBJECT",arrmatrix)=True Then
+			If Not .ControlByName(arrmatrix(2)) Is Nothing Then
+				'.ControlByName(arrmatrix(2)).Data = pFile.FileName
+				'*Ü004
+				'arrfilename=Split(pFile.fileName,"\")
+				arrfilename=Split(pFile.Alias,"\")
+				.ControlByName(arrmatrix(2)).Data = arrfilename(UBound(arrfilename))
+				'pname = pFile.FileName
+				'pname=.ControlByName(arrmatrix(2)).Data
+			End If
+		Else
+			Application.ShowError("Werteliste 'ASF_Mailcontrol/SUBJECT' für '" & .DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+		End If
+		'Ü*002	SER/GBA	2011/04/13	CR 14: Anlassdatum nicht mehr mit Filedatum überschreiben (aber weiterhin mit Maildatum)
+		If InStr(pCallerName, "OnMailDrop") > 0 Then
+			If ASF_GetMailcontrol("ASF_Mailcontrols",.DialogDefinition.FullyQualifiedName,"MAILDATE",arrmatrix)=True Then
+				On Error Resume Next
+				If Not .ControlByName(arrmatrix(2)) Is Nothing Then
+					.ControlByName(arrmatrix(2)).Data = pFile.Filedate
+					On Error GoTo 0
+				End If
+			Else
+				Application.ShowError("Werteliste 'ASF_Mailcontrol/MAILDATE' für '" & .DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+			End If
+		End If
+	End With
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler bei ASF_fill_file_Control", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_fill_file_control" &  vbCrLf & "aufgerufen von " & pCallerName, 0
+End Sub
+
+
+
+
+'************************************************************************
+'*	Barcode erzeugen
+'************************************************************************
+Public Sub ASF_create_BC(parchiveviewwindow As Object)
+	Dim arrmatrix() As String
+	If SER_getKeyValueFromStringMatrixByName("ASF_Barcodes",parchiveviewwindow.ArchiveDlg.DialogDefinition.FullyQualifiedName,arrmatrix,False) = True Then
+		If parchiveviewwindow.ArchiveDlg.ControlByName(arrmatrix(1)).Data <> "" Then
+			ASF_call_ie(parchiveviewwindow.ArchiveDlg.ControlByName(arrmatrix(1)).Data)
+		Else
+			Application.ShowError("Keine Daten für die Barcodeerzeugung vorhanden")
+		End If
+	Else
+		Application.ShowError("Werteliste ASF_Barcodes für '" &  parchiveviewwindow.ArchiveDlg.DialogDefinition.FullyQualifiedName & "' nicht/falsch konfiguriert")
+	End If
+End Sub
+
+
+Public Sub ASF_CreateBCfromResultlist(ByRef presultwindow As ResultWindow)
+
+	Dim inarray() As String
+	Dim classname As String
+	Dim i As Integer
+	Dim i1 As Integer
+	Dim descvalue As String
+
+
+
+
+	classname=presultwindow.ResultList.SelectedDocument(0).InternalDescriptors.ItemByName("ClassName").Value(0)
+	If SER_getgloballist_all("ASF_Barcodes",inarray())=True Then
+		For i = LBound(inarray) To UBound(inarray) -1
+			If UCase(inarray(i,0)) = UCase(classname) Then
+				For i1 = 0 To presultwindow.ResultList.SelectedDocument(0).Descriptors.Count -1
+					If inarray(i,1)=presultwindow.ResultList.SelectedDocument(0).Descriptors.Item(i1).DescriptorDefinition.Name Then
+						descvalue=presultwindow.ResultList.SelectedDocument(0).Descriptors.Item(i1).Value(0)
+						ASF_call_ie(descvalue)
+					End If
+				Next
+
+			End If
+		Next
+	Else
+		Application.ShowError("Werteliste ASF_Barcodes nicht/falsch konfiguriert")
+
+	End If
+End Sub
+
+
+
+
+'************************************************************************
+'*	IDS UND NUMMERN
+'************************************************************************
+
+Public Function ASF_IDs_getNextDocId(Optional anz As Integer) As String
+'GBA: Überarbeitung 2011-08-01   SW-Architektur:
+'Schreibgeschütztes Pflichtfeld darf nicht leer gelassen werden
+
+'*	Lokale Objekte
+	Dim errMsg As String
+	Dim errMsg1 As String
+	Dim i As Integer
+
+	On Error GoTo FEHLER
+
+'*	Business Logik
+	ASF_IDs_getNextDocId= ""
+	If anz <= 0 Then anz= 1
+
+	Do While ASF_IDs_getNextDocId = ""
+		ASF_IDs_getNextDocId= CStr(ASF_Sub_getNextDocId(anz, errMsg1))		'1. Fehlermeldung speziell merken
+		If ASF_IDs_getNextDocId = "0" Then ASF_IDs_getNextDocId = ""
+
+		For i= 1 To 10
+			If ASF_IDs_getNextDocId <> "" Then Exit Function
+			ASF_IDs_getNextDocId= CStr(ASF_Sub_getNextDocId(anz, errMsg))	'10 Versuche, letzte Fehlermeldung merken
+			If ASF_IDs_getNextDocId = "0" Then ASF_IDs_getNextDocId = ""
+		Next i
+
+		If ASF_IDs_getNextDocId = "" Then									'Entscheidung durch User
+			If MsgBox ("Die Generierung der DocumentID ist fehlgeschlagen!" & vbCrLf & _
+					   "Erneut Versuchen?" & vbCrLf & vbCrLf & _
+			           "Fehlermeldung (1. Versuch):" & vbCrLf & errMsg1 & vbCrLf & vbCrLf & _
+					   "Fehlermeldung (letzter Versuch):" & vbCrLf & errMsg & vbCrLf & vbCrLf & _
+					   "Hinweis:" & vbCrLf & _
+					   "Zum Archivieren eines Dokumentes ist die DocumentID zwingend erforderlich!", _
+					   vbCritical + vbRetryCancel, _
+		 	  	       "Ermittlung DocumentID fehlgeschlagen") = vbCancel Then
+
+				Exit Function
+			End If
+		End If
+	Loop
+
+	Exit Function
+
+FEHLER:
+	Application.ShowError "Fehler bei ASF_Sub_getNextDocId", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_fill_file_control", 0
+	Err.Clear
+End Function
+
+Private Function ASF_Sub_getNextDocId(ByVal anz As Integer, ByRef errMsg As String) As Long
+	'GBA: Überarbeitung 2011-08-01   SW-Architektur:
+	Dim xt As String
+
+	On Error GoTo FEHLER
+
+	ASF_Sub_getNextDocId= 0
+	xt = "SELECT * FROM Identifikatoren WHERE Klasse='ASF_Doc_ID'"
+	'openLocalRecordset xt, "ASF_IDs_getNextDocId()", adOpenDynamic, adLockOptimistic
+	openLocalRecordset xt, "ASF_IDs_getNextDocId()", adOpenKeyset, adLockPessimistic
+	If MyRst.State <> adStateOpen Then
+		errMsg= "Öffnen des Recordsets fehlgeschlagen!" & vbCrLf & "Recordset.State= " & MyRst.State & _
+				"SQL-Statement= " & xt & vbCrLf & _
+				"Connection.State= " & ASF_DMS_Daten.State & vbCrLf & _
+				"ConnectionString= " & Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").ADOConnectionString
+
+		closeLocalRecordset("ASF_IDs_getNextDocId()")
+		Exit Function
+	End If
+
+	With MyRst
+		If Not .EOF Then
+			.Fields("LetzteID") = Val(.Fields("LetzteID")) + anz
+			.Update
+			ASF_Sub_getNextDocId = Val(.Fields("LetzteID"))
+		End If
+	End With
+	closeLocalRecordset("ASF_IDs_getNextDocId()")
+	Exit Function
+FEHLER:
+	'Application.ShowError "Fehler bei ASF_Sub_getNextDocId", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_fill_file_control", 0
+	errMsg= "Src: " & Err.Source & vbCrLf & "Nr:   " & Err.Number & vbCrLf & "Msg: " & Err.Description & vbCrLf & "Ort: ASF_Sub_getNextDocId"
+	Err.Clear
+End Function
+
+
+	Public Function ASF_IDs_getNextGZ(Optional ByVal pJahr As String) As String
+
+'*	Info
+'	liefert die nächste ASF_Geschaeftszahl im Format ASF/2010/000010
+
+'*	Checks
+	On Error GoTo ErrorHandler
+	If pJahr = "" Then pJahr = Format(Now, "YYYY")
+	If Val(pJahr) < 1900 Or Val(pJahr) > 2100 Then
+		Err.Raise "1010", "ASF_global_getNextGZ(" & pJahr & ")", "Die Angabe für Jahr darf nicht < 1900 oder > 2100 sein."
+	End If
+
+'*	Lokale Objekte
+	Dim xt As String
+
+'*	Business Logik
+	xt = "SELECT * FROM Identifikatoren WHERE Klasse='ASF_Geschaeftszahl' AND Unterklasse='" & pJahr &  "'"
+	openLocalRecordset xt, "ASF_IDs_getNextGZ(" & pJahr & ")", adOpenDynamic, adLockOptimistic
+	With MyRst
+		If Not .EOF Then
+			.Fields("LetzteID") = Val(.Fields("LetzteID")) + 1
+		Else
+			.AddNew
+			.Fields("Klasse") = "ASF_Geschaeftszahl"
+			.Fields("Unterklasse") = pJahr
+			.Fields("LetzteID") = 1
+		End If
+		.Update
+		ASF_IDs_getNextGZ = "ASF/" & pJahr & "/" & Format(.Fields("LetzteID"), "000000")
+	End With
+
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Erzeugen der Geschäftszahl!", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description, 0
+End Function
+
+Public Sub ASF_IDs_doFillGeschaeftszahl_showCompetingDateDialog(	ByRef pGZControl As SWACTRLSLib.Edit, _
+																	ByRef pDateControl As SWACTRLSLib.IControlInternal, _
+																	Optional ByVal pCompetingDateName As String = "Bezugsdatum")
+
+'*	Infos
+'	schreibt eine neue ASFINAG Geschäftszahl in ein Control
+'	wenn Datum in pDateControl <> aktuelles Jahr dann wird ein Dialog zur Auswahl des Datums für die GZ angezeigt
+
+'*	Checks
+	If IsMissing(pDateControl) Then Exit Sub
+	If IsMissing(pGZControl) Then Exit Sub
+
+'*	Lokale Objekte
+	Dim xType As String
+	Dim dtcType As String
+	Dim bShowDlg As Boolean
+
+'*	Business Logik
+	If pGZControl.Data <> "" Then
+		If MsgBox("Geschäftszahl schon vorhanden." & vbCrLf & vbCrLf & "Überschreiben?", vbQuestion + vbYesNo + vbDefaultButton2, "Frage") = vbNo Then
+			Exit Sub
+		End If
+	End If
+
+	xType = "Tagesdatum"
+
+	If Not pDateControl.DataCount = 0 Then
+		If IsDate(pDateControl.GetData(0)) Then
+			dtcType = "Date"
+			If Year(pDateControl.GetData(0)) <> Year(Now) Then
+				bShowDlg = True
+			End If
+		Else
+			dtcType = "NoDate"
+			If pDateControl.GetData(0) <> Year(Now) Then
+				bShowDlg = True
+			End If
+		End If
+		If bShowDlg Then
+			Begin Dialog UserDialog 310,147,"Auswahl Datum" ' %GRID:10,7,1,1
+				OptionGroup .Group1
+					OptionButton 30,56,260,14,"das " & pCompetingDateName,.OptionButton1
+					OptionButton 30,77,260,14,"das aktuelle Tagesdatum",.OptionButton2
+				OKButton 30,119,90,21
+				CancelButton 130,119,90,21
+				Text 10,14,280,35,"Welches Datum soll für die Erzeugung der Geschäftszahl herangezogen werden?",.Text1
+			End Dialog
+			Dim Dlg As UserDialog
+			'If Dialog(Dlg) = - 1 Then
+			'	Select Case Dlg.group1
+			'		Case 0
+			'			xType = "Alternativdatum"
+			'	End Select
+			'End If
+			Select Case Dialog(Dlg)
+				Case -1
+					Select Case Dlg.group1
+						Case 0
+							xType = "Alternativdatum"
+					End Select
+				Case Else
+					Exit Sub
+			End Select
+		End If
+	End If
+
+	Select Case xType
+		Case "Tagesdatum"
+			pGZControl.Data = ASF_IDs_getNextGZ()
+		Case "Alternativdatum"
+			If dtcType = "Date" Then
+				pGZControl.Data = ASF_IDs_getNextGZ(Format(pDateControl.GetData(0), "YYYY"))
+			Else
+				pGZControl.Data = ASF_IDs_getNextGZ(pDateControl.GetData(0))
+			End If
+	End Select
+
+End Sub
+
+
+'************************************************************************
+'*	IDS UND NUMMERN - alt nicht mehr verwenden
+'************************************************************************
+
+Public Function ASF_GetNextCounter(ByRef poDB As ADODB.Connection, Optional ByRef pCallerName As String) As String
+	MsgBox "Verwenden Sie bitte anstelle von ASF_IDGetNextCounter die neue Funktion ASF_IDs_getNextGZ", vbExclamation, "Deprecated Function Call"
+	On Error GoTo errorhandler
+	'*	Lokale Objekte
+	Dim sSQL As String
+	Dim oRecSet As ADODB.Recordset
+	Dim lNumber As Long
+	Dim lyear As Long
+
+
+	'**	Business Logik
+
+  	sSQL = "SELECT YEAR,NO FROM Geschaeftszahl where YEAR = " & Year(Date)
+  	Set oRecSet = New ADODB.Recordset
+  	oRecSet.Open sSQL, poDB, adOpenDynamic, adLockOptimistic
+  	If Not oRecSet.EOF Then
+  		lyear = oRecSet.Fields("YEAR")
+	    lNumber = oRecSet.Fields("NO")
+	    lNumber = lNumber + 1
+	    ASF_GetNextCounter = "ASF/" & CStr(lyear) & "/" & SER_FillStr(CStr(lNumber),6,"0")
+	    oRecSet.Update("NO", lNumber)
+	    oRecSet.Close
+  	Else
+	    lNumber = 1
+	    lyear=Year(Date)
+	    sSQL = "INSERT INTO Geschaeftszahl(YEAR,NO) VALUES(" &  lyear & "," & 1 & ")"
+	    poDB.Execute sSQL
+	    ASF_GetNextCounter = "ASF/" & CStr(lyear) & "/" & SER_FillStr(CStr(lNumber),6,"0")
+	End If
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Lesen/Schreiben der Daten aus der Datenbank ASF_DMS_Daten!", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_getnextcounter" &  vbCrLf & "aufgerufen von " & pCallerName, 0
+End Function
+
+Public Function ASF_GetNextDocId(ByRef poDB As ADODB.Connection, Optional ByRef pCallerName As String) As String
+	MsgBox "Verwenden Sie bitte anstelle von ASF_GetNextDocId die neue Funktion ASF_IDs_getNextDocId", vbExclamation, "Deprecated Function Call"
+
+	On Error GoTo errorhandler
+	'*	Lokale Objekte
+	Dim sSQL As String
+	Dim oRecSet As ADODB.Recordset
+	Dim lNumber As Long
+
+
+	'**	Business Logik
+  	sSQL = "SELECT DOCID FROM DocId "
+  	Set oRecSet = New ADODB.Recordset
+  	oRecSet.Open sSQL, poDB, adOpenDynamic, adLockOptimistic
+  	If Not oRecSet.EOF Then
+	    lNumber = oRecSet.Fields("DOCID")
+	    lNumber = lNumber + 1
+	    ASF_GetNextDocId = SER_FillStr(CStr(lNumber),12,"0")
+	    oRecSet.Update("DOCID", lNumber)
+	    oRecSet.Close
+  	Else
+	    lNumber = 1
+
+	    sSQL = "INSERT INTO Docid(DOCID) VALUES(" &  1 & ")"
+	    poDB.Execute sSQL
+	    ASF_GetNextDocId = SER_FillStr(CStr(lNumber),12,"0")
+	End If
+	Exit Function
+ErrorHandler:
+	Application.ShowError "Fehler beim Lesen/Schreiben der Daten aus der Datenbank ASF_DMS_Daten!", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_getnextdocid" &  vbCrLf & "aufgerufen von " & pCallerName, 0
+End Function
+
+
+
+'Ü006
+Public Sub ASF_doexportversionshistory(ByVal presultlist As SWARESULLib.ResultListLanguageExtension,presultwindow As winCube.ResultWindow)
+	Dim lcnt As Long
+	Dim exportpath As String
+
+	Dim myversion As DocumentVersionInfo
+	Dim lcnt1 As Long
+	Dim oitadoc As ItaDocument
+	Dim idoc As IDocument
+	Dim stitle As String
+	Dim sversion As String
+
+
+
+
+	If presultwindow.ResultList.DocumentCount = 0 Then
+		Application.ShowMessage "Die Trefferliste beinhaltet keine Dokumente!" & vbCr & "Vieweränderung nicht möglich."
+		Exit Sub
+	End If
+	If presultwindow.ResultList.SelectedCount = 0 Then
+		Application.ShowMessage "Sie müssen mindestens ein Dokument auswählen!"
+		Exit Sub
+	End If
+	exportpath=GetFolderInternal("","")
+	If exportpath = "" Then
+		Application.ShowError("Es wurde kein Export-Ordner ausgewählt. Abbruch der Verarbeitung")
+		Exit Sub
+	End If
+
+
+	For lcnt = 0 To presultwindow.ResultList.SelectedCount - 1
+		Set oitadoc = presultwindow.ResultList.SelectedDocument(lcnt)
+		Set myversion = oitadoc.GetDocumentVersionInfo
+		For lcnt1 = 0 To myversion.Count -1
+			Set idoc=myversion.Document(lcnt1)
+			stitle = idoc.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Bezeichnung").GUID).Value(0)
+			'sversion=Right("0000000000" & myversion.Version(lcnt1),10)			Call Doc_exportRepresentations(idoc,exportpath,stitle,sversion)
+			sversion=myversion.Version(lcnt1)
+			Call Doc_exportRepresentations(idoc,exportpath,stitle,sversion)
+		Next
+
+	Next
+	Application.ShowMessage("Der Export in das Verzeichnis " & exportpath & " wurde abgeschlossen")
+End Sub
+'Ü007
+Public Function ASF_IDs_getNextBAVGeschäftsfallID(Optional anz As Integer) As String
+
+'*	Lokale Objekte
+	Dim errMsg As String
+	Dim errMsg1 As String
+	Dim i As Integer
+
+	On Error GoTo FEHLER
+
+'*	Business Logik
+	ASF_IDs_getNextBAVGeschäftsfallID= ""
+	If anz <= 0 Then anz= 1
+
+	Do While ASF_IDs_getNextBAVGeschäftsfallID = ""
+		ASF_IDs_getNextBAVGeschäftsfallID= CStr(ASF_Sub_getNextBAVGeschäftsfallID(anz, errMsg1))		'1. Fehlermeldung speziell merken
+		If ASF_IDs_getNextBAVGeschäftsfallID = "0" Then ASF_IDs_getNextBAVGeschäftsfallID = ""
+
+		For i= 1 To 10
+			If ASF_IDs_getNextBAVGeschäftsfallID <> "" Then Exit Function
+			ASF_IDs_getNextBAVGeschäftsfallID= CStr(ASF_Sub_getNextDocId(anz, errMsg))	'10 Versuche, letzte Fehlermeldung merken
+			If ASF_IDs_getNextBAVGeschäftsfallID = "0" Then ASF_IDs_getNextBAVGeschäftsfallID = ""
+		Next i
+
+		If ASF_IDs_getNextBAVGeschäftsfallID = "" Then									'Entscheidung durch User
+			If MsgBox ("Die Generierung der DocumentID ist fehlgeschlagen!" & vbCrLf & _
+					   "Erneut Versuchen?" & vbCrLf & vbCrLf & _
+			           "Fehlermeldung (1. Versuch):" & vbCrLf & errMsg1 & vbCrLf & vbCrLf & _
+					   "Fehlermeldung (letzter Versuch):" & vbCrLf & errMsg & vbCrLf & vbCrLf & _
+					   "Hinweis:" & vbCrLf & _
+					   "Zum Archivieren eines Dokumentes ist die DocumentID zwingend erforderlich!", _
+					   vbCritical + vbRetryCancel, _
+		 	  	       "Ermittlung DocumentID fehlgeschlagen") = vbCancel Then
+
+				Exit Function
+			End If
+		End If
+	Loop
+
+	Exit Function
+
+FEHLER:
+	Application.ShowError "Fehler bei ASF_IDs_getNextBAVGeschäftsfallID", Err.Source, 0, Err.Number, "Fehlermeldung:" & vbCrLf & Err.Description & vbCrLf & "in ASF_fill_file_control", 0
+	Err.Clear
+End Function
+Private Function ASF_Sub_getNextBAVGeschäftsfallID(ByVal anz As Integer, ByRef errMsg As String) As Long
+	Dim xt As String
+
+	On Error GoTo FEHLER
+
+	ASF_Sub_getNextBAVGeschäftsfallID= 0
+	xt = "SELECT * FROM Identifikatoren WHERE Klasse='ASF_BAV_Geschaeftsfall_ID'"
+	'openLocalRecordset xt, "ASF_IDs_getNextDocId()", adOpenDynamic, adLockOptimistic
+	openLocalRecordset xt, "ASF_IDs_getNextBAVGeschäftsfallID()", adOpenKeyset, adLockPessimistic
+	If MyRst.State <> adStateOpen Then
+		errMsg= "Öffnen des Recordsets fehlgeschlagen!" & vbCrLf & "Recordset.State= " & MyRst.State & _
+				"SQL-Statement= " & xt & vbCrLf & _
+				"Connection.State= " & ASF_DMS_Daten.State & vbCrLf & _
+				"ConnectionString= " & Application.MetaData.DBConnectionDefinitions.ItemByName("ASF_DMS_Daten").ADOConnectionString
+
+		closeLocalRecordset("ASF_IDs_getNextBAVGeschäftsfallID()")
+		Exit Function
+	End If
+
+	With MyRst
+		If Not .EOF Then
+			.Fields("LetzteID") = Val(.Fields("LetzteID")) + anz
+			.Update
+			ASF_Sub_getNextBAVGeschäftsfallID = Val(.Fields("LetzteID"))
+		End If
+	End With
+finish:
+	closeLocalRecordset("ASF_IDs_getNextBAVGeschäftsfallID()")
+	Exit Function
+FEHLER:
+	errMsg= "Src: " & Err.Source & vbCrLf & "Nr:   " & Err.Number & vbCrLf & "Msg: " & Err.Description & vbCrLf & "Ort: ASF_Sub_getNextDocId"
+	Err.Clear
+	GoTo finish
+End Function
+'/Ü007
+

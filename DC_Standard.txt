@@ -1,0 +1,1425 @@
+Default
+'************************************************************************
+'*
+'*	ASFINAG DMS_NEU
+'*	Script				:	Archive Dialog/ Standard
+'*	erstellt am / von	:	29.07.2010/ Markus D. Hartbauer, SER
+'*	Überarbeitung Ü001	:	08.11.2010/ Markus D. Hartbauer, SER
+'*	Überarbeitung Ü002	:	07.12.2010/ Markus D. Hartbauer, SER
+'*	Überarbeitung Ü003	:	13.01.2011/ Markus D. Hartbauer, SER: Grundstücksbezug
+'*	Überarbeitung Ü007	:	26.04.2011/ Christian Aigner, SER: CR 31: Prüfung beim Ablegen, ob Anwender dazu berechtigt ist. Berechtigungssteuerung auf Ebene der Dokumentenart
+'*	Überarbeitung Ü008	:	18.01.2012/ Martina Skalicka, SER: Ortsbezuglogik beim Spiechern und Lesen ändern
+'*  Überarbeitung Ü009	:	18.02.2011/ Christian Aigner, SER: Beim Ablegen eines Dokuments in der Ablageumgebung 'Dokument in Akte' muss der ASF-Zugriff Deskriptor aus der Akte übernommen werden
+'*  Überarbeitung Ü010	:	28.02.2013/ Christian Aigner & Günther Schinko, SER: Problem "doppelte Doc-ID's"
+'*  Überarbeitung Ü011	:	15.05.2013/ Christian Aigner	OTRS-Ticket 1009853: Fehler bei Ablage per "Kopie ablegen"
+'*  Überarbeitung Ü012	:	24.06.2013/ Christian Aigner	Häckchen 'BAV-relevant' samt Auswertung im onExecuted hinzugefügt
+'*  Überarbeitung Ü013	:	24.09.2013/ Christian Aigner	OTRS-Ticket 1010491: Folgefehler bei Ablage per "Kopie ablegen"
+'*  Überarbeitung Ü014	:	13.01.2014/ Christian Aigner	OTRS-Ticket 1011004: Abteilung des Benutzers aus der Postabteilung wird übernommen. Es muss aber die Abteilung des aktuellen Benutzers abgelegt werden
+'*  Überarbeitung Ü015	:	03.03.2014/ Christian Aigner	OTRS-Ticket 1011235: Erstellen einer PDF-Representation beim Speichern des Dokuments, falls ein Freigabe-WF gestartet wird
+'*  Überarbeitung Ü016	:	25.03.2014/ Christian Aigner	Das Häckchen 'BAV-Relevant' muss in Abhängigkeit des Deskriptors 'ASFBAVrelevant' gesetzt werden
+'*  Überarbeitung Ü017	:	21.08.2014/ Michael Lämmle		Typ der Ablageumgebung in TabOrtsbezug und TabGrundstück von Indexkarten in "Ortsbezug" bzw. "Grundstueck" geändert.
+'* 	Überarbeitung Ü018	:	24.2.2015/ Michael Lämmle		Übernehmen von Grundstücksdaten von Akte (falls Verfügbar)
+'* 	Überarbeitung Ü019	:	24.4.2015/ Christian Aigner		CR 10 Tranche 7 Move-BAV Schnittstelle
+'*	Überarbeitung Ü020	:	19.8.2015/ Michael Lämmle		Poststück erstellen aus Ablage heraus
+'*	Überarbeitung Ü021	:	30.10.2015/ Michael Lämmle		Multivalue Kategorien Tranche 9
+'*	Überarbeitung Ü022	:	19.11.2015/ Michael Lämmle		Änderung um Kategoriefilterung von Außen zu ermöglichen. FolderTreeView calls FireOnValueChange um vorbelegte Kategorien zu filtern.
+'*	Überarbeitung Ü023	:	04.02.2016/ Christian Aigner	CR 27, Tranche 10 Anpassung Übernahme Poststück
+'*  Überarbeitung Ü024  :   15.03.2016/ Klaus Grundwald		CR 28, Tranche 10 - Kennzeichen "Posttstück" am Dokument setzen, wenn ein Poststück erstellt wurde
+'*  DMS-462				:	23.03.2017/ Stephan Wagner		Deaktivieren der If Anweisung ASF_security_isUserGroupMember("Grundstücksverwalter")
+'*  OTRS Ticket #1016502:   24.04.2017/ Stephan Wagner      Setzen von Feldern wird aus Dlg.OnExecuted() entfernt und nach Dlg.OnChanged verschoben
+'*
+'************************************************************************
+
+	Option Explicit
+
+'************************************************************************
+'*	Globale Objekte
+'************************************************************************
+
+	Dim myKeepValue_Backup 					As Boolean  'keepValue geht zw. Executed und DocChanged verlohren (am FilingView liegts nicht)
+
+'*	Dokumentart
+	Dim MyASF_Dokumentart As ASF_Dokumentart
+
+'*	Orts- und Objektbezug
+	Dim WithEvents 	MyASF_FEWOrtsbezug 		As FilingEnvironmentWindow
+	Dim 			MyASF_RLOrtsbezug 		As SWARESULLib.ResultList
+	Dim 			MyASF_RLOrtsbezugLE 	As SWARESULLib.ResultListLanguageExtension
+	Dim docStatus As String
+
+'*	FilingEnvironment
+	Dim WithEvents	MyFEW 					As FilingEnvironmentWindow
+
+'*	aktuelle Objekte für diese Instanz
+	Dim				MyASF_aktuelle_Akte		As SWAFRAMELib.ItaFolder
+	Dim				MyASF_aktuelles_Register	As FolderManager.CNode
+
+'*	Maildrop durch Button
+	Dim myASF_Sender 						As String
+	Dim myASF_Betreff 						As String
+	Dim myASF_Datum 						As Date
+	Dim myASF_Anhaenge 						As Integer
+
+	Dim myASF_aDataObjects()				As SWADATALib.IData
+	Dim myASF_Filenames()					As String
+	Dim myASF_oapplication 					As Object
+	Dim myASF_smsgfilename 					As String
+	Dim myASF_sid 							As String
+	Dim myASF_icheckexport 					As Integer
+	Dim myASF_ideletemail 					As Integer
+	Dim myASF_iduplicatemeta 				As Integer
+
+'*	Smartoffice
+	Dim ismartoffice 						As Integer		' 0 = nicht Smartoffice, 1=outlook, 2 =Word,Excel, Powerpoint
+	Dim mymail 								As SWATOOLSLib.MSGReader
+	Dim myfile 								As SWADATALib.DocData
+	Dim sfilename 							As String
+
+'*	Grundstuecksbezug
+	Dim WithEvents 	MyASF_FEWGrundstueck 		As FilingEnvironmentWindow
+	Dim 			MyASF_RLGrundstueck 		As SWARESULLib.ResultList
+	Dim 			MyASF_RLGrundstueckLE	  	As SWARESULLib.ResultListLanguageExtension
+
+'************************************************************************
+'*	DIALOG LEBENSZYKLUS
+'************************************************************************
+
+Private Sub ArchiveViewWindow_OnRibbonBarInitialized()
+
+End Sub
+
+
+Private Sub cbKeepValues_OnValueChanged()
+
+	Call SER_keepValues_OnValueChanged(ArchiveViewWindow, cbKeepValues)
+
+End Sub
+Private Sub chkBavAufgabeErstellen_OnClicked()
+	If chkBavAufgabeErstellen.Checked Then
+		chkBavRelevantNein.Checked = False
+		chkBavAufgabeInMoveErstellen.Checked = False
+		SbASFBAVrelevant.Data ="1"
+	Else
+		chkBavAufgabeErstellen.Checked = True
+		SbASFBAVrelevant.Data = ""
+
+	End If
+End Sub
+'Ü019
+Private Sub chkBavAufgabeinMoveErstellen_OnClicked()
+	If chkBavAufgabeInMoveErstellen.Checked Then
+		chkBavAufgabeErstellen.Checked = False
+		chkBavRelevantNein.Checked = False
+		SbASFBAVrelevant.Data ="V"
+	Else
+		SbASFBAVrelevant.Data = ""
+		chkBavAufgabeInMoveErstellen.Checked = True
+	End If
+
+End Sub
+'/Ü019
+Private Sub chkBavRelevantNein_OnClicked()
+	If chkBavRelevantNein.Checked Then
+		chkBavAufgabeErstellen.Checked = False
+		chkBavAufgabeInMoveErstellen.Checked = False
+		SbASFBAVrelevant.Data ="0"
+	Else
+		SbASFBAVrelevant.Data = ""
+		chkBavRelevantNein.Checked = True
+	End If
+End Sub
+Private Sub Dlg_OnDebugResume()
+
+	'initControls
+	'initValues
+	'initOrtsbezug
+	'initGrundstueck
+
+	'Call SER_ADD_DELETE_RIBBON_ELEMENTS(False,MyFEW,"IDSystem","IDTest","Testeintrag","Das ist ein Testeintrag")
+	'Set XRbBtn = XRbPnl.AddElement(rtButton, "IDNeuVonVorlage", "neu von Vorlage", "erstellt ein neues Dokument auf Basis einer Vorlage", 77, 77)
+	'SER/GSC 2010-09-20
+	'Set XRbPnl = FilingEnvironmentWindow.RibbonBar.Category(0).AddPanel("IDSystem", "Systemfunktionen")
+	'Set XRbBtn = XRbPnl.AddElement(rtButton, "IDBarcode", "Barcode erzeugen", "erzeugt einen Barcode im Internet-Explorer", -1,-1)
+	'Set XRbBtn = XRbPnl.AddElement(rtButton, "IDMails", "Mails holen", "holt Mail(s) von Outlook",-1,-1)
+	'myfew.RibbonBar.Category(0).PanelByID("IDSystem").RemoveElement("IDBarcode")
+
+End Sub
+
+Private Sub Dlg_OnInit()
+
+	initControls
+	initValues
+	MsgLabel.Caption= ""				'GBA 2010-08-30 Msg für im Hintergrund gespeicherte Dateien (siehe Filing Environment)
+
+	If Application.System.User.User = "SEWagnerSt" Then
+		SbASFBAVrelevant.Visible = True
+		MvASFZugriff.Visible = True
+		MvASFZugriffTemp.Visible = True
+	End If
+
+End Sub
+
+Private Sub Dlg_OnDocumentChanged(ByVal newDoc As SWAFRAMELib.IDocument)
+
+	Dim xID As String
+	Dim XNewOrtsbezug As ItaDocument
+	Dim XSourceOrtsbezug As ItaDocument
+	Dim xl As Long
+	Dim xi As Integer
+	Dim xSourceDesc As Descriptor
+	Dim xTargetDesc As Descriptor
+	Dim oDescDef As DescriptorDefinition
+
+'Ü016
+	If newDoc.Archived Then
+		Select Case SbASFBAVrelevant.Data
+			Case "0"
+				chkBavRelevantNein.Checked = True
+				chkBavAufgabeInMoveErstellen.Checked = False
+				chkBavAufgabeErstellen.Checked = False
+			Case "1"
+				chkBavAufgabeErstellen.Checked = True
+				chkBavRelevantNein.Checked = False
+				chkBavAufgabeInMoveErstellen.Checked = False
+			Case "M"
+				chkBavAufgabeErstellen.Checked = False
+				chkBavRelevantNein.Checked = False
+				chkBavAufgabeInMoveErstellen.Checked = True
+		End Select
+
+		resetAllControls(Dlg)
+	Else
+		chkBavRelevantNein.Checked = True
+		chkBavAufgabeInMoveErstellen.Checked = False
+		chkBavAufgabeErstellen.Checked = False
+		SbASFBAVrelevant.Data ="0"
+	End If
+'/Ü016
+
+	If myKeepValue_Backup Then
+		cbKeepValues.Checked= True
+		myKeepValue_Backup= False
+	End If
+
+	If myASF_icheckexport>0 Then
+		cbKeepValues.KeepValues= True
+		cbKeepValues.Checked=True
+	End If
+
+	If cbKeepValues.Checked Then
+		If TabBeschlagwortung_ASFDokID.Empty Then
+			TabBeschlagwortung_ASFDokID.Data = ASF_IDs_getNextDocId()
+			TabBeschlagwortung_ASFDokID.ResetDirtyStatus
+		End If
+
+		'Ü008
+		'Ortsbezüge als neue Dokumente speichern, ansonsten würden im neuen Dokument Links auf dieselben Ortsbezüge entstehen
+		TabOrtsbezug_MvASFOrtOrtsbezugDokId.ResetContent
+		For xl = 0 To MyASF_RLOrtsbezug.Resultset.TotalCount  - 1
+			Set XSourceOrtsbezug = Application.System.GetDocumentDirect(MyASF_RLOrtsbezug.Resultset.Document(xl).DocumentID)
+			Set XNewOrtsbezug = Application.System.CreateDocument(SWAFRAMELib.enumDocumentType.ItaDocument)
+			XNewOrtsbezug.Copy XSourceOrtsbezug,True  ,True ,True
+			XNewOrtsbezug.DocumentTypeGUID = XSourceOrtsbezug.DocumentTypeGUID
+			XNewOrtsbezug.IndexOnly = True
+
+			Set oDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID")
+			For xi = 0 To XNewOrtsbezug.Descriptors.Count - 1
+				If XNewOrtsbezug.Descriptors.Item (xi).DescriptorDefinition.GUID = oDescDef.GUID Then
+					XNewOrtsbezug.Descriptors.Remove (xi)
+					Exit For
+				End If
+			Next xi
+			XNewOrtsbezug.Commit
+			TabOrtsbezug_MvASFOrtOrtsbezugDokId.AddData XNewOrtsbezug.DocumentID
+		Next xl
+
+		loadOrtsbezug
+		'/Ü008
+
+	Else
+		initOrtsbezug
+		If Not newDoc.Archived Then
+			initValues(newDoc)
+
+			Select Case ismartoffice
+				Case 1
+					ArchiveViewWindow.ViewerWindow.DocViewer.Document.Representations.RemoveAll
+					Set newDoc=Nothing
+					ArchiveViewWindow_OnMailDrop(mymail,True)
+					Set ASFmail = mymail
+					Set mymail=Nothing
+					ismartoffice=False
+				Case 2
+
+					Call ASF_fill_file_control(myfile,Dlg,sfilename,"DLG_OnDocumentChanged")
+					Set myfile = Nothing
+					sfilename=""
+					ismartoffice=False
+			End Select
+		End If
+		initGrundstueck
+
+		'Ü018
+		If Not MyASF_aktuelle_Akte Is Nothing Then
+		ASF_Grundstueck_initDialogAndObjectsFromFolder( 	MyASF_RLGrundstueck, _
+												MyASF_RLGrundstueckLE, _
+												TabGrundstueck_CCResultList, _
+												"Grundstücke", "IndexOnly", "20100101", _
+												MyASF_aktuelle_Akte.Descriptors.ItemByGUID("d9e32b15-310b-450e-814b-a3892b976d4d"))
+		saveGrundstueck
+		End If
+		'/Ü018
+
+	End If
+
+'*	Erstellungsdatum ist immer 'heute'
+	If TabBeschlagwortung_Erstellungsdatum.Empty Then
+		TabBeschlagwortung_Erstellungsdatum.Data = Now
+	End If
+
+	Dim mvKatDescriptor As Descriptor
+	'MV Kategorie vorbereiten
+	If Not Dlg.Document.Descriptors.ItemByGUID("85f06d7a-19e7-4d6a-9e07-e6ef224b83ec") Is Nothing Then
+
+		Set mvKatDescriptor = Dlg.Document.Descriptors.ItemByGUID("85f06d7a-19e7-4d6a-9e07-e6ef224b83ec")
+		 If	mvKatDescriptor.ValueCount > 0 Then 'Wenn MVKaategory gesetzt ist
+			Dim i As Integer
+			TabEinordnung_CtcASFMVKategorie.Visible = True
+			TabEinordnung_CtcASFKategorie.Visible = False
+			TabEinordnung_lblMultiple.Visible = True
+
+			With TabEinordnung_CtcASFMVKategorie
+			.ResetContent
+				If Dlg.Document.Archived Then
+					.ReadOnly = True
+					.ExpandAll
+				End If
+			.StartId = "{12f01dc2-ab9a-422a-bbc0-e22dc903c084}" 'Rechtsmaterie setzen
+			.RetrieveData
+			.MultiSelect = True
+			For i = 0 To mvKatDescriptor.ValueCount - 1
+			.AddData(mvKatDescriptor.Value(i))
+			Next
+
+		End With
+		End If
+	End If
+
+	'TreeView Kategorie laden
+	If Not newDoc Is Nothing Then
+
+		Dim myDescDefKategorie As DescriptorDefinition
+		Dim startkategorie As String
+		Set myDescDefKategorie = Application.System.DescriptorDefinitions.ItemByName("ASF_Startkategorie")
+		If Not myDescDefKategorie Is Nothing Then
+			If Not newDoc.Descriptors.ItemByGUID(myDescDefKategorie.GUID) Is Nothing Then
+				startkategorie = newDoc.Descriptors.ItemByGUID(myDescDefKategorie.GUID).Value (0)
+				If Trim(startkategorie) <> "" Then
+					xID = ASF_getCategoryStartIdByCategoryName(startkategorie)
+					With TabEinordnung_CtcASFKategorie
+						.ResetContent
+						.ExpandAll
+						.StartId = xID
+						.RetrieveData
+						If Dlg.Document.Archived Then
+							.ReadOnly = True
+						End If
+						If Not Dlg.Document.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Kategorie_ID").GUID).ValueCount = 0 Then
+							.AddData(Dlg.Document.Descriptors.ItemByGUID(Application.System.DescriptorDefinitions.ItemByName("ASF_Kategorie_ID").GUID).Value(0))
+						End If
+					End With
+				End If
+			End If
+		End If
+	End If
+
+	'SWA OTRS Ticket #1016502
+	If Not newDoc.Archived Then
+		If TabBeschlagwortung_ASFDokID.Empty Then
+			TabBeschlagwortung_ASFDokID.Data = ASF_IDs_getNextDocId()
+		End If
+	End If
+	'/SWA OTRS Ticket #1016502
+
+	If Not newDoc Is Nothing Then
+		If newDoc.Archived Then
+			resetAllControls(Dlg)
+		End If
+	End If
+
+End Sub
+
+Private Sub Dlg_OnExecute(ByVal Doc As SWAFRAMELib.IDocument, ByRef Continue As Boolean)
+
+	Dim myDoc As ItaDocument
+	Dim rmbDat As IDate
+	Dim erstDat As IDate
+	Dim anlassDat As IDate
+	On Error GoTo fError
+
+	'Ü007
+	'Sollte noch keine Dokumentart ausgewählt worden sein, ist die Dokumentart nicht geschützt => MyASF_Dokumentart.geschützt = false
+	If MyASF_Dokumentart.geschützt Then
+		If Not ASF_security_isUserGroupMember("Schreibrecht allgemein") Then
+			Application.ShowError  "Sie haben nicht die Berechtigung, Dokumente mit der Dokumentart '" + TabEinordnung_SbASFDokArt.Data + "' abzulegen! Bitte wenden Sie sich an den zuständigen Qualitätsmanager!", _
+										"Dlg_OnExecute",,,"Recht 'ASF - Gruppenmitgliedschaften => Schreibrecht allgemein => Mitgliedschaft'"
+			Continue= False
+			Exit Sub
+		End If
+	End If
+	'/Ü007
+
+	Set myDoc = Doc
+
+If myDoc.Representations.Count = 0 Then
+		MsgBox "Bitte fügen Sie Dokumentdaten an. Ein leeres Dokument kann nicht gespeichert werden."
+		Continue = False
+		Exit Sub
+	End If
+
+	If ChkVersionVeroeffentlichen.Checked Then													' GBA 2010-09-01
+		If MsgBox("Sie haben: 'Version veröffentlichen' gewählt, möchten Sie fortfahren?", _
+					vbOkCancel, "Version veröffentlichen") = vbCancel Then
+			Continue= False
+			Exit Sub
+		End If
+		myDoc.Published = True
+		Call SER_RenditionServer(True,myDoc,TabBeschlagwortung_RSCONVERT)
+	Else
+		myDoc.Published = False
+		myDoc.CurrentVersion = True
+	End If
+
+	Set rmbDat= RMBasisDat
+	Set erstDat= TabBeschlagwortung_Erstellungsdatum
+	Set anlassDat= TabBeschlagwortung_ASFAnlassdatum
+
+	ASF_doRetentionRule(Doc, "Ablage", TabEinordnung_SbASFDokArt.Data,rmbDat, erstDat, anlassDat)
+
+	'initiales Setzen des BasisDatum für die Events: U, V
+	If rmbDat.Empty Then
+		If erstDat.Empty Then		'--> dok ist (noch) NICHT archiviert
+			If rmbDat.Empty Then rmbDat.Data= Now
+		Else
+			If rmbDat.Empty Then
+				rmbDat.Data= erstDat.Data
+			Else
+				If erstDat.Data > rmbDat.Data Then
+					rmbDat.Data= erstDat.Data
+				End If
+			End If
+		End If
+	End If
+
+'*	Ziel-Content Repository entscheiden
+'#	Hinweis: im TESTsystem immer TEST außer indiv
+
+	'Steuerung individueller Zugriffsrechte - kann bei umstellung auf produktion wieder deaktiviert werden - SER/GSC
+	'Select Case UCase(MyASF_Dokumentart.Zugriff)
+	'	Case "INDIV"
+	'		Doc.Database = Application.System.FilingDatabases.ItemByName(MyASF_Dokumentart.ContentRepository)
+	'	Case Else
+	'		Doc.Database = Application.System.FilingDatabases.ItemByName(MyASF_Dokumentart.ContentRepository)
+	'End Select
+
+	'*SER/GSC 20101110	Produktiv
+	Doc.Database = Application.System.FilingDatabases.ItemByName(MyASF_Dokumentart.ContentRepository)
+
+	Call cbKeepValues_OnValueChanged()
+	saveOrtsbezug
+	saveGrundstueck
+	saveZugriff
+
+	LastStoredDokID = TabBeschlagwortung_ASFDokID.Data
+
+'Ü015
+	If SbVorgang.Data = "ASF zur Freigabe" Or _
+		SbVorgang.Data = "ASF zur Freigabe seriell" Then
+			If Not createPDFRepresentation(Doc, TabEinordnung_ASFBezeichnung.Data) Then
+				Err.Raise (0, "Archive Dialog (Document)/Standard", "Beim Generieren der PDF-Representation ist ein Fehler aufgetreten!")
+			End If
+	End If
+'/Ü015
+
+
+
+	Exit Sub
+fError:
+Application.ShowError "Beim Speichern des Dokuments ist ein Fehler aufgetreten!","Archive Dialog/Standard Dlg_OnExecute",,,Err.Description
+End Sub
+
+Private Sub Dlg_OnExecuted(ByVal Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean)
+
+	Dim strErrMsg As String
+	Dim myPI As wfProcessInstance
+	Dim bhandled As Boolean
+	Dim errMsg As String
+
+	'Ü010
+	'If Not Succeeded Then LastStoredDokID = ""
+	If Not Succeeded Then
+
+		'SWA OTRS #1016502
+		'TabBeschlagwortung_ASFDokID.Data = ASF_IDs_getNextDocId()
+		'SWA
+
+		LastStoredDokID = TabBeschlagwortung_ASFDokID.Data
+	End If
+
+	'/Ü010
+	If Succeeded = True Then
+
+		'Ü008
+		updateOrtsbezug
+		'/Ü008
+
+
+	'*	Ziel-Content Repository entscheiden
+	'#	Hinweis: im TESTsystem immer TEST!
+	'	Doc.Database = Application.System.FilingDatabases.ItemByName(MyASF_Dokumentart.ContentRepository)
+
+		'ASF_doRetentionRule(Doc, "Ablage")			'--> OnExecute
+
+
+		''''' gba hier (alle) Akten auslesen und im filingEnv die nachfolge-doks auch verlinken myDoc.DocumentLinks.Item(0).Document
+		''' wie wird register ausgelesen?: eventuel per schleife durchsuchen
+
+
+
+		TabBeschlagwortung_ASFDokID.Data = ASF_IDs_getNextDocId()
+
+		'notwendig für Outlook-Drop
+		Call ASF_Deletemail_after_archiving(myASF_icheckexport,myASF_oapplication,myASF_sid, _
+			myASF_smsgfilename,myASF_Sender,myASF_Betreff,Doc,myASF_Anhaenge, _
+			myASF_aDataObjects,myASF_Filenames,myASF_ideletemail,MyASF_Dokumentart.ContentRepository)
+
+		'Steuerung individueller Zugriffsrechte
+		If MyASF_Dokumentart.Zugriff = "Indiv" Then
+			bhandled=Application.UIContext.UICommand(MyFEW.ArchiveViewWindow.ViewerWindow.hWnd, 25302)	'Damit wird die Standard-Rechte-Maske aufgerufen  SER/GSC
+			Doc.Commit
+		End If
+
+		'Individuelle Ribbons werden wieder gesetzt
+		'TabTest_btnMail.Enabled=True
+		'TabTest_btnMail.Visible=True
+
+		Call SER_ADD_DELETE_RIBBON_ELEMENTS(True,MyFEW,"IDSystem","IDMails", "Mails holen", "holt Mail(s) von Outlook")
+
+
+		On Error GoTo fErrorStartPI
+		'Prüfen, ob ein Vorgang zu starten ist
+		If SbVorgang.Data <> "" Then
+			Set myPI = ASF_StartVorgangDokumentlebenszyklus(SbVorgang.Data, Doc,Application.System.User.User,strErrMsg)
+			If myPI Is Nothing Then
+				Application.ShowError "Beim Starten des Vorgangs '" + SbVorgang.Data + "' ist ein Fehler aufgetreten!","Archive Dialog/Standard Dlg_OnExecuted",,,strErrMsg
+			Else
+				Application.OpenWFWorkItem  myPI.WorkItems(0)
+			End If
+		End If
+
+'Ü012
+
+		'Wenn das Dokument BAV-relevant ist, wird eine neue BAV-Akte erstellt und in das Register 'Quelldokument' verknüpft
+'Ü019
+		If SbASFBAVrelevant.Data = "1" And chkBavAufgabeErstellen.Checked Then 'And MyASF_aktuelle_Akte Is Nothing Then
+'/Ü019
+			'BAV-Akte erstellen
+			Call ASF_BAV_addDoc2BAVFolder(Doc,TabEinordnung_ASFErsteller.Data, TabEinordnung_CtcASFAbteilung.Data(0))
+		End If
+'/Ü012
+	End If
+
+	'Ü020
+If crPostbuch.Data Then
+	'Ü024
+    If ASF_CreatePoststück(Doc)= True Then
+		'--> Erfolgreich
+		Dim xDesc As Descriptor
+		Dim xDescDef As DescriptorDefinition
+
+		'Error-Handling einschalten
+		On Error GoTo ErrHandler
+
+		'Deskriptor "Poststück" auf 'True' festlegen
+		Set xDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Poststueck")
+		If xDescDef Is Nothing Then
+			'Fehlermeldung anzeigen
+			Application.ShowError "Beim Erstellen des Poststücks ist ein Fehler aufgetreten!","Dlg_OnExecuted",,0,"The descriptor definition for item 'ASF_Poststueck' could not be loaded!"
+			Exit Sub
+		End If
+
+		'Deskriptor "Poststück" holen
+		Set xDesc = Doc.Descriptors.ItemByGUID(xDescDef.GUID)
+		If xDesc Is Nothing Then Set xDesc = Doc.Descriptors.AddNewByGUID(xDescDef.GUID)
+
+		'vorhandene Werte entfernen
+		xDesc.RemoveValues
+
+		'True als neuen Wert festlegen
+		xDesc.AddValue(True)
+
+		'Änderungen speichern
+		If Doc.isDirty Then Doc.Commit
+
+		'Fertig
+		GoTo finished
+
+	ErrHandler:
+		'Fehlermeldung anzeigen
+		Application.ShowError "Beim Erstellen des Poststücks ist ein Fehler aufgetreten!","DocViewer/Standard: ViewerWindow_OnRibbonElementClicked",,Err.Number,Err.Description
+	End If
+    '/Ü024
+End If
+
+	'/Ü020
+
+
+finished:
+'*	Erstellungsdatum ist immer 'heute'
+	If TabBeschlagwortung_Erstellungsdatum.Empty Then
+		TabBeschlagwortung_Erstellungsdatum.Data = Now
+	End If
+
+resetAllControls(Dlg)
+
+resetAllControls(Dlg)
+
+	myKeepValue_Backup =cbKeepValues.Checked  'cbKeepValues geht zw. Executed und DocChanged verlohren (am FilingView liegts nicht)
+	Set myPI = Nothing
+	Exit Sub
+fErrorStartPI:
+	Application.ShowError "Beim Erstellen des Vorgangs ist ein Fehler aufgetreten!","Archive Dialog/Standard Dlg_OnExecuted",,,Err.Description
+	GoTo finished
+
+
+End Sub
+
+
+
+
+'************************************************************************
+'*	BENUTZER INTERAKTION
+'************************************************************************
+
+
+'**********************************
+'*	Allgemein
+'**********************************
+
+
+Private Sub MyFEW_OnRibbonElementClicked(ByVal ElementID As String, ByRef Handled As Boolean)
+
+	Select Case ElementID
+		Case "IDNeuVonVorlage"
+			ASF_doCreateDocumentFromTemplate
+		Case "IDBarcode"
+			Call ASF_create_BC(ArchiveViewWindow)
+		Case "IDMails"
+
+			If SER_Check_Mandatory(Dlg)= False Then Exit Sub
+
+
+			Call ASF_getdocument_from_outlook(myASF_oapplication,myASF_icheckexport,myASF_ideletemail, myASF_iduplicatemeta, _
+			Dlg,myASF_sid,myASF_smsgfilename,ArchiveViewWindow,myASF_aDataObjects,myASF_Filenames,myASF_Sender, _
+			myASF_Betreff,myASF_Datum,myASF_Anhaenge)
+		Case Else
+	End Select
+
+End Sub
+
+Private Sub ArchiveViewWindow_OnMailDrop(ByVal Mail As SWATOOLSLib.MSGReader, ByRef Handled As Boolean)
+
+	If Mail Is Nothing Then Exit Sub
+
+	Call SER_ADD_DELETE_RIBBON_ELEMENTS(False,MyFEW,"IDSystem","IDMails", "Mails holen", "holt Mail(s) von Outlook")
+	Handled = True
+	Call SER_loadMailAndAttachmentsToDocument(Mail, ArchiveViewWindow.ViewerWindow.DocViewer.Document)
+
+On Error GoTo noMail
+	Call ASF_fill_mail_control(Mail,Dlg,Mail.Sender,Mail.Subject,"ArchiveViewWindow_OnMailDrop")
+	Exit Sub
+noMail:			'eine Notiz wird auch hier angeliefert, hat aber kein .Sender -> Systemfehler
+	Err.Clear
+	Call ASF_fill_notiz_control(Mail,Dlg,"ArchiveViewWindow_OnMailDrop")
+
+End Sub
+
+Private Sub ArchiveViewWindow_OnFileDrop(ByVal File As SWADATALib.DocData, ByRef Handled As Boolean)
+
+	If File Is Nothing Then Exit Sub
+	'TabTest_btnMail.Enabled=False
+	'TabTest_btnMail.Visible=False
+	Call SER_ADD_DELETE_RIBBON_ELEMENTS(False,MyFEW,"IDSystem","IDMails", "Mails holen", "holt Mail(s) von Outlook")
+	'Handled = True																			GBA
+	'Call SER_loadFileToDocument(File, ArchiveViewWindow.ViewerWindow.DocViewer.Document)	GBA
+	Call ASF_fill_file_control(File,Dlg,File.fileName,"ArchiveViewWindow_OnFileDrop")
+
+End Sub
+
+Private Sub Application_OnBasicCommand(ByVal Para1 As Variant, ByVal Para2 As Variant, _
+										ByVal Para3 As Variant, Ret As Variant)
+
+	Select Case UCase(Para1)
+		Case "SMARTOFFICE"				'* Button deaktivieren"
+		   	'TabTest_btnMail.Enabled=False
+		   	Call SER_ADD_DELETE_RIBBON_ELEMENTS(False,MyFEW,"IDSystem","IDMails", "Mails holen", "holt Mail(s) von Outlook")
+		   	ismartoffice=SER_Check_Smartoffice(Para1,Para2,Para3,mymail,myfile,sfilename)
+	End Select
+
+End Sub
+
+Private Sub CmdHilfe_OnClicked()
+
+	ASF_global_doHilfeAnzeigen("https://intranet.asfinag.at/index.aspx#Module/Wiki/Wiki.html?ID=3")
+
+End Sub
+
+Private Sub ChkVersionVeroeffentlichen_OnClicked()
+
+	SbVorgang.ReadOnly = False
+	If ChkVersionVeroeffentlichen.Checked Then
+		'Benutzer will Version veröffentlichen
+		'Vorgang nicht zwingend zu starten
+		Select Case MyASF_Dokumentart.Prozessdefinition
+			Case ""
+				SbVorgang.Data = ""
+				SbASFDokStatus.Data = "F"
+			Case Else
+				'Status wieder auf 'freigegeben' ändern
+				SbVorgang.Data = MyASF_Dokumentart.Prozessdefinition
+				SbASFDokStatus.Data = "F"
+		End Select
+	Else
+		'Benutzer will Version nicht veröffentlichen
+		SbVorgang.Data = ""
+		SbASFDokStatus.Data = "E"
+	End If
+
+End Sub
+
+Private Sub SbVorgang_OnSelectionChanged()
+
+	Select Case SbVorgang.Data
+		Case "ASF zur Freigabe", "ASF zur Freigabe seriell"
+			SbASFDokStatus.Data = "P"
+			ChkVersionVeroeffentlichen.Enabled = True
+		Case Else
+			ChkVersionVeroeffentlichen.Enabled = True
+			If ChkVersionVeroeffentlichen.Checked Then
+				SbASFDokStatus.Data = "F"
+			Else
+				SbASFDokStatus.Data = "E"
+			End If
+	End Select
+End Sub
+
+'**********************************
+'*	TAB 'Einordnung'
+'**********************************
+
+
+Private Sub TabEinordnung_btnASFErsteller_OnClicked()
+	ASF_ErstellerOpenDlg(TabEinordnung_dbrsASFErsteller, TabEinordnung_ASFErsteller)
+End Sub
+
+Private Sub TabEinordnung_dbrsASFErsteller_OnDialogClosed(ByVal OKButton As Boolean)
+	If OKButton Then
+		If TabEinordnung_dbrsASFErsteller.DataCount > 0 Then
+			TabEinordnung_ASFErsteller.Data= TabEinordnung_dbrsASFErsteller.Data(0)
+		End If
+	End If
+End Sub
+
+
+Private Sub TabEinordnung_CmdASFGeschaeftszahlAnfordern_OnClicked()
+
+	ASF_IDs_doFillGeschaeftszahl_showCompetingDateDialog(TabEinordnung_ASFGeschaeftszahl, TabBeschlagwortung_ASFAnlassdatum, "Anlassdatum")
+
+End Sub
+'Ü022
+
+
+Private Sub TabEinordnung_SbASFStartkategorie_OnValueChanged()
+	Call filterCategoryOnStandardDocument
+End Sub
+Private Sub filterCategoryOnStandardDocument(Optional startKategorie As String)
+
+'*	Local Objects
+	Dim xID As String
+
+
+'*	Business Logic
+
+If Not startKategorie = Empty Then
+		TabEinordnung_SbASFStartkategorie.Data = startKategorie
+	End If
+	'Ü001 CategoryShortName --> CategoryName
+
+xID = ASF_getCategoryStartIdByCategoryName(TabEinordnung_SbASFStartkategorie.Data)
+	If TabEinordnung_SbASFStartkategorie.Data = "ASF Bescheide/Verordnungen/Zulassungen" Then
+		With TabEinordnung_CtcASFMVKategorie
+			.ResetContent
+			.StartId = "{30D353DE-E0B1-44DB-9132-68D44712182D}"
+			.RetrieveData
+			.MultiSelect = True
+			.Visible = True
+
+		End With
+		TabEinordnung_CtcASFKategorie.Visible = False
+		TabEinordnung_lblMultiple.Visible = True
+
+		With TabEinordnung_CtcASFKategorie
+			.ResetContent
+			.StartId = xID
+			.RetrieveData
+			.AddData ( "{30D353DE-E0B1-44DB-9132-68D44712182D}")
+			.MultiSelect = False
+			.Visible = False
+		End With
+		TabEinordnung_CtcASFMVKategorie.OpenDialog
+		TabEinordnung_ASFKategorie.Data = ASF_getCategoryNameByCategoryId(TabEinordnung_CtcASFKategorie.Data(0))
+
+Else
+
+	With TabEinordnung_CtcASFKategorie
+		.ResetContent
+		.StartId = xID
+		.RetrieveData
+		.Visible =True
+		.ReadOnly =False
+	End With
+
+	With TabEinordnung_CtcASFMVKategorie
+		.StartId = ""
+			.ResetContent
+			.Visible = False
+		End With
+
+	TabEinordnung_ASFKategorie.Clear
+	TabEinordnung_SbASFDokArt.RemoveAll
+	TabEinordnung_CtcASFKategorie.Visible = True
+	TabEinordnung_lblMultiple.Visible = False
+End If
+
+
+	MvASFZugriff.ResetContent
+End Sub
+
+Private Sub TabEinordnung_CtcASFKategorie_OnDialogClosed(ByVal OKButton As Boolean)
+	Call writeCategoryNameAndLoadDokumentarten(OKButton)
+End Sub
+
+Private Sub TabEinordnung_CtcASFKategorie_OnValueChanged()
+	If TabEinordnung_SbASFDokArt.Count < 1 Then 'Wird benötigt, da OnValueChanged durch FolderTreeView für eine Filterung aufgerufen wird.
+		Call writeCategoryNameAndLoadDokumentarten(True)
+	End If
+End Sub
+
+Private Sub writeCategoryNameAndLoadDokumentarten (ByRef OKButton As Boolean)
+'**	Business Logik
+'	nichts gewählt/Auswahl abgewählt
+	If TabEinordnung_CtcASFKategorie.DataCount = 0 And OKButton Then
+		TabEinordnung_ASFKategorie.Data = ""
+		TabEinordnung_SbASFDokArt.RemoveAll
+		MvASFZugriff.ResetContent
+
+	End If
+'	etwas gewählt
+	If TabEinordnung_CtcASFKategorie.DataCount > 0 And OKButton Then
+		'Ü001 CategoryShortName --> CategoryName
+		TabEinordnung_ASFKategorie.Data = ASF_getCategoryNameByCategoryId(TabEinordnung_CtcASFKategorie.Data(0))
+		If TabEinordnung_CtcASFMVKategorie.DataCount > 0 Then
+			ASF_loadDokumentartenToSelectionBox(TabEinordnung_CtcASFMVKategorie.StartId, TabEinordnung_SbASFDokArt, TabEinordnung_CtcASFKategorie.Data(0), True)
+			Else
+			ASF_loadDokumentartenToSelectionBox(TabEinordnung_CtcASFKategorie.StartId, TabEinordnung_SbASFDokArt, TabEinordnung_CtcASFKategorie.Data(0), True)
+		End If
+
+
+		MvASFZugriff.ResetContent
+
+	End If
+End Sub
+'/Ü022
+
+'Ü020
+Private Sub TabEinordnung_CtcASFMVKategorie_OnDialogClosed(ByVal OKButton As Boolean)
+	'**	Business Logik
+'	nichts gewählt/Auswahl abgewählt
+	If TabEinordnung_CtcASFMVKategorie.DataCount = 0 And OKButton Then
+		TabEinordnung_ASFKategorie.Clear
+		TabEinordnung_CtcASFMVKategorie.ResetContent
+		TabEinordnung_CtcASFKategorie.ResetContent
+		TabEinordnung_SbASFDokArt.RemoveAll
+		TabEinordnung_SbASFStartkategorie.SelectedItem = -1
+		MvASFZugriff.ResetContent
+
+	End If
+
+	If TabEinordnung_CtcASFMVKategorie.DataCount = 0 Then
+		TabEinordnung_SbASFDokArt.RemoveAll
+	End If
+
+'	etwas gewählt
+	If TabEinordnung_CtcASFMVKategorie.DataCount > 0 And OKButton Then
+		'Ü001 CategoryShortName --> CategoryName
+		ASF_loadDokumentartenToSelectionBox(TabEinordnung_CtcASFMVKategorie.StartId, TabEinordnung_SbASFDokArt, TabEinordnung_CtcASFMVKategorie.StartId, True)
+		MvASFZugriff.ResetContent
+
+
+	End If
+End Sub
+'/Ü020
+Private Sub TabEinordnung_SbASFDokArt_OnSelectionChanged()
+
+	MyASF_Dokumentart = ASF_getASF_Dokumentart(TabEinordnung_CtcASFKategorie.Data(0), TabEinordnung_SbASFDokArt.Data)
+	ASF_loadDokumentartenBerechtigungenToMVEdit(MyASF_Dokumentart.ID, MvASFZugriff, True)
+	ChkVersionVeroeffentlichen.Checked = False
+	'ChkVersionVeroeffentlichen.FireOnValueChanged
+	If MyASF_Dokumentart.Prozessdefinition <> "" Then
+		'Vorgang zwingend zu starten
+		SbVorgang.Data = MyASF_Dokumentart.Prozessdefinition
+		SbVorgang.ReadOnly = True
+		SbASFDokStatus.Data = "P"
+		ChkVersionVeroeffentlichen.Checked =True
+	Else
+		'Vorgang nicht zwingend zu starten
+		SbVorgang.ReadOnly = False
+		SbVorgang.Data =""
+		SbASFDokStatus.Data = "F"
+		ChkVersionVeroeffentlichen.Checked = True
+	End If
+	If MyASF_Dokumentart.AutoGZ Then
+		If TabEinordnung_ASFGeschaeftszahl.Empty Then
+			TabEinordnung_ASFGeschaeftszahl.Data = ASF_IDs_getNextGZ()
+		End If
+	End If
+
+End Sub
+
+'**********************************
+'*	TAB 'Beschlagwortung'
+'**********************************
+
+Private Sub TabBeschlagwortung_CmdASFGeschaeftszahlAnfordern_OnClicked()
+
+	ASF_IDs_doFillGeschaeftszahl_showCompetingDateDialog(TabEinordnung_ASFGeschaeftszahl, TabBeschlagwortung_ASFAnlassdatum, "Anlassdatum")
+
+End Sub
+Private Sub TabBeschlagwortung_cmdDelPSP_OnClicked()
+	TabBeschlagwortung_ASFProjektNummer.Clear
+	TabBeschlagwortung_ASFProjektBezeichnung.Clear
+End Sub
+
+Private Sub TabBeschlagwortung_ASFProjektNummer_OnValueChanged()
+
+	With TabBeschlagwortung_DbrsProjektNummer
+		.SQLQuery = ASF_Projekt_getSqlSelectPSPElement(TabBeschlagwortung_ASFProjektNummer, TabBeschlagwortung_ASFProjektBezeichnung)
+		.RetrieveData
+	End With
+
+End Sub
+
+
+Private Sub TabBeschlagwortung_ASFProjektBezeichnung_OnValueChanged()
+
+	With TabBeschlagwortung_DbrsProjektNummer
+		.SQLQuery = ASF_Projekt_getSqlSelectPSPElement(TabBeschlagwortung_ASFProjektNummer, TabBeschlagwortung_ASFProjektBezeichnung)
+		.RetrieveData
+	End With
+
+End Sub
+
+Private Sub TabBeschlagwortung_DbrsProjektnummer_OnDialogOpen(ByRef Continue As Boolean)
+
+	ASF_db_initDbrsWithRecordsetDefinition(TabBeschlagwortung_DbrsProjektNummer, "ProjektPSPElemente",,False)
+	With TabBeschlagwortung_DbrsProjektNummer
+		.SQLQuery = ASF_Projekt_getSqlSelectPSPElement(TabBeschlagwortung_ASFProjektNummer, TabBeschlagwortung_ASFProjektBezeichnung)
+		.RetrieveData
+	End With
+
+End Sub
+
+Private Sub TabBeschlagwortung_DbrsProjektNummer_OnDialogClosed(ByVal OKButton As Boolean)
+
+	With TabBeschlagwortung_DbrsProjektNummer
+		If OKButton And .DataCount = 1 Then
+			TabBeschlagwortung_ASFProjektNummer.Data = .Recordset.Fields("PSP/Kostenstelle")
+			TabBeschlagwortung_ASFProjektBezeichnung.Data = .Recordset.Fields("Name")
+		End If
+	End With
+
+End Sub
+
+
+
+'************************************************************************
+'*	LOKALE BUSINESS LOGIK
+'************************************************************************
+
+Private Sub initControls()
+
+'*	Datenbankverbindung
+	TabEinordnung_CtcASFKategorie.ConnectionString = TabEinordnung_CtcASFKategorie.DBConnectionDefinition.ADOConnection.ConnectionString
+	TabEinordnung_CtcASFMVKategorie.ConnectionString = TabEinordnung_CtcASFMVKategorie.DBConnectionDefinition.ADOConnection.ConnectionString
+	TabBeschlagwortung_DbrsProjektNummer.ConnectionString = ASF_DMS_Daten.ConnectionString
+
+'*	FilingEnvironment
+	Set MyFEW = ArchiveViewWindow.ParentFilingEnvironmentWindow
+
+'*	aktuelle Akte beim Start
+	Set MyASF_aktuelle_Akte = ASF_aktuelle_Akte
+	'Ü002: Nothing-Setzen wird in FilingEnvironment gemacht!
+	'Set ASF_aktuelle_Akte = Nothing
+
+	ASF_InitErsteller(TabEinordnung_dbrsASFErsteller)
+
+	Set MyASF_RLOrtsbezug = Dlg.ControlByName("Tab_OrtsBezug_CCResultList")
+
+End Sub
+
+Private Sub initValues(Optional myDoc As ItaDocument )
+
+	Dim parKatName As String
+	Dim archiveCopyOfDoc As Boolean
+	Dim xID As String
+	Dim myDescDefKategorieID As DescriptorDefinition
+	Dim startKategorieID As String
+	Dim tmp As String
+'*	Checks
+	On Error GoTo ErrorHandler
+
+'*	Beschlagwortung
+
+'Ü023
+	If TabBeschlagwortung_ASFAnlassdatum.Empty Then
+		TabBeschlagwortung_ASFAnlassdatum.Data = Now
+	End If
+'/Ü023
+	TabBeschlagwortung_ASFDokID.Data = ASF_IDs_getNextDocId()
+
+	If cbKeepValues.Checked Then Exit Sub			             	'!!!!!!!!!!!
+
+	TabBeschlagwortung_ASFAnlassdatum.ResetDirtyStatus
+	TabBeschlagwortung_ASFDokID.ResetDirtyStatus
+
+
+'*	Einordnung
+	TabEinordnung_ASFErsteller.Data = Application.System.User.User
+	TabEinordnung_ASFErsteller.ResetDirtyStatus
+'Ü011
+	'Bei Erstellung einer Dokument-Kopie (aus einer Trefferliste) wird die Auswahlliste der Kategorie-Startwerte nicht initialisiert
+	archiveCopyOfDoc = False
+	If Not myDoc Is Nothing Then
+		If myDoc.Descriptors.Count > 0 Then
+			archiveCopyOfDoc = True
+		End If
+	End If
+
+'Ü014  Abteilung des aktuellens Benutzers muss in allen Fällen vorbelegt werden
+	TabEinordnung_CtcASFAbteilung.ResetContent
+	TabEinordnung_CtcASFAbteilung.AddData Application.System.User.Unit
+'/Ü014
+
+	If Not archiveCopyOfDoc Then
+		'*	Klassifikation-Startwerte
+		ASF_loadKategorieStartwerteToSelectionBox(TabEinordnung_SbASFStartkategorie, True)
+		TabEinordnung_SbASFStartkategorie.ResetDirtyStatus
+	Else
+		xID = ASF_getCategoryStartIdByCategoryName(TabEinordnung_SbASFStartkategorie.Data)
+		With TabEinordnung_CtcASFKategorie
+			.ResetContent
+			.StartId = xID
+			.RetrieveData
+		End With
+		'Dokumentarten laden
+		Set myDescDefKategorieID = Application.System.DescriptorDefinitions.ItemByName("ASF_Kategorie_ID")
+		If Not myDescDefKategorieID Is Nothing Then
+			If Not myDoc.Descriptors.ItemByGUID(myDescDefKategorieID.GUID) Is Nothing Then
+				startKategorieID = myDoc.Descriptors.ItemByGUID(myDescDefKategorieID.GUID).Value (0)
+				If Trim(startKategorieID) <> "" Then
+					tmp = TabEinordnung_SbASFDokArt.Data
+					ASF_loadDokumentartenToSelectionBox(xID, TabEinordnung_SbASFDokArt, startKategorieID, True)
+					TabEinordnung_SbASFDokArt.Data = tmp
+'Ü013
+					TabEinordnung_CtcASFKategorie.AddData startKategorieID
+					TabEinordnung_CtcASFKategorie.ResetDirtyStatus
+'/Ü013
+				End If
+			End If
+		End If
+	End If
+'/Ü011
+'*	Status
+	SbASFDokStatus.Data = "E"
+	SbASFDokStatus.ResetDirtyStatus
+
+	On Error Resume Next
+'*	Werte von aktueller Akte laden
+	If Not MyASF_aktuelle_Akte Is Nothing Then
+		Dim XDescS(4) As String
+		XDescS(0) = "ASF_Projekt_Nummer"
+		XDescS(1) = "ASF_Projekt_Bezeichnung"
+		XDescS(2) = "ASF_Geschaeftszahl"
+		'XDescS(3) = "ASF_GP_GPName"
+		XDescS(4) = "ASF_SAP_BestellNr"
+		SER_syncFW_loadValuesFromIDocumentToArchiveDlgControls(MyASF_aktuelle_Akte, Dlg, XDescS)
+		'Ü002 Ortsbezüge kopieren
+		ASF_Ortsbezug_copyOrtsbezuege(MyASF_aktuelle_Akte, Dlg, True)
+		loadOrtsbezug
+		'/Ü002
+On Error GoTo ErrorHandler:
+
+
+		Select Case Application.System.FolderTypes.ItemByGUID(MyASF_aktuelle_Akte.FolderTypeGUID).Name
+			Case "Beschaffungsakte"
+				TabEinordnung_SbASFStartkategorie.Data = "ASF Beschaffung"
+				If Application.Globals.Exists("ASF_Aktuelles_Register") Then Set MyASF_aktuelles_Register= Application.Globals("ASF_Aktuelles_Register")  '2011-08-03 GBA Korrektur CR37
+				TabEinordnung_SbASFStartkategorie_OnValueChanged
+				If Not MyASF_aktuelles_Register Is Nothing Then
+					If SER_getFirstDescriptorValueByName(MyASF_aktuelle_Akte.Descriptors, "ASF_Verfahrensart", True) <> "" Then
+						TabEinordnung_CtcASFKategorie.ResetContent
+						'2011-08-03 GBA Korrektur CR37
+						parKatName= ""
+						'Berücksichtigt werden nur Register der Planakte und keine manuell angelegten
+						While MyASF_aktuelles_Register.Local
+							Set MyASF_aktuelles_Register = MyASF_aktuelles_Register.Parent
+						Wend
+						If MyASF_aktuelles_Register.Parent Is Nothing Then
+							parKatName= ""
+						Else
+							parKatName= MyASF_aktuelles_Register.Parent.Name
+						End If
+						TabEinordnung_CtcASFKategorie.AddData ASF_getCategoryIdByParentCategoryShortNameAndCategoryShortName(parKatName, MyASF_aktuelles_Register.Name)
+						'TabEinordnung_CtcASFKategorie.AddData ASF_getCategoryIdByParentCategoryShortNameAndCategoryShortName(SER_getFirstDescriptorValueByName(MyASF_aktuelle_Akte.Descriptors, "ASF_Verfahrensart", True), MyASF_aktuelles_Register.Name)
+						'/2011-08-03 GBA Korrektur CR37
+						TabEinordnung_CtcASFKategorie_OnDialogClosed True
+					End If
+				End If
+			Case Else
+		End Select
+	End If
+
+'*	Erstellungsdatum ist immer 'heute'
+	If TabBeschlagwortung_Erstellungsdatum.Empty Then
+		TabBeschlagwortung_Erstellungsdatum.Data = Now
+	End If
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Bei der Initialisierung der Maske ist ein Fehler aufgetreten!","Archive Dialog/ Standard initValues()",,,Err.Description
+End Sub
+
+Private Sub initOrtsbezug()
+
+	'Ü008
+	'ASF_Ortsbezug_initDialogAndObjects( MyASF_RLOrtsbezug, _
+	'									MyASF_RLOrtsbezugLE, _
+	'									TabOrtsbezug_CCResultList, _
+	'									"Ortsbezug", "IndexOnly", "20100101", _
+	'									TabOrtsbezug_MvASFOrtOrtsbezugDokId)
+
+	ASF_Ortsbezug_initDialogAndObjectsNew( MyASF_RLOrtsbezug, _
+										MyASF_RLOrtsbezugLE, _
+										TabOrtsbezug_CCResultList, _
+										"Ortsbezug", "IndexOnly", "20100101", _
+										Dlg.Document.InternalDescriptors.ItemByGUID("UUID").Value(0))
+	'/Ü008
+
+End Sub
+'Ü008
+Private Sub loadOrtsbezug()
+
+	ASF_Ortsbezug_initDialogAndObjects( MyASF_RLOrtsbezug, _
+										MyASF_RLOrtsbezugLE, _
+										TabOrtsbezug_CCResultList, _
+										"Ortsbezug", "IndexOnly", "20100101", _
+										TabOrtsbezug_MvASFOrtOrtsbezugDokId)
+
+End Sub
+Private Sub updateOrtsbezug()
+	ASF_Ortsbezug_updateOrtsbezuegeFromResultset(MyASF_RLOrtsbezug.Resultset, Dlg.Document.InternalDescriptors.ItemByGUID("UUID").Value(0))
+End Sub
+'/Ü008
+
+
+Private Sub saveOrtsbezug()
+
+	ASF_Ortsbezug_loadOrtsbezuegeFromResultsetToControls	MyASF_RLOrtsbezug.Resultset, _
+															TabOrtsbezug_MvASFDokStrasse, _
+															TabOrtsbezug_MvASFDokStrKmVon, _
+															TabOrtsbezug_MvASFDokStrKmBis, _
+															TabOrtsbezug_MvASFDokObjekttyp, _
+															TabOrtsbezug_MvASFDokObjekt, _
+															TabOrtsbezug_MvASFDokObjektdetail, _
+															TabOrtsbezug_MvASFOrtOrtsbezugDokId
+End Sub
+
+Private Sub saveZugriff()
+
+'*	ASF_Zugriff von aktueller Akte übersteuert ASF_Zugriff des Dokuments
+
+'Ü009
+	If 	ArchiveViewWindow.ParentFilingEnvironmentWindow.FilingEnvironment.Name = "Dokument in Akte" Then
+		Set MyASF_aktuelle_Akte = ASF_aktuelle_Akte
+		If MyASF_aktuelle_Akte Is Nothing Then
+			If Not ArchiveViewWindow.ParentFilingEnvironmentWindow.FolderViewWindow Is Nothing Then
+				If Not ArchiveViewWindow.ParentFilingEnvironmentWindow.FolderViewWindow.FolderTreeView Is Nothing Then
+					Set MyASF_aktuelle_Akte = ArchiveViewWindow.ParentFilingEnvironmentWindow.FolderViewWindow.FolderTreeView.Document
+				End If
+			End If
+		End If
+	End If
+'/Ü009
+	If Not MyASF_aktuelle_Akte Is Nothing Then
+		If	MyASF_aktuelle_Akte.FolderTypeGUID = Application.System.FolderTypes.ItemByName("Projektakte").GUID Or _
+			MyASF_aktuelle_Akte.FolderTypeGUID = Application.System.FolderTypes.ItemByName("ACS Projektakte").GUID Or _
+			MyASF_aktuelle_Akte.FolderTypeGUID = Application.System.FolderTypes.ItemByName("Bauprojektakte alt").GUID Or _
+			MyASF_aktuelle_Akte.FolderTypeGUID = Application.System.FolderTypes.ItemByName("Bauprojektakte").GUID Then
+				MvASFZugriff.ResetContent
+				Dim XDescS(0) As String
+				XDescS(0) = "ASF_Zugriff"
+				SER_syncFW_loadValuesFromIDocumentToArchiveDlgControls(MyASF_aktuelle_Akte, Dlg, XDescS)
+		End If
+	End If
+
+End Sub
+
+Private Sub ASF_doCreateDocumentFromTemplate()
+
+	Dim myDoc As ItaDocument
+
+'*	Checks
+	On Error GoTo ErrorHandler
+
+'*	Lokale Objekte
+	Dim XItaDoc As ItaDocument
+	Dim XDT As DocumentTemplate
+
+'*	Business Logik
+'	prüfen
+	Set XItaDoc = ArchiveViewWindow.ViewerWindow.DocViewer.Document
+	If XItaDoc.Representations.Count > 0 Then
+		If XItaDoc.Representations(0).PartDocuments.Count > 0 Then
+			Err.Raise 1010, "ASF_DokumentVonVorlage()", "Es befindet sich bereits ein Dokument in der Anzeige, 'neu von Vorlage' ist daher nicht möglich."
+		End If
+	End If
+'	durchführen
+	Set XDT = ASF_doVorlagenAuswahlZuDokumentart(MyASF_Dokumentart.ID)
+	If Not XDT Is Nothing Then
+		If XDT.ReferenceType = enumTemplateReferenceType.rtItaDocument Then
+			'Die aktuelle Version der Vorlage ermitteln und verwenden
+			Set myDoc = Application.System.GetDocumentDirect(XDT.Reference)
+			If myDoc Is Nothing Then
+				Application.ShowError "Zur DokId " + XDT.Reference + " existiert kein Dokument!", Err.Source,,, Err.Description
+				Exit Sub
+			End If
+			Set myDoc = ASF_getLastVersionOfDocument(myDoc.GetDocumentVersionInfo)
+			If myDoc.DocumentID <> XDT.Reference Then
+				XDT.Reference = myDoc.DocumentID
+				XDT.Commit
+			End If
+		End If
+		ArchiveViewWindow.AddDocumentFromTemplate XDT
+	End If
+
+	Exit Sub
+ErrorHandler:
+	Application.ShowError "Fehler bei der Auswahl der Dokumentvorlage(n) bzw. dem Erzeugen eines Dokuments auf Basis der Vorlage!", Err.Source, 0, Err.Number, Err.Description, 0
+End Sub
+
+Private Sub ArchiveViewWindow_OnTransferedDocProperties(ByVal OleDocument As Object, ByVal DocTemplate As SWAMDLib.DocumentTemplate, ByVal DescriptorMapping As SWAMDLib.DescriptorMappingTable, ByVal MappingDirection As Long, ByRef Handled As Boolean)
+
+	If MappingDirection = SWAMDLib.mdFromArchive Then
+		'Ü002 umgestellt auf neue Funktion, die sowohl ContentControls als auch Form(Text)Fields berücksichtigt
+		'SER_syncFW_loadValuesFromArchiveDlgControlsToWordDocContentControls(Dlg, OleDocument)
+		SER_syncFW_loadValuesFromArchiveDlgControlsToWordDoc(Dlg, OleDocument)
+		'/Ü002
+	End If
+
+End Sub
+
+
+
+'************************************************************************
+'*	ORTS- UND OBJEKTBEZUG
+'************************************************************************
+
+'	1. Objekte siehe ganz oben
+'	2. Initialisierung siehe Dlg_OnInit()
+'	3. Benutzer Interaktion gleich nachfolgend
+'	4. Speichern siehe Dlg_OnExecute()
+
+'****************************************
+'*	Benutzer Interaktion
+'****************************************
+
+
+
+Private Sub TabOrtsbezug_CmdOrtsbezugNeu_OnClicked()
+'Ü017'
+	Set MyASF_FEWOrtsbezug = Application.OpenEnvironment2(Application.MetaData.FilingEnvironments.ItemByName("Ortsbezug").GUID, True)
+	MyASF_FEWOrtsbezug.Tag = MyASF_RLOrtsbezug
+	Set myPublicArchDlg = Dlg
+'/Ü017'
+End Sub
+
+Private Sub MyASF_FEWOrtsbezug_OnDocumentExecuted(ByVal Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean, ByRef Handled As Boolean)
+
+	MyASF_RLOrtsbezug.Resultset.AppendDocument(Doc)
+
+End Sub
+
+Private Sub TabOrtsbezug_CmdOrtsbezugAendern_OnClicked()
+
+	If MyASF_RLOrtsbezugLE.SelectedCount = 1 Then
+		Application.OpenKeyChange(MyASF_RLOrtsbezugLE.SelectedDocument(0))
+	End If
+	MyASF_FEWOrtsbezug.Tag = MyASF_RLOrtsbezug
+End Sub
+
+Private Sub TabOrtsbezug_CmdOrtsbezugEntfernen_OnClicked()
+
+	Dim XDD As IDocument
+	'Ü008
+	Dim oDesc As Descriptor
+	Dim oDescDef As DescriptorDefinition
+	Dim i As Integer
+
+	Set oDescDef = Application.System.DescriptorDefinitions.ItemByName("ASF_Dok_DokFolderUUID")
+	'/Ü008
+
+	For Each XDD In MyASF_RLOrtsbezugLE.SelectedDocuments
+		MyASF_RLOrtsbezug.Resultset.RemoveDocument(XDD)
+		'Ü008
+		If Not XDD Is Nothing And XDD.FilingView = Application.System.DocumentTypes.ItemByName("Ortsbezug").GUID Then
+			For i = 0 To XDD.Descriptors.Count - 1
+				If XDD.Descriptors.Item(i).DescriptorDefinition.GUID = oDescDef.GUID Then
+					XDD.Descriptors.Remove(i)
+					XDD.Commit
+					Exit For
+				End If
+			Next i
+		End If
+		'/Ü008
+	Next
+
+End Sub
+
+'* TEST GSC
+
+Private Sub test_pdf
+
+	Dim i As Integer
+	Dim i1 As Integer
+
+	Dim myDoc 				As SWAFRAMELib.ItaDocument
+	Dim oIDoc				As SWAFRAMELib.IDocument
+	Dim objDocData			As DocData
+	Set oIDoc = ArchiveViewWindow.ArchiveDlg.Document
+	Set myDoc = oIDoc
+
+	For i = 0 To myDoc.Representations.Count -1
+		For i1 = 0 To myDoc.Representations(i).PartDocuments.Count -1
+			Set objDocData = myDoc.Representations.Item(i).PartDocuments.Item(i1).DataObject
+		Next
+	Next
+
+End Sub
+
+
+'************************************************************************
+'*	GRUNDSTUECKSBEZUG
+'************************************************************************
+
+'	1. Objekte siehe ganz oben
+'	2. Initialisierung siehe Dlg_OnInit()
+'	3. Benutzer Interaktion gleich nachfolgend
+'	4. Speichern siehe Dlg_OnExecute()
+
+'****************************************
+'*	Benutzer Interaktion
+'****************************************
+
+Private Sub TabGrundstueck_CmdNeu_OnClicked()
+'Ü017
+	Set MyASF_FEWGrundstueck = Application.OpenEnvironment2(Application.MetaData.FilingEnvironments.ItemByName("Grundstueck").GUID, True)
+'/Ü017
+	MyASF_FEWGrundstueck.ActiveArchiveDocClass = Application.System.DocumentTypes.ItemByName("Grundstück").GUID
+
+End Sub
+
+Private Sub MyASF_FEWGrundstueck_OnDocumentExecuted(ByVal Doc As SWAFRAMELib.IDocument, ByVal Succeeded As Boolean, ByRef Handled As Boolean)
+
+	MyASF_RLGrundstueck.Resultset.AppendDocument(Doc)
+	saveGrundstueck
+
+End Sub
+
+Private Sub TabGrundstueck_CmdAendern_OnClicked()
+
+	If MyASF_RLGrundstueckLE.SelectedCount = 1 Then
+		Application.OpenKeyChange(MyASF_RLGrundstueckLE.SelectedDocument(0))
+	End If
+	saveGrundstueck
+
+End Sub
+
+Private Sub TabGrundstueck_CmdEntfernen_OnClicked()
+
+	Dim XDD As IDocument
+	For Each XDD In MyASF_RLGrundstueckLE.SelectedDocuments
+		MyASF_RLGrundstueck.Resultset.RemoveDocument(XDD)
+	Next
+	saveGrundstueck
+	'Wenn alle Grundstücke entfernt werden, bleibt der 'Dokument speichern '-Knopf in der Ablagemaske ausgegraut.
+	'Daher Workaround. Das Control 'ASFTmp' ist mit keinem Deskriptor verbunden
+'	If MyASF_RLGrundstueck.Resultset.TotalCount = 0 Then
+'		ASFTmp.Data = " "
+'	End If
+
+End Sub
+
+'****************************************
+'*	Business Logik
+'****************************************
+
+Private Sub initGrundstueck()
+
+	'SWA DMS-462
+	'If ASF_security_isUserGroupMember("Grundstücksverwalter") Then
+		ASF_Grundstueck_initDialogAndObjects( 	MyASF_RLGrundstueck, _
+												MyASF_RLGrundstueckLE, _
+												TabGrundstueck_CCResultList, _
+												"Grundstücke", "IndexOnly", "20100101", _
+												TabGrundstueck_MvASFDokGrundstueckDokId)
+
+
+		Dim xi As Integer
+		For xi = 0 To TabDlg.TabCount - 1
+			If TabDlg.TabTitle(xi) = "Grundstück" Then
+				TabDlg.TabVisible(xi) = True
+			End If
+		Next
+	'End If
+	'/DMS-462
+
+End Sub
+
+Private Sub saveGrundstueck()
+
+	'SWA DMS-462
+	'If ASF_security_isUserGroupMember("Grundstücksverwalter") Then
+		ASF_Grundstueck_loadGrundstueckeFromResultsetToControls(	MyASF_RLGrundstueck.Resultset, _
+																	TabGrundstueck_MvASFDokBundesland, _
+																	TabGrundstueck_MvASFDokKGNummer, _
+																	TabGrundstueck_MvASFDokKGName, _
+																	TabGrundstueck_MvASFDokGrundstueckNr, _
+																	TabGrundstueck_MvASFDokPolbezirkName, _
+																	TabGrundstueck_MvASFDokGrundstueckDokId, _
+																	TabGrundstueck_MvASFDokEinlagezahl, _
+																	TabGrundstueck_MvASFDokGrundbuchnr)
+
+	'End If
+	'/DMS-462
+
+End Sub
+

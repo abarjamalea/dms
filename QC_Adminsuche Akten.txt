@@ -1,0 +1,88 @@
+Default
+Option Explicit
+
+Dim myfoldertype As String
+
+Private Sub ClassDlg_OnSelectionChanged()
+	'Deskriptoren laden
+Dim myDescriptors() As String
+DescList.Enabled =True
+DescList.RemoveAll
+If Not ClassDlg.Data="" Then
+	If Not ClassDlg.Data="*" Then
+		myfoldertype = ClassDlg.Data
+		ReDim myDescriptors(Application.System.FolderTypes.ItemByName(ClassDlg.Data).DescriptorDefinitions.Count)
+		Dim y As Integer
+
+		For y = 0 To Application.System.FolderTypes.ItemByName(ClassDlg.Data).DescriptorDefinitions.Count - 1
+		DescList.Add(Application.System.FolderTypes.ItemByName(ClassDlg.Data).DescriptorDefinitions.Item(y).Name)
+		Next
+	End If
+End If
+End Sub
+
+
+Private Sub DescList_OnValueChanged()
+chooseddscCntr.Clear
+End Sub
+
+Private Sub Dlg_OnDebugResume()
+Call InitVal
+End Sub
+
+
+Private Sub Dlg_OnExecute(ByRef Continue As Boolean)
+	If ClassDlg.Data="" Then
+	MsgBox "Bitte wählen Sie eine Suchklasse oder Wildcard *.",vbOkOnly,"Keine Suche definiert"
+	Continue = False
+	Exit Sub
+End If
+End Sub
+
+Private Sub Dlg_OnExecuteQueryObject(ByVal Query As SWAFRAMELib.Query)
+
+
+
+	If ClassDlg.Data="*" Then
+		Query.Databases.Add(Application.System.QueryDatabases.ItemByName("Akten"))
+		Query.Databases.Add(Application.System.QueryDatabases.ItemByName("BAVAKten"))
+	Else
+		Query.Databases.RemoveAll
+		Query.Databases.Add(Application.System.QueryDatabases.ItemByName(Application.MetaData.ArchiveFolderClasses.ItemByName(myfoldertype).FolderType.FilingDatabases.Item(0).Name))
+
+	End If
+
+End Sub
+
+Private Sub Dlg_OnExecuteSQL(ByRef pStatement As String)
+	Dim tmpString As String
+	If Not DescList.Data = "" Then
+		If chooseddscCntr.Data = "" Then
+			tmpString = " IS NULL "
+			Else
+			tmpString = " like '"+ chooseddscCntr.Data + "'"
+		End If
+	pStatement = pStatement & " AND " & Application.System.DescriptorDefinitions.ItemByName(DescList.Data).QueryLiteral & tmpString
+	End If
+
+	pStatement = Replace(pStatement,"LIKE 'NULL*'","IS NULL")
+	pStatement = Replace(pStatement,"= 'NULL*","IS NULL")
+	pStatement = Replace(pStatement,"= 'NULL","IS NULL")
+	pStatement = Replace(pStatement,"ClassName = '*'","ClassName LIKE '*'")
+
+End Sub
+
+Private Sub Dlg_OnInit()
+InitVal()
+End Sub
+
+Private Sub InitVal()
+'Klassen in Dialog laden
+	ClassDlg.RemoveAll
+	Dim i As Integer
+	For i = 0 To Application.System.FolderTypes.Count - 1
+	ClassDlg.Add(Application.System.FolderTypes.Item(i).Name)
+	Next
+	ClassDlg.Add("*")
+End Sub
+
